@@ -8,8 +8,6 @@ compareJsonPaths = (p1, p2) ->
         equal = equal and (p1[i] == p2[i])
     return equal
 
-$(document).ready () ->
-    
 module "Load document"
 
 test "Load a new document", () ->
@@ -48,26 +46,18 @@ test "Add element to DOM", () ->
     _rootDiv.append(newElement)
     
 test "Set attribute", () ->
-    newElement = $('<div someattr="foo"/>')
     stop()
+    newElement = $('<div someattr="foo"/>')
     _doc.on 'change', (ops) ->
         op = ops[0]
-        console.log op
         if op.oi?
-            #console.log op
             start()
-                
-        #    ok op?, "Update received"
-        #ok op.li?, "Op was list insert"
-        #ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path match computed element path"
-        #equal op.li[0], 'DIV', "The element from op match the one inserted"
-        #ok op.li[1].someattr?, "Element from op has attr from DOM div"
-        #equal op.li[1].someattr, "foo", "Value of element attribute match value of attribute in op"
-        
+            ok op?, "Recived attribute op"
+            equal op.oi, "bar", "Set attribute had the correct value"
     _rootDiv.append(newElement)
     setTimeout (->
-      newElement.attr('someattr', 'bar')
-    ), 0
+        newElement.attr('someattr', 'bar')
+    ), 0.1
     
     
 # test "a basic test example", () ->
