@@ -25,13 +25,13 @@ Any changes that are now applied to the DOM is persisted and shared with anyone 
 There are three modes the server can run in. Starting it with the above command will only keep the documents in memory until the server is restarted.
 To provide persistance across restarts of the server it is possible to start the server with [redis](http://redis.io/) support
 
-	# coffee server.coffee redis
+	# coffee webstrate.coffee redis
 	
 This requires that the redis in-memory database is running on the local host.
 
 To provide full persistance the server can use [couchdb](http://couchdb.apache.org/)
 
-	# coffee server.coffee couchdb
+	# coffee webstrate.coffee couchdb
 	
 This requires a running couchdb database that has been bootstrapped for share.js.
 To bootstrap the server, create a database named sharejs, and go to _node\_modules/share/bin_ and execute the script _setup\_couch_.
