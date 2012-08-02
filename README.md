@@ -10,6 +10,8 @@ The idea of IIFTW is to let editing of content be a matter of manipulating the D
 Hence, we can decouple interaction logic and interaction techniques (instruments) from content. 
 Instruments are then provided through a browser extension, meaning that users can define their own interaction with content.
 
+Webstrate provides a webservice where websites are fully concurrently editable and persistent.
+
 Webstrate server
 ----------------
 Webstrate runs on [node.js](http://nodejs.org/) using [share.js](http://sharejs.org/) for concurrent editing.
