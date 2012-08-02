@@ -1,0 +1,13 @@
+{
+  "name": "webstrate",
+  "version": "0.0.1",
+  "description": "A web-based substrate for instrumental interaction",
+  "keywords": ["instrumental interaction", "hci", "substrates"],
+  "homepage": "",
+  "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
+  "dependencies": {
+    "express": "*",
+    "redis": "*",
+    "share": "*"
+  }
+}

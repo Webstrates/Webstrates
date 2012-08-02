@@ -1,0 +1,17 @@
+body {
+	margin-top:50px;
+    background-color: rgb(230, 230, 230);
+}
+.document {
+	border-width: 1;
+	box-shadow: 4px 4px 10px #333;
+	border-style: solid;
+	border-color: rgba(255, 255, 255, .4);
+	background-color:white;
+	overflow: auto;
+	position: relative;
+	margin:0 auto;
+	width: 551px;
+	height: 779px;
+	word-wrap: break-word;
+}

@@ -1,0 +1,12 @@
+
+lib/.DS_Store
+
+lib/client.js
+
+lib/dom2share.js
+
+lib/tests.js
+
+lib/util.js
+
+node_modules
