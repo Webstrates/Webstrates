@@ -11,11 +11,15 @@ elementAtPath = (doc, path) ->
 populateNodeMap = (map, elem, root) ->
     jsonPath = $(elem).jsonMLPath($(root))
     map.set(elem, jsonPath)
+    if elem.tagName == 'IFRAME'
+        return
     for child in $(elem).contents()
         populateNodeMap map, child, root
         
 cleanNodeMap = (map, elem) ->
     map.delete elem
+    if elem.tagName == 'IFRAME'
+        return
     for child in $(elem).contents()
         cleanNodeMap map, child
     

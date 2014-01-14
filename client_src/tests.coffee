@@ -59,6 +59,23 @@ test "Set attribute", () ->
         newElement.attr('someattr', 'bar')
     ), 0.1
     
+test "Add iFrame", () ->
+    newElement = $('<iframe src="http://www.cs.au.dk"></iframe>')
+    stop()
+    _doc.on 'change', (ops) ->
+        start()
+        op = ops[0]
+        ok op?, "Update received"
+        ok op.li?, "Op was list insert"
+        ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path match computed element path"
+        equal op.li[0], 'IFRAME', "The element from op match the one inserted"
+        ok op.li[1].src?, "Element from op has attr from DOM div"
+        equal op.li[1].src, "http://www.cs.au.dk", "Value of element attribute match value of attribute in op"
+        console.log op
+        ok false
+        
+    _rootDiv.append(newElement)
+    
     
 # test "a basic test example", () ->
 #   ok true, "this test is fine"
