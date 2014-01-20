@@ -12,7 +12,7 @@ module "Load document"
 
 test "Load a new document", () ->
     stop()
-    openDoc "test" + new Date().getTime(), $('<div id="qunit-fixture"/>').get(0), (error, doc, div) ->
+    openDoc "test" + new Date().getTime(), $('<div id="qunit-fixture"></div>').get(0), (error, doc, div) ->
         ok _observer?, "Observer running"
         ok not error?, "No errors when loading document"
         ok doc?, "Document was loaded"
@@ -21,7 +21,7 @@ test "Load a new document", () ->
         
 load = () ->
     content = $('<div id="content"/>')
-    $('<div id="qunit-fixture"/>').append(content)
+    $('<div id="qunit-fixture"></div>').append(content)
     stop()
     openDoc "test" + new Date().getTime(), content.get(0), (error, doc, div) ->
         root._rootDiv = $(div)
@@ -31,7 +31,7 @@ load = () ->
 module "DOM to JSON", {setup: load}
 
 test "Add element to DOM", () ->
-    newElement = $('<div someattr="foo"/>')
+    newElement = $('<div someattr="foo"></div>')
     stop()
     _doc.on 'change', (ops) ->
         start()
@@ -45,9 +45,25 @@ test "Add element to DOM", () ->
         
     _rootDiv.append(newElement)
     
+#test "Remove element from DOM", () ->
+#    newElement = $('<div></div>')
+#    _rootDiv.append(newElement)    
+#    stop()
+#    _doc.on 'change', (ops) ->
+#        start()
+#        op = ops[0]
+#        ok op?, "Update received"
+#        ok op.li?, "Op was list insert"
+#        ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path   match computed element path"
+#        equal op.li[0], 'DIV', "The element from op match the one inserted"
+#        ok op.li[1].someattr?, "Element from op has attr from DOM div"
+#        equal op.li[1].someattr, "foo", "Value of element attribute match value of attribute in op"
+        
+#    newElement.remove()    
+    
 test "Set attribute", () ->
     stop()
-    newElement = $('<div someattr="foo"/>')
+    newElement = $('<div someattr="foo"></div>')
     _doc.on 'change', (ops) ->
         op = ops[0]
         if op.oi?
@@ -71,10 +87,24 @@ test "Add iFrame", () ->
         equal op.li[0], 'IFRAME', "The element from op match the one inserted"
         ok op.li[1].src?, "Element from op has attr from DOM div"
         equal op.li[1].src, "http://www.cs.au.dk", "Value of element attribute match value of attribute in op"
-        console.log op
-        ok false
         
     _rootDiv.append(newElement)
+    
+#test "Remove iFrame", () ->
+#    newElement = $('<iframe id="foo" src="http://www.cs.au.dk"></iframe>')
+#    _rootDiv.append(newElement)
+#    stop()
+#    _doc.on 'change', (ops) ->
+#        start()
+#        op = ops[0]
+#        ok op?, "Update received"
+        #ok op.li?, "Op was list insert"
+        #ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path match computed element path"
+        #equal op.li[0], 'IFRAME', "The element from op match the one inserted"
+        #ok op.li[1].src?, "Element from op has attr from DOM div"
+        #equal op.li[1].src, "http://www.cs.au.dk", "Value of element attribute match value of attribute in op"
+        
+    #newElement.remove()
     
     
 # test "a basic test example", () ->
