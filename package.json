@@ -6,8 +6,8 @@
   "homepage": "",
   "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
   "dependencies": {
-    "express": "*",
-    "redis": "*",
-    "share": "*"
+    "express": "3.4.8",
+    "redis": "0.10.1",
+    "share": "0.6.0"
   }
 }

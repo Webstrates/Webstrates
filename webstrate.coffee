@@ -1,7 +1,7 @@
 express = require 'express'
 shareserver = require('share').server
 
-shareApp = express.createServer()
+shareApp = express()
 shareApp.use (req, res, next) ->
     res.header 'Access-Control-Allow-Origin', '*'
     next()
