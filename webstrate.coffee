@@ -2,6 +2,10 @@ express = require 'express'
 shareserver = require('share').server
 
 shareApp = express.createServer()
+shareApp.use express.basicAuth (user, pass, next) ->
+    if (user != 'foo' || pass != 'bar') 
+        return next(true)
+    return next(null, user)
 shareApp.use (req, res, next) ->
     res.header 'Access-Control-Allow-Origin', '*'
     next()
