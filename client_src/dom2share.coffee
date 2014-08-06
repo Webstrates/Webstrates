@@ -153,7 +153,7 @@ loadDoc = (doc, targetDiv) ->
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
     populateNodeMap _nodeMap, _rootDiv, _rootDiv
-    doc.on 'remoteop', (ops) =>
+    doc.on 'op', (ops) =>
         _observer.disconnect()
         for op in ops
             path = op.p
@@ -196,21 +196,19 @@ loadDoc = (doc, targetDiv) ->
     return rootDiv
 
 openDoc = (docName, targetDiv, callback = ->) ->
-    sharejs.open docName, 'json', (error, doc) =>
-        if error
-            callback error, null
-        if not doc.snapshot
+    socket = new BCSocket null, {reconnect: true}
+    sjs = new sharejs.Connection socket
+    
+    doc = sjs.get 'docs', docName
+    
+    doc.subscribe()
+    
+    doc.whenReady () ->
+        if not doc.type
             console.log "Creating new doc", docName
             body = ["div",{id:"doc_"+docName, class:"document"}]
-            doc.set body, (error, rev) ->
-                if error
-                    callback error, null
-                else
-                    rootDiv = loadDoc doc, targetDiv
-                    callback null, doc, rootDiv
-                    
-        else 
-            rootDiv = loadDoc doc, targetDiv
-            callback null, doc, rootDiv
+            doc.create 'json0', body
+        rootDiv = loadDoc doc, targetDiv
+        callback null, doc, rootDiv
 
 root.openDoc = openDoc
