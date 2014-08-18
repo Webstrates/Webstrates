@@ -122,10 +122,11 @@ handleChanges = (changes) ->
                     oldPath = change.getOldParentNode(reparented).__path.slice(0)
                     oldPath.push 2
                 newPath = $(reparented).jsonMLPath($(_rootDiv))
-                console.log newPath.join(), oldPath[0..newPath.length-1].join()
                 #Special cases if new path changes something on the old path
+                #Case 1: Element is reparented onto old path
                 if oldPath.length > newPath.length and oldPath[0..newPath.length-1].join() == newPath.join()
                     oldPath[newPath.length-1] = oldPath[newPath.length-1] + 1
+                #Case 2: Element is reparented into element at the endpoint of oldpath (ie element must have been replaces as you cannot reparent into your self)
                 else if oldPath.length < newPath.length and newPath[0..oldPath.length-1].join() == oldPath.join()
                     oldPath[oldPath.length-1] = oldPath[oldPath.length-1] + 1
                 reparentedElement = JsonML.parseDOM(reparented, null)
