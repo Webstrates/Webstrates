@@ -2,21 +2,31 @@ root = exports ? window
 
 elementAtPath = (doc, path) ->
     if path.length > 0 and typeof path[path.length-1] == 'string'
+        console.log 1
         return null
     if path.length == 0 
+        console.log 2, doc
         return doc
     else
+        console.log 3, doc
         return elementAtPath(doc[path[0]], path[1..path.length])
  
-populateNodeMap = (map, elem, root) ->
+populateNodeMap = (map, elem, root, stop = null) ->
+    if elem instanceof jQuery
+        elem = elem[0]
     jsonPath = $(elem).jsonMLPath($(root))
     map.set(elem, jsonPath)
+    console.log "Setting", elem, jsonPath
+    if stop? and elem.isEqualNode(stop)
+        return
     if elem.tagName == 'IFRAME'
         return
     for child in $(elem).contents()
-        populateNodeMap map, child, root
+        populateNodeMap map, child, root, stop
         
 cleanNodeMap = (map, elem) ->
+    if elem instanceof jQuery
+        elem = elem[0]
     map.delete elem
     if elem.tagName == 'IFRAME'
         return
@@ -65,15 +75,22 @@ reorder = (element, path, index, map) ->
         cleanNodeMap(map, element.get(0))
         populateNodeMap(map, element.get(0), _rootDiv)
 
+addChildrenToIdMap = (element, idmap) ->
+    for child in element.childNodes
+        idmap.push child.__mutation_summary_node_map_id__
+        addChildrenToIdMap(child, idmap)
+
 handleChanges = (changes) ->
+    console.log changes
     if !_doc?
         return
+    idmap = []
     for change in changes
         if change.attributeChanged?
             for attribute, element of change.attributeChanged
                 path = $(element).jsonMLPath($(_rootDiv), attribute)
                 op = {p:path, oi:$(element).attr(attribute)}
-                _doc.submitOp op, (error, rev) ->
+                root._context.submitOp op, (error, rev) ->
                     if error
                         console.log error
         if change.characterDataChanged? and change.characterDataChanged.length > 0
@@ -86,74 +103,99 @@ handleChanges = (changes) ->
                 break
             op = [{p:changedPath, ld:oldText}, {p:changedPath, li:newText}]
             try
-                _doc.submitOp op, (error, rev) ->
+                root._context.submitOp op, (error, rev) ->
                     if error
                         console.log error
             catch e
                 console.log e
         
         if change.added? and change.added.length > 0
-            added = change.added[0]
-            addedPath = $(added).jsonMLPath($(_rootDiv))
-            if addedPath.length == 0
-                break
-            jsonMl = JsonML.parseDOM(added)
-            op = {p:addedPath, li:jsonMl}
-            try
-                _doc.submitOp op, (error, rev) ->
+            for added in change.added
+                #if idmap.indexOf(added.__mutation_summary_node_map_id__) > -1
+                #    continue
+                if added.nodeType == 3
+                    index = $(added).index()
+                    parent = $(added).parent()
+                    $(added).replaceWith('<span>'+added.nodeValue+'</span>')
+                    added = parent.children(index)[0]
+                addChildrenToIdMap(added, idmap)
+                addedPath = $(added).jsonMLPath($(_rootDiv))
+                if addedPath.length == 0
+                    break
+                jsonMl = JsonML.parseDOM(added, null, true)
+                op = {p:addedPath, li:jsonMl}
+                console.log op
+                try
+                    root._context.submitOp op, (error, rev) ->
+                        if error
+                            console.log error
+                catch e
+                    console.log e
+                parent = $(added).parent()
+                cleanNodeMap _nodeMap, parent
+                populateNodeMap _nodeMap, parent, $(_rootDiv), added
+        if change.removed? and change.removed.length > 0
+            for removed in change.removed
+                #if idmap.indexOf(removed.__mutation_summary_node_map_id__) > -1
+                #    continue
+                addChildrenToIdMap(removed, idmap)
+                path = _nodeMap.get(removed)
+                op = {p:path, ld:elementAtPath(_doc.snapshot, path)}
+                oldParent = change.getOldParentNode(removed)
+                root._context.submitOp op, (error, rev) ->
                     if error
                         console.log error
-            catch e
-                console.log e
-            parent = $(added).parent()
-            cleanNodeMap _nodeMap, parent
-            populateNodeMap _nodeMap, parent, $(_rootDiv)
-        if change.removed? and change.removed.length > 0
-            removed = change.removed[0]
-            path = _nodeMap.get(removed)
-            op = {p:path, ld:elementAtPath(_doc.snapshot, path)}
-            oldParent = change.getOldParentNode(removed)
-            _doc.submitOp op, (error, rev) ->
-                if error
-                    console.log error
-            cleanNodeMap _nodeMap, oldParent
-            populateNodeMap _nodeMap, oldParent, $(_rootDiv)
+                cleanNodeMap _nodeMap, oldParent
         if change.reordered? and change.reordered.length > 0
-            reordered = change.reordered[0]
-            newPath = $(reordered).jsonMLPath($(_rootDiv))
-            oldPath = _nodeMap.get(reordered)
-            op = {p:oldPath, lm:newPath[newPath.length-1]}
-            _doc.submitOp op, (error, rev) ->
-                if error
-                    console.log error
-            parent = $(reordered).parent()[0]
-            cleanNodeMap _nodeMap, parent
-            populateNodeMap _nodeMap, parent, $(_rootDiv)
+            for reordered in change.reordered
+                #if idmap.indexOf(reordered.__mutation_summary_node_map_id__) > -1
+                #    continue
+                addChildrenToIdMap(reordered, idmap)
+                newPath = $(reordered).jsonMLPath($(_rootDiv))
+                oldPath = _nodeMap.get(reordered)
+                op = {p:oldPath, lm:newPath[newPath.length-1]}
+                root._context.submitOp op, (error, rev) ->
+                    if error
+                        console.log error
+                parent = $(reordered).parent()[0]
+                cleanNodeMap _nodeMap, parent
+                populateNodeMap _nodeMap, parent, $(_rootDiv)
         if change.reparented? and change.reparented.length > 0
-            reparented = change.reparented[0]
-            newPath = $(reparented).jsonMLPath($(_rootDiv))
-            oldPath = _nodeMap.get(reparented)
-            element = elementAtPath(_doc.snapshot, oldPath)
-            op = [{p:oldPath, ld:element}, {p:newPath, li:element}]
-            newParent = $(reparented).parent()[0]
-            oldParent = change.getOldParentNode(reparented)
-            _doc.submitOp op, (error, rev) ->
-                if error
-                    console.log error
-            cleanNodeMap _nodeMap, newParent
-            populateNodeMap _nodeMap, newParent, $(_rootDiv)
-            cleanNodeMap _nodeMap, oldParent
-            populateNodeMap _nodeMap, oldParent, $(_rootDiv)
-
+            for reparented in change.reparented
+                #if idmap.indexOf(reparented.__mutation_summary_node_map_id__) > -1
+                #    path = _nodeMap.get(reparented)
+                #    op = {p:path, ld:elementAtPath(_doc.snapshot, path)} #This doesn't work
+                #    oldParent = change.getOldParentNode(reparented)
+                #    root._context.submitOp op, (error, rev) ->
+                #        if error
+                #            console.log error
+                #    cleanNodeMap _nodeMap, oldParent
+                #    populateNodeMap _nodeMap, oldParent, $(_rootDiv)
+                #    continue
+                #addChildrenToIdMap(reparented, idmap)
+                newPath = $(reparented).jsonMLPath($(_rootDiv))
+                oldPath = _nodeMap.get(reparented)
+                element = elementAtPath(_doc.snapshot, oldPath)
+                #op = [{p:oldPath, ld:reparented}, {p:newPath, li:element}]
+                newParent = $(reparented).parent()[0]
+                oldParent = change.getOldParentNode(reparented)
+                root._context.submitOp op, (error, rev) ->
+                    if error
+                        console.log error
+                cleanNodeMap _nodeMap, reparented
+                populateNodeMap _nodeMap, reparented, $(_rootDiv)
 
 loadDoc = (doc, targetDiv) ->
     root._nodeMap = new MutationSummary.NodeMap()
     root._doc = doc
-    $(targetDiv).append($.jqml(doc.snapshot))
+    $(targetDiv).append($.jqml(doc.getSnapshot()))
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
     populateNodeMap _nodeMap, _rootDiv, _rootDiv
-    doc.on 'op', (ops) =>
+
+    root._context = doc.createContext()
+    root._context._onOp = (ops) =>
+        console.log "Received ops", ops
         _observer.disconnect()
         for op in ops
             path = op.p
@@ -188,6 +230,7 @@ loadDoc = (doc, targetDiv) ->
         _observer.reconnect()
 
     root._observer = new MutationSummary {
+      oldPreviousSibling: true,
       callback: handleChanges, 
       rootNode: targetDiv,
       queries: [{ all: true }]
@@ -206,9 +249,22 @@ openDoc = (docName, targetDiv, callback = ->) ->
     doc.whenReady () ->
         if not doc.type
             console.log "Creating new doc", docName
+            doc.create 'json0'
+            console.log doc.type
+        if doc.type.name != 'json0'
+            console.log "WRONG TYPE"
+            return
+        if not doc.getSnapshot()
             body = ["div",{id:"doc_"+docName, class:"document"}]
-            doc.create 'json0', body
+            doc.submitOp([{"p":[], "oi":body}])
         rootDiv = loadDoc doc, targetDiv
         callback null, doc, rootDiv
 
+closeDoc = () ->
+    root._observer.disconnect()
+    root._observer= null
+    root._doc.del()
+    root._doc.destroy()
+
 root.openDoc = openDoc
+root.closeDoc = closeDoc

@@ -1,7 +1,7 @@
 webstrate.coffee
 ================
 
- * Setup with ShareJS 0.7
+ * ~~Setup with ShareJS 0.7~~
  * Setup with MongoDB backend
  
 dom2share.coffee
