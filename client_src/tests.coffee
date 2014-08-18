@@ -198,6 +198,29 @@ test "Reparent element in DOM", () ->
         
     setTimeout onTimeout, 500
     
+    
+test "Reparent element in DOM on elements path", () ->
+    newElement = $('<div id="parent"><div id="foo"><div id="bar"></div></div></div>')
+    _rootDiv.append(newElement)
+    stop()
+    ops = []
+    _doc.on "after op", (op) ->
+        ops.push op
+        
+    onTimeout = () ->    
+        start()
+        ok ops[3][0].li?, "First something is inserted"
+        ok ops[3][0].li[0] == "DIV", "It is a DIV that is added"
+        ok ops[3][0].li[1].id == "bar", "The added div has id bar"
+        ok ops[3][0].p.join() == "2,2", "The added div has the correct path"
+        ok ops[3][1].ld?, "Then something is deleted"
+        ok ops[3][1].ld[0] == "DIV", "It is a DIV that is deleted"
+        ok ops[3][1].ld[1].id == "bar", "The deleted div has id bar"
+        ok ops[3][1].p.join() == "2,3,2", "The deleted div has the correct path"
+    async () ->
+        $("#bar").prependTo("#parent")
+        
+    setTimeout onTimeout, 500
 #test "Add mixed html", () ->
 #    stop()
 #    ops = []
