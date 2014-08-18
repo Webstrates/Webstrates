@@ -135,16 +135,6 @@ test "Add iFrame", () ->
         
     _rootDiv.append(newElement)
 
-test "Add span around plain text", () ->
-    stop()
-    _doc.on "op", (ops) ->
-        start()
-        ok ops[0].li?, "Something is added"
-        ok ops[0].li[0] == "SPAN", "That something is a span"
-        ok ops.length == 1, "There is only a single operation"
-
-    _rootDiv.append("Foo")
-    
 test "Enclose element in tag", () ->
     stop()
     _rootDiv.append('<div id="bar"></div>');
