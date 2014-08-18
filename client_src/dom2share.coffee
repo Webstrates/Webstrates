@@ -96,12 +96,15 @@ handleChanges = (changes) ->
                 parent = $(added).parent()
                 setPaths parent, $(_rootDiv), added
         if change.removed? and change.removed.length > 0
+            idmap = [] #Used to make sure that we don't try to remove elements twice
             for removed in change.removed
-                path = removed.__path
-                op = {p:path, ld:elementAtPath(_doc.snapshot, path)}
+                if idmap.indexOf(removed.__mutation_summary_node_map_id__) > -1
+                    continue
+                op = {p:removed.__path, ld:JsonML.parseDOM(removed, null)}
                 oldParent = change.getOldParentNode(removed)
                 root._context.submitOp op
-                setPaths oldParent , $(_rootDiv), added
+                setPaths oldParent, $(_rootDiv)
+                addChildrenToIdMap removed, idmap
         if change.reordered? and change.reordered.length > 0
             for reordered in change.reordered
                 newPath = $(reordered).jsonMLPath($(_rootDiv))
