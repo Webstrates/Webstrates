@@ -3,4 +3,4 @@ $(document).ready () =>
     if sharejsDoc.length == 0
         throw "Error: No document id provided"
     
-    openDoc sharejsDoc, $('#content').get(0)
+    openDoc sharejsDoc, $('body').get(0)
