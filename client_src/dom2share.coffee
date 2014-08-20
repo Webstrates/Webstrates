@@ -75,17 +75,10 @@ handleChanges = (changes) ->
                 path = $(element).jsonMLPath($(_rootDiv), attribute)
                 op = {p:path, oi:$(element).attr(attribute)}
                 root._context.submitOp op
-        if change.characterDataChanged? and change.characterDataChanged.length > 0
-            #TODO: Implement support for collaborative editing of the same text element using sharejs magic
-            changed = change.characterDataChanged[0]
-            changedPath = $(changed).jsonMLPath($(_rootDiv))
-            oldText = elementAtPath(_doc.snapshot, changedPath)
-            newText = changed.data
-            if changedPath.length == 0
-                break
-            op = [{p:changedPath, ld:oldText}, {p:changedPath, li:newText}]
-            root._context.submitOp op
         if change.added? and change.added.length > 0
+            #Sort added with shortest path first (to avoid adding into something that isnt added yet)
+            change.added.sort (a, b) ->
+                return $(a).jsonMLPath($(_rootDiv)).length - $(b).jsonMLPath($(_rootDiv)).length
             for added in change.added
                 addedPath = $(added).jsonMLPath($(_rootDiv))
                 if addedPath.length == 0
