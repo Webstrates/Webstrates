@@ -3,7 +3,7 @@
 browserChannel = require('browserchannel').server
 express = require 'express'
 argv = require('optimist').argv
-livedb = require 'livedb'
+livedb = require('livedb')
 livedbMongo = require 'livedb-mongo'
 serveStatic = require 'serve-static'
 
@@ -24,8 +24,8 @@ webserver.get '/:id', (req, res) ->
     else
         res.send("Please provide a document id!")
 
-backend = livedb.client livedb.memory()
-#backend = livedb.client livedbMongo('localhost:27017/test?auto_reconnect', safe:false)
+mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
+backend = livedb.client(mongo);
 
 backend.addProjection '_users', 'users', 'json0', {x:true}
 
