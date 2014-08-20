@@ -225,57 +225,20 @@ test "Add tiger.svg to DOM", () ->
         ok ops.length > 0 
 
     setTimeout onTimeout, 500
-#test "Add mixed html", () ->
-#    stop()
-#    ops = []
-#    _doc.on "op", (op) ->
-#        ops.push op
-        
-#    onTimeout = () ->
-#        start()
-#        ok ops.length == 5, "We got five operations"
-#        ok ops[0][0].li.length == 2, "The length of the first op should be 2"
-        #More oks
-    
-    
-    
 
+test "Edit character data", () ->
+    newElement = $('<div id="foo">Hello world!</div>')
     
-#test "Remove iFrame", () ->
-#    newElement = $('<iframe id="foo" src="http://www.cs.au.dk"></iframe>')
-#    _rootDiv.append(newElement)
-#    stop()
-#    _doc.on 'change', (ops) ->
-#        start()
-#        op = ops[0]
-#        ok op?, "Update received"
-        #ok op.li?, "Op was list insert"
-        #ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path match computed element path"
-        #equal op.li[0], 'IFRAME', "The element from op match the one inserted"
-        #ok op.li[1].src?, "Element from op has attr from DOM div"
-        #equal op.li[1].src, "http://www.cs.au.dk", "Value of element attribute match value of attribute in op"
+    _rootDiv.append(newElement)
+    stop()
+    ops = []
+    _doc.on "after op", (op) ->
+        ops.push op
         
-    #newElement.remove()
-    
-    
-# test "a basic test example", () ->
-#   ok true, "this test is fine"
-#   value = "hello"
-#   equal value, "hello", "We expect value to be hello"
-# 
-# module "Module A"
-# 
-# test "first test within module", () ->
-#    ok true, "all pass"
-# 
-#  
-# test "second test within module", () ->
-#    ok true, "all pass"
-# 
-#  
-# module "Module B"
-#  
-# test "some other test", () ->
-#    expect 2
-#    equal true, false, "failing test" 
-#    equal true, true, "passing test"
+    onTimeout = () ->    
+        start()
+        console.log ops
+    async () ->
+        $("#foo").innerHTML = "Hello, world!"
+        
+    setTimeout onTimeout, 500
