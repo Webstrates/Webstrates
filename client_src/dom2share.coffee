@@ -64,6 +64,11 @@ addChildrenToIdMap = (element, idmap) ->
     for child in element.childNodes
         idmap.push child.__mutation_summary_node_map_id__
         addChildrenToIdMap(child, idmap)
+        
+isSubpath = (path, paths) ->
+    if not paths? or paths.length == 0
+        return false
+    return paths.map((p1) -> return p1.join()).map((p2) -> return path.join().substring(0, p2.length) == p2).reduce((a, b)  -> return a or b)
 
 handleChanges = (changes) ->
     if !_doc?
@@ -89,15 +94,16 @@ handleChanges = (changes) ->
                 parent = $(added).parent()
                 setPaths parent, $(_rootDiv), added
         if change.removed? and change.removed.length > 0
-            idmap = [] #Used to make sure that we don't try to remove elements twice
+            removedPaths = [] #Used to make sure that we don't try to remove elements twice
             for removed in change.removed
-                if idmap.indexOf(removed.__mutation_summary_node_map_id__) > -1
+                if isSubpath(removed.__path, removedPaths)
                     continue
-                op = {p:removed.__path, ld:JsonML.parseDOM(removed, null)}
+                removedElement = elementAtPath(_doc.snapshot, removed.__path)
+                op = {p:removed.__path, ld:removedElement}
                 oldParent = change.getOldParentNode(removed)
                 root._context.submitOp op
                 setPaths oldParent, $(_rootDiv)
-                addChildrenToIdMap removed, idmap
+                removedPaths.push removed.__path
         if change.reordered? and change.reordered.length > 0
             for reordered in change.reordered
                 newPath = $(reordered).jsonMLPath($(_rootDiv))
@@ -106,6 +112,19 @@ handleChanges = (changes) ->
                 root._context.submitOp op
                 parent = $(reordered).parent()[0]
                 setPaths parent, $(_rootDiv)
+        if change.characterDataChanged? and change.characterDataChanged.length > 0
+            #TODO: Implement support for collaborative editing of the same text element using sharejs magic
+            changed = change.characterDataChanged[0]
+            changedPath = $(changed).jsonMLPath($(_rootDiv))
+            oldText = elementAtPath(_doc.snapshot, changedPath)
+            newText = changed.data
+            if changedPath.length == 0
+                break
+            op = []
+            if not isSubpath(changedPath, removedPaths)
+                op.push {p:changedPath, ld:oldText}
+            op.push {p:changedPath, li:newText}
+            root._context.submitOp op
         if change.reparented? and change.reparented.length > 0
             for reparented in change.reparented
                 snapshot = _doc.snapshot
@@ -118,16 +137,19 @@ handleChanges = (changes) ->
                     oldPath = change.getOldParentNode(reparented).__path.slice(0)
                     oldPath.push 2
                 newPath = $(reparented).jsonMLPath($(_rootDiv))
-                #Special cases if new path changes something on the old path
-                #Case 1: Element is reparented onto old path
-                if oldPath.length > newPath.length and oldPath[0..newPath.length-1].join() == newPath.join()
-                    oldPath[newPath.length-1] = oldPath[newPath.length-1] + 1
-                #Case 2: Element is reparented into element at the endpoint of oldpath (ie element must have been replaces as you cannot reparent into your self)
-                else if oldPath.length < newPath.length and newPath[0..oldPath.length-1].join() == oldPath.join()
-                    oldPath[oldPath.length-1] = oldPath[oldPath.length-1] + 1
                 reparentedElement = JsonML.parseDOM(reparented, null)
-                
-                op = [{p:newPath, li:reparentedElement}, {p:oldPath, ld:reparentedElement}]
+                op = [{p:newPath, li:reparentedElement}]
+                #Check if oldPath is on a path that already has been deleted
+                if not isSubpath(oldPath, removedPaths)
+                    #Special cases if new path changes something on the old path
+                    #Case 1: Element is reparented onto old path
+                    if oldPath.length > newPath.length and oldPath[0..newPath.length-1].join() == newPath.join()
+                        oldPath[newPath.length-1] = oldPath[newPath.length-1] + 1
+                    #Case 2: Element is reparented into element at the endpoint of oldpath (ie element must have been replaces as you cannot reparent into your self)
+                    else if oldPath.length < newPath.length and newPath[0..oldPath.length-1].join() == oldPath.join()
+                        oldPath[oldPath.length-1] = oldPath[oldPath.length-1] + 1
+                    op.push {p:oldPath, ld:reparentedElement}
+                #Check if oldPath is on a path that already has been deleted
                 oldParent = change.getOldParentNode(reparented)
                 newParent = $(reparented).parent()[0]
                 root._context.submitOp op

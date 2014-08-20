@@ -106,6 +106,24 @@ test "Remove element from DOM", () ->
         ok op.p[0] == 2, "Path is correct"
     async ->
       $('#foo').remove()
+
+test "Remove nested elements from DOM", () ->
+    _rootDiv.append('<div id="foo"><div id="bar"></div></div>')
+    stop()
+    _testdoc.on "op", (ops) ->
+        if ops[0].li?
+            return
+        start()
+        ok ops?, "Update received"
+        ok ops.length == 1
+        op = ops[0]
+        ok op.ld?, "Op was list delete"
+        ok op.ld[0] == 'DIV', "Op is removing a div"
+        ok op.ld[1].id == 'foo', "The div as id foo"
+        ok op.p[0] == 2, "Path is correct"
+    async ->
+      $('#foo').remove()
+
     
 test "Set attribute", () ->
     stop()
