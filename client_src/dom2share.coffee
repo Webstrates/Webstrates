@@ -81,13 +81,11 @@ handleChanges = (changes) ->
                 return $(b).jsonMLPath($(_rootDiv)).length - $(a).jsonMLPath($(_rootDiv)).length
             removedPaths = [] #Used to make sure that we don't try to remove elements twice
             for removed in change.removed
-                console.log removed
                 if isSubpath(removed.__path, removedPaths)
                     continue
                 removedElement = elementAtPath(_doc.snapshot, removed.__path)
                 op = {p:removed.__path, ld:removedElement}
                 oldParent = change.getOldParentNode(removed)
-                console.log "REMOVED", op
                 root._context.submitOp op
                 setPaths oldParent, $(_rootDiv)
                 removedPaths.push removed.__path
@@ -95,7 +93,6 @@ handleChanges = (changes) ->
             for attribute, element of change.attributeChanged
                 path = $(element).jsonMLPath($(_rootDiv), attribute)
                 op = {p:path, oi:$(element).attr(attribute)}
-                console.log "ATTRIBUTECHANGED", op
                 root._context.submitOp op
         if change.added? and change.added.length > 0
             #Sort added with shortest path first (to avoid adding into something that isnt added yet)
@@ -107,7 +104,6 @@ handleChanges = (changes) ->
                     break
                 jsonMl = JsonML.parseDOM(added, null, true)
                 op = {p:addedPath, li:jsonMl}
-                console.log "ADDED", op
                 root._context.submitOp op
                 parent = $(added).parent()
                 setPaths parent, $(_rootDiv), added
@@ -116,7 +112,6 @@ handleChanges = (changes) ->
                 newPath = $(reordered).jsonMLPath($(_rootDiv))
                 oldPath = reordered.__path
                 op = {p:oldPath, lm:newPath[newPath.length-1]}
-                console.log "REORDERED", op
                 root._context.submitOp op
                 parent = $(reordered).parent()[0]
                 setPaths parent, $(_rootDiv)
@@ -132,7 +127,6 @@ handleChanges = (changes) ->
             if not isSubpath(changedPath, removedPaths)
                 op.push {p:changedPath, ld:oldText}
             op.push {p:changedPath, li:newText}
-            console.log "CHARACTER DATA CHANGED", op
             root._context.submitOp op
         if change.reparented? and change.reparented.length > 0
             for reparented in change.reparented
@@ -161,7 +155,6 @@ handleChanges = (changes) ->
                 #Check if oldPath is on a path that already has been deleted
                 oldParent = change.getOldParentNode(reparented)
                 newParent = $(reparented).parent()[0]
-                console.log "REORDERED", op
                 root._context.submitOp op
                 setPaths oldParent, $(_rootDiv)
                 setPaths newParent, $(_rootDiv)
