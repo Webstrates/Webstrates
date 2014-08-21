@@ -107,14 +107,6 @@ handleChanges = (changes) ->
                 root._context.submitOp op
                 parent = $(added).parent()
                 setPaths parent, $(_rootDiv), added
-        if change.reordered? and change.reordered.length > 0
-            for reordered in change.reordered
-                newPath = $(reordered).jsonMLPath($(_rootDiv))
-                oldPath = reordered.__path
-                op = {p:oldPath, lm:newPath[newPath.length-1]}
-                root._context.submitOp op
-                parent = $(reordered).parent()[0]
-                setPaths parent, $(_rootDiv)
         if change.characterDataChanged? and change.characterDataChanged.length > 0
             #TODO: Implement support for collaborative editing of the same text element using sharejs magic
             changed = change.characterDataChanged[0]
@@ -124,10 +116,18 @@ handleChanges = (changes) ->
             if changedPath.length == 0
                 break
             op = []
-            if not isSubpath(changedPath, removedPaths)
+            if oldText? and not isSubpath(changedPath, removedPaths)
                 op.push {p:changedPath, ld:oldText}
             op.push {p:changedPath, li:newText}
             root._context.submitOp op
+        if change.reordered? and change.reordered.length > 0
+            for reordered in change.reordered
+                newPath = $(reordered).jsonMLPath($(_rootDiv))
+                oldPath = reordered.__path
+                op = {p:oldPath, lm:newPath[newPath.length-1]}
+                root._context.submitOp op
+                parent = $(reordered).parent()[0]
+                setPaths parent, $(_rootDiv)
         if change.reparented? and change.reparented.length > 0
             for reparented in change.reparented
                 snapshot = _doc.snapshot
