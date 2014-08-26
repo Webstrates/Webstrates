@@ -87,7 +87,9 @@ handleChanges = (changes) ->
                 op = {p:removed.__path, ld:removedElement}
                 oldParent = change.getOldParentNode(removed)
                 root._context.submitOp op
-                setPaths oldParent, $(_rootDiv)
+                #Check if parent is also removed
+                if change.removed.map((x) -> x.__mutation_summary_node_map_id__).indexOf(oldParent.__mutation_summary_node_map_id__) < 0
+                    setPaths oldParent, $(_rootDiv)
                 removedPaths.push removed.__path
         if change.attributeChanged?
             for attribute, element of change.attributeChanged
