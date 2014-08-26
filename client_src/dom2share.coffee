@@ -38,7 +38,7 @@ insert = (element, relativePath, actualPath, value) ->
         sibling = element.contents().eq(relativePath[0])
         if sibling.length > 0
             html.insertBefore(element.contents().eq(relativePath[0]))
-        else element.append(html)
+        else element[0].appendChild(html)
         setPaths element.get(0), _rootDiv
         
 deleteNode = (element, path) ->
@@ -163,7 +163,7 @@ handleChanges = (changes) ->
 
 loadDoc = (doc, targetDiv) ->
     root._doc = doc
-    $(targetDiv).append($.jqml(doc.getSnapshot()))
+    targetDiv.appendChild($.jqml(doc.getSnapshot())[0])
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
     setPaths _rootDiv, _rootDiv
