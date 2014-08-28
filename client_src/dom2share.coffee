@@ -117,10 +117,10 @@ handleChanges = (changes) ->
             newText = changed.data
             if changedPath.length == 0
                 break
-            op = []
-            if oldText? and not isSubpath(changedPath, removedPaths)
-                op.push {p:changedPath, ld:oldText}
-            op.push {p:changedPath, li:newText}
+            op = util.patch_to_ot changedPath, dmp.patch_make(oldText, newText)
+            #if oldText? and not isSubpath(changedPath, removedPaths)
+            #    op.push {p:changedPath, ld:oldText}
+            #op.push {p:changedPath, li:newText}
             root._context.submitOp op
         if change.reordered? and change.reordered.length > 0
             for reordered in change.reordered
