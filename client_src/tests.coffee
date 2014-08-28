@@ -168,6 +168,25 @@ test "Delete some insert some", () ->
     ok ops[3].p.join() == [0, 2, 2, 17].join(), "The returned path is [0, 2, 2, 17]"
     
 
+createTestFixture = () ->
+    $('body').append('<div id="testfixture"></div>')
+
+removeTestFixture = () ->
+    $('#testfixture').remove()
+
+module "ot to DOM", {setup: createTestFixture, teardown: removeTestFixture}
+
+test "Insert character in characterData", () ->
+    $('#testfixture').append "Hello world!"
+    ot2dom.applyOp {p: [2, 5], si: ","}, $('#testfixture')
+    ok $('#testfixture').contents()[0].wholeText == "Hello, world!", "The new text was 'Hello, world!'"
+    
+test "Delete character in characterData", () ->
+    $('#testfixture').append "Hello, world!"
+    ot2dom.applyOp {p: [2, 5], sd: ","}, $('#testfixture')
+    console.log $('#testfixture').contents()[0].wholeText
+    ok $('#testfixture').contents()[0].wholeText == "Hello world!", "The new text was 'Hello world!'"
+
 module "DOM to JSON", {setup: load, teardown: close}
 
 test "Load a new document", () ->

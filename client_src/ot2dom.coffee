@@ -19,6 +19,8 @@ applyOp = (op, div) ->
     attributePath = false
     #TODO: Refactor and document code below
     if path.length > 0
+        if op.si? or op.sd?
+            charIndex = op.p.pop()
         if typeof path[path.length-1] == 'string' #attribute change
             attributePath = true
             if path.length > 2
@@ -42,6 +44,30 @@ applyOp = (op, div) ->
     if op.lm? #list rearrangement
         if not attributePath
             reorder $(div), htmlPath, op.lm-2
+    if op.si? #String insertion
+        if not attributePath
+            insertInText $(div), htmlPath, charIndex, op.si
+    if op.sd? #String deletion
+        if not attributePath
+            deleteInText $(div), htmlPath, charIndex, op.sd
+            
+insertInText = (element, path, charIndex, value) ->
+    if path.length > 1
+        insertInText element.contents().eq(path[0]), path[1..path.length], charIndex, value
+    else
+        textNode = element.contents().eq(path[0])[0]
+        oldString = textNode.wholeText
+        newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex, oldString.length)
+        textNode.replaceWholeText newString
+        
+deleteInText = (element, path, charIndex, value) ->
+    if path.length > 1
+        deleteInText element.contents().eq(path[0]), path[1..path.length], charIndex, value
+    else
+        textNode = element.contents().eq(path[0])[0]
+        oldString = textNode.wholeText
+        newString = oldString.substring(0, charIndex) + oldString.substring(charIndex + value.length, oldString.length)
+        textNode.replaceWholeText newString
         
 setAttribute = (element, path, value) ->
     if path.length > 1
