@@ -433,7 +433,7 @@ test "Edit character data", () ->
         start()
         console.log ops
     async () ->
-        $("#foo").innerHTML = "Hello, world!"
+        $("#foo").contents()[0].replaceWholeText "Hello, world!"
         
     setTimeout onTimeout, 500
     

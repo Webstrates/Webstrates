@@ -8,63 +8,6 @@ elementAtPath = (doc, path) ->
     else
         return elementAtPath(doc[path[0]], path[1..path.length])
  
-setPaths = (elem, root, stop = null) ->
-    if elem instanceof jQuery
-        elem = elem[0]
-    jsonPath = $(elem).jsonMLPath($(root))
-    elem.__path = jsonPath
-    if stop? and elem.isEqualNode(stop)
-        return
-    if elem.tagName == 'IFRAME'
-        return
-    for child in $(elem).contents()
-        setPaths child, root, stop
-        
-setAttribute = (element, path, value) ->
-    if path.length > 1
-        setAttribute element.contents().eq(path[0]), path[1..path.length], value
-    else
-        element.attr(path[0], value)
-
-insert = (element, relativePath, actualPath, value) ->
-    if relativePath.length > 1
-        insert element.contents().eq(relativePath[0]), relativePath[1..relativePath.length], actualPath, value
-    if relativePath.length == 1
-        if typeof value == 'string'
-            html = $(document.createTextNode(value))
-        else
-            html = $.jqml(value)
-        html.__path = actualPath
-        sibling = element.contents().eq(relativePath[0])
-        if sibling.length > 0
-            html.insertBefore(element.contents().eq(relativePath[0]))
-        else element[0].appendChild(html)
-        setPaths element.get(0), _rootDiv
-        
-deleteNode = (element, path) ->
-    if path.length > 1
-        deleteNode element.contents().eq(path[0]), path[1..path.length]
-    if path.length == 1
-        toRemove = element.contents().eq(path[0])
-        toRemove.remove()
-        
-reorder = (element, path, index) ->
-    if path.length > 1
-        reorder element.contents().eq(path[0]), path[1..path.length], index
-    if path.length == 1
-        toMove = element.contents().eq(path[0])
-        target = element.contents().eq(index)
-        if (index < path[0])
-            toMove.insertBefore(target)
-        else
-            toMove.insertAfter(target)
-        setPaths element.get(0), _rootDiv
-
-addChildrenToIdMap = (element, idmap) ->
-    for child in element.childNodes
-        idmap.push child.__mutation_summary_node_map_id__
-        addChildrenToIdMap(child, idmap)
-        
 isSubpath = (path, paths) ->
     if not paths? or paths.length == 0
         return false
@@ -89,7 +32,7 @@ handleChanges = (changes) ->
                 root._context.submitOp op
                 #Check if parent is also removed
                 if change.removed.map((x) -> x.__mutation_summary_node_map_id__).indexOf(oldParent.__mutation_summary_node_map_id__) < 0
-                    setPaths oldParent, $(_rootDiv)
+                    ot2dom.setPaths oldParent, $(_rootDiv)
                 removedPaths.push removed.__path
         if change.attributeChanged?
             for attribute, element of change.attributeChanged
@@ -106,11 +49,13 @@ handleChanges = (changes) ->
                     break
                 jsonMl = JsonML.parseDOM(added, null, true)
                 op = {p:addedPath, li:jsonMl}
+                console.log "Submitting op", op
                 root._context.submitOp op
                 parent = $(added).parent()
-                setPaths parent, $(_rootDiv), added
+                ot2dom.setPaths parent, $(_rootDiv), added
         if change.characterDataChanged? and change.characterDataChanged.length > 0
             #TODO: Implement support for collaborative editing of the same text element using sharejs magic
+            #console.log "Character data changed", change
             changed = change.characterDataChanged[0]
             changedPath = $(changed).jsonMLPath($(_rootDiv))
             oldText = elementAtPath(_doc.snapshot, changedPath)
@@ -129,7 +74,7 @@ handleChanges = (changes) ->
                 op = {p:oldPath, lm:newPath[newPath.length-1]}
                 root._context.submitOp op
                 parent = $(reordered).parent()[0]
-                setPaths parent, $(_rootDiv)
+                ot2dom.setPaths parent, $(_rootDiv)
         if change.reparented? and change.reparented.length > 0
             for reparented in change.reparented
                 snapshot = _doc.snapshot
@@ -158,48 +103,24 @@ handleChanges = (changes) ->
                 oldParent = change.getOldParentNode(reparented)
                 newParent = $(reparented).parent()[0]
                 root._context.submitOp op
-                setPaths oldParent, $(_rootDiv)
-                setPaths newParent, $(_rootDiv)
+                ot2dom.setPaths oldParent, $(_rootDiv)
+                ot2dom.setPaths newParent, $(_rootDiv)
 
-loadDoc = (doc, targetDiv) ->
+loadDocIntoDOM = (doc, targetDiv) ->
     root._doc = doc
     targetDiv.appendChild($.jqml(doc.getSnapshot())[0])
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
-    setPaths _rootDiv, _rootDiv
+    ot2dom.setPaths _rootDiv, _rootDiv
+    
+    root.dmp = new diff_match_patch()
 
     root._context = doc.createContext()
     root._context._onOp = (ops) =>
+        console.log "Received op", ops
         _observer.disconnect()
         for op in ops
-            path = op.p
-            htmlPath = []
-            attributePath = false
-            #TODO: Refactor and document code below
-            if path.length > 0
-                if typeof path[path.length-1] == 'string' #attribute change
-                    attributePath = true
-                    if path.length > 2
-                        for index in op.p[0..path.length-3]
-                            htmlPath.push index-2
-                        htmlPath.push path[path.length-1]
-                    else
-                        htmlPath.push(path[1])
-                else
-                    for index in op.p
-                        htmlPath.push index-2
-            if op.oi? #object insertion
-                if attributePath
-                    setAttribute $(_rootDiv), htmlPath, op.oi
-            if op.li? #list insertion
-                if not attributePath
-                    insert $(_rootDiv), htmlPath, htmlPath, op.li
-            if op.ld? #list deletion
-                if not attributePath
-                    deleteNode $(_rootDiv), htmlPath
-            if op.lm? #list rearrangement
-                if not attributePath
-                    reorder $(_rootDiv), htmlPath, op.lm-2
+            ot2dom.applyOp op _rootDiv
         
         _observer.reconnect()
 
@@ -231,7 +152,7 @@ openDoc = (docName, targetDiv, callback = ->) ->
         if not doc.getSnapshot()
             body = ["div",{id:"doc_"+docName, class:"document"}]
             doc.submitOp([{"p":[], "oi":body}])
-        rootDiv = loadDoc doc, targetDiv
+        rootDiv = loadDocIntoDOM doc, targetDiv
         callback null, doc, rootDiv
 
 closeDoc = () ->

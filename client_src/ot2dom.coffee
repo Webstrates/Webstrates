@@ -1,0 +1,91 @@
+root = exports ? window
+root.ot2dom = {}
+
+setPaths = (elem, root, stop = null) ->
+    if elem instanceof jQuery
+        elem = elem[0]
+    jsonPath = $(elem).jsonMLPath($(root))
+    elem.__path = jsonPath
+    if stop? and elem.isEqualNode(stop)
+        return
+    if elem.tagName == 'IFRAME'
+        return
+    for child in $(elem).contents()
+        setPaths child, root, stop
+
+applyOp = (op, div) ->
+    path = op.p
+    htmlPath = []
+    attributePath = false
+    #TODO: Refactor and document code below
+    if path.length > 0
+        if typeof path[path.length-1] == 'string' #attribute change
+            attributePath = true
+            if path.length > 2
+                for index in op.p[0..path.length-3]
+                    htmlPath.push index-2
+                htmlPath.push path[path.length-1]
+            else
+                htmlPath.push(path[1])
+        else
+            for index in op.p
+                htmlPath.push index-2
+    if op.oi? #object insertion
+        if attributePath
+            setAttribute $(div), htmlPath, op.oi
+    if op.li? #list insertion
+        if not attributePath
+            insert $(div), htmlPath, htmlPath, op.li
+    if op.ld? #list deletion
+        if not attributePath
+            deleteNode $(div), htmlPath
+    if op.lm? #list rearrangement
+        if not attributePath
+            reorder $(div), htmlPath, op.lm-2
+        
+setAttribute = (element, path, value) ->
+    if path.length > 1
+        setAttribute element.contents().eq(path[0]), path[1..path.length], value
+    else
+        element.attr(path[0], value)
+
+insert = (element, relativePath, actualPath, value) ->
+    if relativePath.length > 1
+        insert element.contents().eq(relativePath[0]), relativePath[1..relativePath.length], actualPath, value
+    if relativePath.length == 1
+        if typeof value == 'string'
+            html = $(document.createTextNode(value))
+        else
+            html = $.jqml(value)
+        html.__path = actualPath
+        sibling = element.contents().eq(relativePath[0])
+        if sibling.length > 0
+            html.insertBefore(element.contents().eq(relativePath[0]))
+        else if html[0].tagName? and html[0].tagName.toLowerCase() == "script" 
+            console.log "WAS SCRIPT"
+            element[0].appendChild(html[0])
+        else
+            element.append(html)
+        setPaths element.get(0), _rootDiv
+        
+deleteNode = (element, path) ->
+    if path.length > 1
+        deleteNode element.contents().eq(path[0]), path[1..path.length]
+    if path.length == 1
+        toRemove = element.contents().eq(path[0])
+        toRemove.remove()
+        
+reorder = (element, path, index) ->
+    if path.length > 1
+        reorder element.contents().eq(path[0]), path[1..path.length], index
+    if path.length == 1
+        toMove = element.contents().eq(path[0])
+        target = element.contents().eq(index)
+        if (index < path[0])
+            toMove.insertBefore(target)
+        else
+            toMove.insertAfter(target)
+        setPaths element.get(0), _rootDiv
+        
+root.ot2dom.setPaths = setPaths
+root.ot2dom.applyOp = applyOp
