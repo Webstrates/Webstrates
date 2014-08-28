@@ -431,7 +431,8 @@ test "Edit character data", () ->
         
     onTimeout = () ->    
         start()
-        console.log ops
+        ok ops.length == 3, "Got three ops"
+        ok ops[2][0].si?, "Last op was a string insertion"
     async () ->
         $("#foo").contents()[0].replaceWholeText "Hello, world!"
         
