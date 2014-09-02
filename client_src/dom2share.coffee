@@ -163,3 +163,4 @@ closeDoc = () ->
 
 root.openDoc = openDoc
 root.closeDoc = closeDoc
+root.elementAtPath = elementAtPath
