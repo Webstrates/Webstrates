@@ -260,6 +260,22 @@ test "Remove element from DOM", () ->
         ok op.p[0] == 2, "Path is correct"
     async ->
       $('#foo').remove()
+      
+test "Remove siblings from DOM", () ->
+    _rootDiv.append('<div id="foo"></div><div id="bar"></div><div id="baz"></div>')
+    stop()
+    ops = []
+    _doc.on "after op", (op) ->
+        ops.push op
+
+    onTimeout = () ->
+        start()
+        ok ops.length == 6, "Got six ops"
+
+    async ->
+      _rootDiv.empty()
+      
+    setTimeout onTimeout, 500
 
 test "Remove nested elements from DOM", () ->
     _rootDiv.append('<div id="foo"><div id="bar"></div></div>')

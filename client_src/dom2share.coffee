@@ -19,9 +19,12 @@ handleChanges = (changes) ->
     idmap = []
     for change in changes
         if change.removed? and change.removed.length > 0
-            #Sort removed with longest path first (to avoid removing elements where an ancestor is already removed)
+            #Sort removed with longest path first (to avoid removing elements where an ancestor is already removed), if same path length order by last position (to sort siblings so the last sibling is deleted first)
             change.removed.sort (a, b) ->
-                return $(b).jsonMLPath($(_rootDiv)).length - $(a).jsonMLPath($(_rootDiv)).length
+                diffPathLength = b.__path.length - a.__path.length
+                if diffPathLength == 0 and b.__path.length > 0
+                    return  b.__path[b.__path.length - 1] - a.__path[a.__path.length - 1]
+                return diffPathLength
             removedPaths = [] #Used to make sure that we don't try to remove elements twice
             for removed in change.removed
                 if isSubpath(removed.__path, removedPaths)
@@ -49,13 +52,11 @@ handleChanges = (changes) ->
                     break
                 jsonMl = JsonML.parseDOM(added, null, true)
                 op = {p:addedPath, li:jsonMl}
-                console.log "Submitting op", op
                 root._context.submitOp op
                 parent = $(added).parent()
                 ot2dom.setPaths parent, $(_rootDiv), added
         if change.characterDataChanged? and change.characterDataChanged.length > 0
             #TODO: Implement support for collaborative editing of the same text element using sharejs magic
-            #console.log "Character data changed", change
             changed = change.characterDataChanged[0]
             changedPath = $(changed).jsonMLPath($(_rootDiv))
             oldText = elementAtPath(_doc.snapshot, changedPath)
@@ -117,7 +118,6 @@ loadDocIntoDOM = (doc, targetDiv) ->
 
     root._context = doc.createContext()
     root._context._onOp = (ops) =>
-        console.log "Received op", ops
         _observer.disconnect()
         for op in ops
             ot2dom.applyOp op, _rootDiv
