@@ -120,14 +120,14 @@ loadDocIntoDOM = (doc, targetDiv) ->
         console.log "Received op", ops
         _observer.disconnect()
         for op in ops
-            ot2dom.applyOp op _rootDiv
+            ot2dom.applyOp op, _rootDiv
         
         _observer.reconnect()
 
     root._observer = new MutationSummary {
       oldPreviousSibling: true,
       callback: handleChanges, 
-      rootNode: targetDiv,
+      rootNode: root._rootDiv,
       queries: [{ all: true }]
     }
     
