@@ -1,11 +1,5 @@
 root = exports ? window
 
-#TEST LIST
-# X Add element to DOM
-# X Remove element from DOM
-# X Set attribute
-# - reparent element in DOM
-
 compareJsonPaths = (p1, p2) ->
     if p1.length != p2.length 
         return false
@@ -472,6 +466,26 @@ test "Edit character data", () ->
         $("#foo").contents()[0].replaceWholeText "Hello, world!"
         
     setTimeout onTimeout, 500
+    
+#contentEditable from: http://help.dottoro.com/larpvnhw.php
+
+test "Make text in contentEditable bold", () ->
+    stop()
+    _rootDiv.append('a')
+    _rootDiv.attr('contentEditable', true)
+
+    _rootDiv.get(0).focus()
+    range = document.createRange()
+    range.selectNodeContents _rootDiv.get(0)
+    range.collapse false
+    selection = window.getSelection()
+    selection.removeAllRanges()
+    selection.addRange(range)
+    document.execCommand "bold", false, null
+    range.insertNode( document.createTextNode("b"))
+    
+    #e = $.Event("keydown", {which: "b".charCodeAt(0)})
+    #$(document).trigger e
     
 test "Add tiger.svg to DOM", () ->
     ops = []
