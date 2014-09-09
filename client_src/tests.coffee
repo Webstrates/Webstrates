@@ -25,6 +25,57 @@ close = () ->
     _testContext.destroy()
     closeDoc()
     $('#testfixture').remove()
+    
+    
+setupTestFixture = () ->
+    $('body').append('<div id="testfixture"></div>')
+    
+removeTestFixture = () ->
+    $('#testfixture').remove()
+    
+module "JsonML path", {setup: setupTestFixture, teardown: removeTestFixture}
+    
+test "Path to text element", () ->
+    
+    $('#testfixture').append("Foo")
+    path = $($('#testfixture').contents()[0]).jsonMLPath($('#testfixture'))
+    ok path.length == 1
+    ok path[0] == 2
+
+test "Path to nested text element", () ->
+    
+    $('#testfixture').append("<div>Foo</div>")
+    path = $($($('#testfixture').children()[0]).contents()[0]).jsonMLPath($('#testfixture'))
+    ok path.length == 2
+    ok path[0] == 2
+    ok path[1] == 2
+    
+test "Path to nested and siblinged text element", () ->
+    
+    $('#testfixture').append("<div><div></div>Foo</div>")
+    path = $($($('#testfixture').children()[0]).contents()[1]).jsonMLPath($('#testfixture'))
+    ok path.length == 2
+    ok path[0] == 2
+    ok path[1] == 3
+    
+test "Path to nested and twice siblinged text element", () ->
+    
+    $('#testfixture').append("<div>Foo<div></div>Bar</div>")
+    path = $($($('#testfixture').contents()[0]).contents()[2]).jsonMLPath($('#testfixture'))
+    console.log path
+    ok path.length == 2
+    ok path[0] == 2
+    ok path[1] == 4
+    
+test "Path to nested and twice siblinged text element", () ->
+    
+    $('#testfixture').append("<div>Foo<div>Bar</div></div>")
+    path = $($($($('#testfixture').contents()[0]).contents()[1]).contents()[0]).jsonMLPath($('#testfixture'))
+    console.log path
+    ok path.length == 3
+    ok path[0] == 2
+    ok path[1] == 3
+    ok path[2] == 2
 
 createDiffMatchPatch = () ->
     root.dmp = new diff_match_patch()

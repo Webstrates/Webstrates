@@ -1,6 +1,7 @@
 root = exports ? window
 
 elementAtPath = (doc, path) ->
+    console.log "DOC", doc, path
     if path.length > 0 and typeof path[path.length-1] == 'string'
         return null
     if path.length == 0 
@@ -13,99 +14,35 @@ isSubpath = (path, paths) ->
         return false
     return paths.map((p1) -> return p1.join()).map((p2) -> return path.join().substring(0, p2.length) == p2).reduce((a, b)  -> return a or b)
 
-handleChanges = (changes) ->
+handleMutations = (mutations) ->
     if !_doc?
         return
     idmap = []
-    for change in changes
-        if change.removed? and change.removed.length > 0
-            #Sort removed with longest path first (to avoid removing elements where an ancestor is already removed), if same path length order by last position (to sort siblings so the last sibling is deleted first)
-            change.removed.sort (a, b) ->
-                diffPathLength = b.__path.length - a.__path.length
-                if diffPathLength == 0 and b.__path.length > 0
-                    return  b.__path[b.__path.length - 1] - a.__path[a.__path.length - 1]
-                return diffPathLength
-            removedPaths = [] #Used to make sure that we don't try to remove elements twice
-            for removed in change.removed
-                if isSubpath(removed.__path, removedPaths)
-                    continue
-                removedElement = elementAtPath(_doc.snapshot, removed.__path)
-                op = {p:removed.__path, ld:removedElement}
-                oldParent = change.getOldParentNode(removed)
-                root._context.submitOp op
-                #Check if parent is also removed
-                if change.removed.map((x) -> x.__mutation_summary_node_map_id__).indexOf(oldParent.__mutation_summary_node_map_id__) < 0
-                    ot2dom.setPaths oldParent, $(_rootDiv)
-                removedPaths.push removed.__path
-        if change.attributeChanged?
-            for attribute, element of change.attributeChanged
-                path = $(element).jsonMLPath($(_rootDiv), attribute)
-                op = {p:path, oi:$(element).attr(attribute)}
-                root._context.submitOp op
-        if change.added? and change.added.length > 0
-            #Sort added with shortest path first (to avoid adding into something that isnt added yet)
-            change.added.sort (a, b) ->
-                return $(a).jsonMLPath($(_rootDiv)).length - $(b).jsonMLPath($(_rootDiv)).length
-            for added in change.added
-                addedPath = $(added).jsonMLPath($(_rootDiv))
-                if addedPath.length == 0
-                    break
-                jsonMl = JsonML.parseDOM(added, null, true)
-                op = {p:addedPath, li:jsonMl}
-                root._context.submitOp op
+    for mutation in mutations
+        console.log mutation
+        if mutation.type == "attributes"
+            path = mutation.target.__path
+            path.push mutation.attributeName
+            op = {p:path, oi:$(mutation.target).attr(mutation.attributeName)}
+            root._context.submitOp op
+        else if mutation.type == "characterData"
+            changedPath = mutation.target.__path
+            console.log "Changed Path", changedPath
+            oldText = mutation.oldValue
+            newText = mutation.target.data
+            #op = util.patch_to_ot changedPath, dmp.patch_make(oldText, newText)
+            #console.log "CharacterData", op
+            op = {p:changedPath, ld:elementAtPath(_doc.snapshot, changedPath), li:newText}
+            root._context.submitOp op
+        else if mutation.type == "childList"
+            for added in mutation.addedNodes
+                root._context.submitOp {p:$(added).jsonMLPath($(_rootDiv)), li:JsonML.parseDOM(added, null, false)}
                 parent = $(added).parent()
                 ot2dom.setPaths parent, $(_rootDiv), added
-        if change.characterDataChanged? and change.characterDataChanged.length > 0
-            #TODO: Implement support for collaborative editing of the same text element using sharejs magic
-            changed = change.characterDataChanged[0]
-            changedPath = $(changed).jsonMLPath($(_rootDiv))
-            oldText = elementAtPath(_doc.snapshot, changedPath)
-            newText = changed.data
-            if changedPath.length == 0
-                break
-            op = util.patch_to_ot changedPath, dmp.patch_make(oldText, newText)
-            #if oldText? and not isSubpath(changedPath, removedPaths)
-            #    op.push {p:changedPath, ld:oldText}
-            #op.push {p:changedPath, li:newText}
-            root._context.submitOp op
-        if change.reordered? and change.reordered.length > 0
-            for reordered in change.reordered
-                newPath = $(reordered).jsonMLPath($(_rootDiv))
-                oldPath = reordered.__path
-                op = {p:oldPath, lm:newPath[newPath.length-1]}
+            for removed in mutation.removedNodes
+                op = {p:removed.__path, ld:elementAtPath(_doc.snapshot, removed.__path)}
                 root._context.submitOp op
-                parent = $(reordered).parent()[0]
-                ot2dom.setPaths parent, $(_rootDiv)
-        if change.reparented? and change.reparented.length > 0
-            for reparented in change.reparented
-                snapshot = _doc.snapshot
-                previousSibling = change.getOldPreviousSibling(reparented)
-                previousParent = change.getOldParentNode(reparented)
-                if previousSibling?
-                    oldPath = previousSibling.__path.slice(0)
-                    oldPath[oldPath.length-1] = oldPath[oldPath.length-1]+1
-                else
-                    oldPath = change.getOldParentNode(reparented).__path.slice(0)
-                    oldPath.push 2
-                newPath = $(reparented).jsonMLPath($(_rootDiv))
-                reparentedElement = JsonML.parseDOM(reparented, null)
-                op = [{p:newPath, li:reparentedElement}]
-                #Check if oldPath is on a path that already has been deleted
-                if not isSubpath(oldPath, removedPaths)
-                    #Special cases if new path changes something on the old path
-                    #Case 1: Element is reparented onto old path
-                    if oldPath.length > newPath.length and oldPath[0..newPath.length-1].join() == newPath.join()
-                        oldPath[newPath.length-1] = oldPath[newPath.length-1] + 1
-                    #Case 2: Element is reparented into element at the endpoint of oldpath (ie element must have been replaces as you cannot reparent into your self)
-                    else if oldPath.length < newPath.length and newPath[0..oldPath.length-1].join() == oldPath.join()
-                        oldPath[oldPath.length-1] = oldPath[oldPath.length-1] + 1
-                    op.push {p:oldPath, ld:reparentedElement}
-                #Check if oldPath is on a path that already has been deleted
-                oldParent = change.getOldParentNode(reparented)
-                newParent = $(reparented).parent()[0]
-                root._context.submitOp op
-                ot2dom.setPaths oldParent, $(_rootDiv)
-                ot2dom.setPaths newParent, $(_rootDiv)
+                ot2dom.setPaths mutation.target, $(_rootDiv)
 
 loadDocIntoDOM = (doc, targetDiv) ->
     root._doc = doc
@@ -123,13 +60,9 @@ loadDocIntoDOM = (doc, targetDiv) ->
             ot2dom.applyOp op, _rootDiv
         
         _observer.reconnect()
-
-    root._observer = new MutationSummary {
-      oldPreviousSibling: true,
-      callback: handleChanges, 
-      rootNode: root._rootDiv,
-      queries: [{ all: true }]
-    }
+    
+    root._observer = new MutationObserver handleMutations
+    root._observer.observe root._rootDiv, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true }
     
     return rootDiv
 
@@ -150,7 +83,7 @@ openDoc = (docName, targetDiv, callback = ->) ->
             console.log "WRONG TYPE"
             return
         if not doc.getSnapshot()
-            body = ["div",{id:"doc_"+docName, class:"document"}]
+            body = ["div",{id:"doc_"+docName, class:"document", 'data-uuid': root.util.generateUUID()}]
             doc.submitOp([{"p":[], "oi":body}])
         rootDiv = loadDocIntoDOM doc, targetDiv
         callback null, doc, rootDiv

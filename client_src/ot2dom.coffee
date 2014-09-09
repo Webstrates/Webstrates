@@ -88,7 +88,6 @@ insert = (element, relativePath, actualPath, value) ->
         if sibling.length > 0
             html.insertBefore(element.contents().eq(relativePath[0]))
         else if html[0].tagName? and html[0].tagName.toLowerCase() == "script" 
-            console.log "WAS SCRIPT"
             element[0].appendChild(html[0])
         else
             element.append(html)
@@ -100,6 +99,7 @@ deleteNode = (element, path) ->
     if path.length == 1
         toRemove = element.contents().eq(path[0])
         toRemove.remove()
+        #TODO: Update parents paths
         
 reorder = (element, path, index) ->
     if path.length > 1
