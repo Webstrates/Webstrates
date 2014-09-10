@@ -14,6 +14,8 @@ isSubpath = (path, paths) ->
     return paths.map((p1) -> return p1.join()).map((p2) -> return path.join().substring(0, p2.length) == p2).reduce((a, b)  -> return a or b)
     
 check = (domNode, pathNode) ->
+    if domNode instanceof jQuery
+        domNode = domNode[0]
     if domNode.__pathNode.id != pathNode.id
         console.log domNode, pathNode
         throw "No id match"
@@ -23,10 +25,26 @@ check = (domNode, pathNode) ->
     for i in [0...domNode.childNodes.length]
         check(domNode.childNodes[i], pathNode.children[i])
 
+addPathNodes = (node, parent, mutationEvent, reparented) ->
+    if node.__pathNode?
+        oldPathNode = node.__pathNode
+    pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
+    node.__pathNode = pathNode
+    node.__mutationEvent = mutationEvent
+    if oldPathNode?
+        console.log "added to reparented", node
+        reparented[pathNode.id] = oldPathNode
+    for child in node.childNodes
+        pathNode.children.push(addPathNodes(child, pathNode, mutationEvent, reparented))
+    return pathNode
+    
 handleMutations = (mutations) ->
     if !_doc?
         return
     idmap = []
+    root._mutationEvent += 1
+    reparented = {}
+    removed = []
     for mutation in mutations
         if mutation.type == "attributes"
             path = util.getJsonMLPathFromPathNode mutation.target.__pathNode
@@ -38,43 +56,48 @@ handleMutations = (mutations) ->
             changedPath = util.getJsonMLPathFromPathNode mutation.target.__pathNode
             oldText = mutation.oldValue
             newText = mutation.target.data
-            op = util.patch_to_ot changedPath, dmp.patch_make(oldText, newText)
-            #console.log "CharacterData", op
             if elementAtPath(_doc.getSnapshot(), changedPath) != oldText
-                #A fluke?
+                #This should not happen (but will if a text node is inserted and then the text is altered right after)
                 continue
-            #op = {p:changedPath, ld:elementAtPath(_doc.getSnapshot(), changedPath), li:newText}
+            op = util.patch_to_ot changedPath, dmp.patch_make(oldText, newText)
             root._context.submitOp op
         else if mutation.type == "childList"
             for added in mutation.addedNodes
-                if added.__pathNode?
+                if added.__mutationEvent == root._mutationEvent
                     continue
                 #add to pathTree
+                newPathNode = addPathNodes added, mutation.target.__pathNode, root._mutationEvent, reparented
                 if mutation.previousSibling?
                     siblingPathNode = mutation.previousSibling.__pathNode
                     prevSiblingIndex = mutation.target.__pathNode.children.indexOf siblingPathNode
-                    newPathNode = util.createPathTree added, mutation.target.__pathNode
                     mutation.target.__pathNode.children = (mutation.target.__pathNode.children[0..prevSiblingIndex].concat [newPathNode]).concat mutation.target.__pathNode.children[prevSiblingIndex+1...mutation.target.__pathNode.children.length]
-                else
-                    newPathNode = util.createPathTree added, mutation.target.__pathNode
+                else if mutation.nextSibling?
                     mutation.target.__pathNode.children = [newPathNode].concat mutation.target.__pathNode.children
+                else
+                    mutation.target.__pathNode.children.push newPathNode
                 insertPath = util.getJsonMLPathFromPathNode added.__pathNode
-                root._context.submitOp {p:insertPath, li:JsonML.parseDOM(added, null, false)}
+                op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
+                root._context.submitOp op
             for removed in mutation.removedNodes
-                path = util.getJsonMLPathFromPathNode removed.__pathNode
-                op = {p:path , ld:elementAtPath(_doc.getSnapshot(), path)}
+                if reparented[removed.__pathNode.id]? 
+                    pathNode = reparented[removed.__pathNode.id]
+                    reparented[removed.__pathNode.id] = null
+                else 
+                    pathNode = removed.__pathNode
+                path = util.getJsonMLPathFromPathNode pathNode
+                element = elementAtPath(_doc.getSnapshot(), path)
+                op = {p:path , ld:element}
                 root._context.submitOp op
                 #Remove from pathTree
-                childIndex = mutation.target.__pathNode.children.indexOf removed.__pathNode
+                childIndex = mutation.target.__pathNode.children.indexOf pathNode
                 mutation.target.__pathNode.children.splice childIndex, 1
-    check(_rootDiv, pathTree)
+    #check(_rootDiv, pathTree)
 
 loadDocIntoDOM = (doc, targetDiv) ->
     root._doc = doc
     targetDiv.appendChild($.jqml(doc.getSnapshot())[0])
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
-    #ot2dom.setPaths _rootDiv, _rootDiv
     root.pathTree = util.createPathTree _rootDiv
     
     root.dmp = new diff_match_patch()
@@ -87,6 +110,7 @@ loadDocIntoDOM = (doc, targetDiv) ->
         
         _observer.reconnect()
     
+    root._mutationEvent = 0
     root._observer = new MutationObserver handleMutations
     root._observer.observe root._rootDiv, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true }
     
@@ -104,7 +128,6 @@ openDoc = (docName, targetDiv, callback = ->) ->
         if not doc.type
             console.log "Creating new doc", docName
             doc.create 'json0'
-            console.log doc.type
         if doc.type.name != 'json0'
             console.log "WRONG TYPE"
             return

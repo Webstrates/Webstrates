@@ -34,15 +34,7 @@ root.util.generateUUID = ->
     v.toString(16)
   )
   
-  
-root.util.createPathTree = (node, parent=null) ->
-    pathNode = {id: util.generateUUID(), children: [], parent: parent}
-    node.__pathNode = pathNode
-    for child in node.childNodes
-        pathNode.children.push(util.createPathTree(child, pathNode))
-    return pathNode
-    
-    
+        
 root.util.getJsonMLPathFromPathNode = (node) ->
     if not node.parent?
         return []
@@ -53,3 +45,12 @@ root.util.getJsonMLPathFromPathNode = (node) ->
                 break
             childIndex += 1
         return util.getJsonMLPathFromPathNode(node.parent).concat [childIndex]
+        
+root.util.createPathTree = (node, parent=null, mutationEvent=-1) ->
+    pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
+    node.__pathNode = pathNode
+    node.__mutationEvent = mutationEvent
+    for child in node.childNodes
+        pathNode.children.push(util.createPathTree(child, pathNode, mutationEvent))
+    return pathNode
+        
