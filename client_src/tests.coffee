@@ -17,6 +17,7 @@ load = () ->
     openDoc "test" + new Date().getTime(), $('#testfixture').get(0), (error, doc, div) ->
         root._testdoc = doc
         root._rootDiv = $(div)
+        root.pathTree = util.createPathTree _rootDiv[0]
         ok not error?, "No errors when loading document"
         root._testContext = doc.createContext()
         start()
@@ -283,7 +284,7 @@ test "Load a new document", () ->
     ok _rootDiv?, "Content installed in DOM"
 
 test "Add element to DOM", () ->
-    newElement = $('<div someattr="foo"></div>')
+    newElement = $('<div id="foo"></div>')
     stop()
     ops = []
     
@@ -292,15 +293,14 @@ test "Add element to DOM", () ->
         
     onTimeout = () ->
         start()
-        console.log ops
         ok ops.length == 1
         op = ops[0]
         ok op?, "Update received"
         ok op.li?, "Op was list insert"
-        ok compareJsonPaths(op.p, newElement[0].__path), "op path match computed element path"
+        ok compareJsonPaths(op.p, util.getJsonMLPathFromPathNode jQuery("#foo")[0].__pathNode), "op path match computed element path"
         equal op.li[0], 'DIV', "The element from op match the one inserted"
-        ok op.li[1].someattr?, "Element from op has attr from DOM div"
-        equal op.li[1].someattr, "foo", "Value of element attribute match value of attribute in op"
+        ok op.li[1].id?, "Element from op has attr from DOM div"
+        equal op.li[1].id, "foo", "Value of element attribute match value of attribute in op"
 
     async () -> _rootDiv.append(newElement)
     
@@ -325,8 +325,10 @@ test "Add element before another DOM element", () ->
         fooElem = $('#foo')[0]
         barElem = $('#bar')[0]
         
-        ok barOp.p.join() != barElem.__path.join(), "Path of bar does not match op path, as the element is moved"
-        ok fooOp.p.join() == fooElem.__path.join(), "Path of foo element does match as it is prepended to the list"
+        barPath = util.getJsonMLPathFromPathNode barElem.__pathNode
+        fooPath = util.getJsonMLPathFromPathNode fooElem.__pathNode
+        ok barOp.p.join() != barPath.join(), "Path of bar does not match op path, as the element is moved"
+        ok fooOp.p.join() == fooPath.join(), "Path of foo element does match as it is prepended to the list"
 
     async () -> _rootDiv.prepend(secondElement)
     
@@ -376,17 +378,14 @@ test "Remove nested elements from DOM", () ->
     onTimeout = () ->
         start()
         ok ops?, "Update received"
-        ok ops.length == 4
-        op1 = ops[2][0]
+        ok ops.length == 2
+        op1 = ops[1][0]
         ok op1.ld?, "Op was list delete"
         ok op1.ld[0] == 'DIV', "Op is removing a div"
-        ok op1.ld[1].id == 'bar', "The div as id bar"
-        ok op1.p.join() == "2,2", "Path is correct"
-        op2 = ops[3][0]
-        ok op2.ld?, "Op was list delete"
-        ok op2.ld[0] == 'DIV', "Op is removing a div"
-        ok op2.ld[1].id == 'foo', "The div as id bar"
-        ok op2.p.join() == "2", "Path is correct"
+        ok op1.ld[1].id == 'foo', "The div as id foo"
+        ok op1.p.join() == "2", "Path is correct"
+        ok op1.ld[2][0] == 'DIV', "Op is removing a nested div"
+        ok op1.ld[2][1].id == 'bar', "The nested div id is foo"
     async ->
       $('#foo').remove()
     
@@ -429,6 +428,7 @@ test "Enclose element in tag", () ->
         ops.push op
         
     onTimeout = () ->
+        console.log ops
         start()
         ok ops.length == 3, "Should generate three (four) operations"
         ok ops[0][0].li?, "First op is a li"
@@ -436,12 +436,9 @@ test "Enclose element in tag", () ->
         ok ops[1][0].li?, "Second op is a li"
         ok ops[1][0].li[1].id == "foo", "Second op inserts foo"
         ok ops[1][0].p.join() == "2", "Second op inserts foo at [2]"
-        ok ops[2][0].li?, "Third op is a li"
-        ok ops[2][0].li[1].id == "bar", "Third op inserts bar again"
-        ok ops[2][0].p.join() == "2,2", "Third op inserts foo at [2,2]"
-        ok ops[2][1].ld?, "Fourth op is a ld"
-        ok ops[2][1].ld[1].id == "bar", "Fourth op deletes bar"
-        ok ops[2][1].p.join() == "3", "Fourth op deletes bar at [3]"
+        ok ops[2][0].ld?, "Third op is a ld"
+        ok ops[2][0].ld[1].id == "bar", "Fourth op deletes bar"
+        ok ops[2][0].p.join() == "3", "Fourth op deletes bar at [3]"
 
     async () -> $('#bar').wrap('<div id="foo"/>')
     
@@ -458,14 +455,16 @@ test "Reparent element in DOM", () ->
         
     onTimeout = () ->    
         start()
-        ok ops[3][0].li?, "First something is inserted"
-        ok ops[3][0].li[0] == "DIV", "It is a DIV that is added"
-        ok ops[3][0].li[1].id == "bar", "The added div has id bar"
-        ok ops[3][0].p.join() == "2,3", "The added div has the correct path"
-        ok ops[3][1].ld?, "Then something is deleted"
-        ok ops[3][1].ld[0] == "DIV", "It is a DIV that is deleted"
-        ok ops[3][1].ld[1].id == "bar", "The deleted div has id bar"
-        ok ops[3][1].p.join() == "2,2,2", "The deleted div has the correct path"
+        ok ops.length == 3, "We get three ops"
+        ok ops[1][0].ld?, "Then something is deleted"
+        ok ops[1][0].ld[0] == "DIV", "It is a DIV that is deleted"
+        ok ops[1][0].ld[1].id == "bar", "The deleted div has id bar"
+        ok ops[1][0].p.join() == "2,2,2", "The deleted div has the correct path"
+
+        ok ops[2][0].li?, "First something is inserted"
+        ok ops[2][0].li[0] == "DIV", "It is a DIV that is added"
+        ok ops[2][0].li[1].id == "bar", "The added div has id bar"
+        ok ops[2][0].p.join() == "2,3", "The added div has the correct path"
     async () ->
         $("#bar").appendTo("#parent")
         
@@ -482,14 +481,15 @@ test "Reparent element in DOM on elements path", () ->
         
     onTimeout = () ->    
         start()
-        ok ops[3][0].li?, "First something is inserted"
-        ok ops[3][0].li[0] == "DIV", "It is a DIV that is added"
-        ok ops[3][0].li[1].id == "bar", "The added div has id bar"
-        ok ops[3][0].p.join() == "2,2", "The added div has the correct path"
-        ok ops[3][1].ld?, "Then something is deleted"
-        ok ops[3][1].ld[0] == "DIV", "It is a DIV that is deleted"
-        ok ops[3][1].ld[1].id == "bar", "The deleted div has id bar"
-        ok ops[3][1].p.join() == "2,3,2", "The deleted div has the correct path"
+        ok ops[1][0].ld?, "First something is deleted"
+        ok ops[1][0].ld[0] == "DIV", "It is a DIV that is deleted"
+        ok ops[1][0].ld[1].id == "bar", "The deleted div has id bar"
+        ok ops[1][0].p.join() == "2,2,2", "The deleted div has the correct path"
+
+        ok ops[2][0].li?, "Then something is inserted"
+        ok ops[2][0].li[0] == "DIV", "It is a DIV that is added"
+        ok ops[2][0].li[1].id == "bar", "The added div has id bar"
+        ok ops[2][0].p.join() == "2,2", "The added div has the correct path"
     async () ->
         $("#bar").prependTo("#parent")
         
@@ -554,32 +554,32 @@ test "Edit character data", () ->
         
     onTimeout = () ->    
         start()
-        ok ops.length == 3, "Got three ops"
-        ok ops[2][0].si?, "Last op was a string insertion"
+        ok ops.length == 2, "Got three ops"
+        ok ops[1][0].si?, "Last op was a string insertion"
     async () ->
         $("#foo").contents()[0].replaceWholeText "Hello, world!"
         
     setTimeout onTimeout, 500
     
-#contentEditable from: http://help.dottoro.com/larpvnhw.php
-
-test "Make text in contentEditable bold", () ->
-    stop()
-    _rootDiv.append('a')
-    _rootDiv.attr('contentEditable', true)
-
-    _rootDiv.get(0).focus()
-    range = document.createRange()
-    range.selectNodeContents _rootDiv.get(0)
-    range.collapse false
-    selection = window.getSelection()
-    selection.removeAllRanges()
-    selection.addRange(range)
-    document.execCommand "bold", false, null
-    range.insertNode( document.createTextNode("b"))
-    
-    #e = $.Event("keydown", {which: "b".charCodeAt(0)})
-    #$(document).trigger e
+# #contentEditable from: http://help.dottoro.com/larpvnhw.php
+#
+# test "Make text in contentEditable bold", () ->
+#     stop()
+#     _rootDiv.append('a')
+#     _rootDiv.attr('contentEditable', true)
+#
+#     _rootDiv.get(0).focus()
+#     range = document.createRange()
+#     range.selectNodeContents _rootDiv.get(0)
+#     range.collapse false
+#     selection = window.getSelection()
+#     selection.removeAllRanges()
+#     selection.addRange(range)
+#     document.execCommand "bold", false, null
+#     range.insertNode( document.createTextNode("b"))
+#
+#     #e = $.Event("keydown", {which: "b".charCodeAt(0)})
+#     #$(document).trigger e
     
 test "Add tiger.svg to DOM", () ->
     ops = []
