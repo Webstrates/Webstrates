@@ -2,7 +2,7 @@ root = exports ? window
 root.util = {}
 
 $.fn.extend {                
-    jsonMLPath: (parent = null, attribute = null) ->
+    jsonMLPath: (parent = null, attribute = null) -> #Her er der noget galt med text nodes
         elementPath = cssPath(this.get(0), parent.get(0)).map (el) -> el.childIndex
         jsonPath = []
         for i in elementPath
@@ -26,3 +26,30 @@ root.util.patch_to_ot = (path, patches) ->
             if diff[0] == -1
                 ops.push {sd: diff[1], p: path.concat [insertionPoint]}
     return ops
+    
+root.util.generateUUID = ->
+  'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) ->
+    r = Math.random() * 16 | 0
+    v = if c is 'x' then r else (r & 0x3|0x8)
+    v.toString(16)
+  )
+  
+  
+root.util.createPathTree = (node, parent=null) ->
+    pathNode = {id: util.generateUUID(), children: [], parent: parent}
+    node.__pathNode = pathNode
+    for child in node.childNodes
+        pathNode.children.push(util.createPathTree(child, pathNode))
+    return pathNode
+    
+    
+root.util.getJsonMLPathFromPathNode = (node) ->
+    if not node.parent?
+        return []
+    else
+        childIndex = 2 #JsonML specific {name, attributes, children}
+        for sibling in node.parent.children
+            if sibling.id == node.id
+                break
+            childIndex += 1
+        return util.getJsonMLPathFromPathNode(node.parent).concat [childIndex]

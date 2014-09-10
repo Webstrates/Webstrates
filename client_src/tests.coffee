@@ -33,6 +33,49 @@ setupTestFixture = () ->
 removeTestFixture = () ->
     $('#testfixture').remove()
     
+module "Path tree", {setup: setupTestFixture, teardown: removeTestFixture}
+
+test "Create path tree with depth one", () ->
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok $('#testfixture')[0].__pathNode.id == pathTree.id, "DOM element references the correct pathNode"
+    ok pathTree.children.length == 0, "The path node has no children"
+    ok not pathTree.parent?, "The path node has no parent"
+    
+test "Create path tree with depth two", () ->
+    $('#testfixture').append("<div></div>")
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok pathTree.children.length == 1, "The root of the path tree has one element"
+    ok not pathTree.parent?, "The root has no parent"
+    ok pathTree.children[0].parent.id == pathTree.id, "The parent of the child is the root"
+    ok $('#testfixture')[0].childNodes[0].__pathNode.id = pathTree.children[0].id, "The child DOM node references the correct node in the path tree"
+    
+test "Create path tree with depth three", () ->
+    $('#testfixture').append("<div>Foo</div>")
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok pathTree.children[0].children.length == 1, "The child has one child"
+    ok pathTree.children[0].children[0].parent.id == pathTree.children[0].id, "The parent of the grandchild is the child"
+    ok $('#testfixture')[0].childNodes[0].childNodes[0].__pathNode.id == pathTree.children[0].children[0].id, "The DOM grandchild matches the path tree grandchild"
+    
+test "Get path from tree with depth one", () ->
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok util.getJsonMLPathFromPathNode(pathTree).join() == "", "The empty path"
+    
+test "Get path from tree with depth two", () ->
+    $('#testfixture').append("<div></div>")
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok util.getJsonMLPathFromPathNode(pathTree.children[0]).join() == "2", "The path should be 2"
+    
+test "Get path from tree with depth three", () ->
+    $('#testfixture').append("<div>Foo</div>")
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok util.getJsonMLPathFromPathNode(pathTree.children[0].children[0]).join() == "2,2", "The path should be 2,2"
+    
+test "Get path from tree with depth three and a sibling", () ->
+    $('#testfixture').append("<div><b></b>Foo</div>")
+    pathTree = util.createPathTree $('#testfixture')[0]
+    ok util.getJsonMLPathFromPathNode(pathTree.children[0].children[1]).join() == "2,3", "The path should be 2,3"
+    
+    
 module "JsonML path", {setup: setupTestFixture, teardown: removeTestFixture}
     
 test "Path to text element", () ->
