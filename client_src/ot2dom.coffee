@@ -42,8 +42,9 @@ applyOp = (op, div) ->
         if not attributePath
             deleteNode $(div), htmlPath
     if op.lm? #list rearrangement
-        if not attributePath
-            reorder $(div), htmlPath, op.lm-2
+        throw "op.lm not currently supported!"
+        #if not attributePath
+        #    reorder $(div), htmlPath, op.lm-2
     if op.si? #String insertion
         if not attributePath
             insertInText $(div), htmlPath, charIndex, op.si
@@ -114,7 +115,7 @@ reorder = (element, path, index) ->
             toMove.insertBefore(target)
         else
             toMove.insertAfter(target)
-        setPaths element.get(0), _rootDiv
+    #Update path tree
         
 root.ot2dom.setPaths = setPaths
 root.ot2dom.applyOp = applyOp
