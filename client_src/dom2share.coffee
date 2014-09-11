@@ -32,7 +32,6 @@ addPathNodes = (node, parent, mutationEvent, reparented) ->
     node.__pathNode = pathNode
     node.__mutationEvent = mutationEvent
     if oldPathNode?
-        console.log "added to reparented", node
         reparented[pathNode.id] = oldPathNode
     for child in node.childNodes
         pathNode.children.push(addPathNodes(child, pathNode, mutationEvent, reparented))
@@ -91,7 +90,7 @@ handleMutations = (mutations) ->
                 #Remove from pathTree
                 childIndex = mutation.target.__pathNode.children.indexOf pathNode
                 mutation.target.__pathNode.children.splice childIndex, 1
-    #check(_rootDiv, pathTree)
+    check(_rootDiv, pathTree)
 
 loadDocIntoDOM = (doc, targetDiv) ->
     root._doc = doc
@@ -107,8 +106,9 @@ loadDocIntoDOM = (doc, targetDiv) ->
         _observer.disconnect()
         for op in ops
             ot2dom.applyOp op, _rootDiv
+        check(_rootDiv, pathTree)
         
-        _observer.reconnect()
+        _observer.observe root._rootDiv, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true }
     
     root._mutationEvent = 0
     root._observer = new MutationObserver handleMutations
