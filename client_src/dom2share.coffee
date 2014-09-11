@@ -118,9 +118,9 @@ loadDocIntoDOM = (doc, targetDiv) ->
 
 openDoc = (docName, targetDiv, callback = ->) ->
     socket = new BCSocket null, {reconnect: true}
-    sjs = new sharejs.Connection socket
+    root._sjs = new sharejs.Connection socket
     
-    doc = sjs.get 'docs', docName
+    doc = _sjs.get 'docs', docName
     
     doc.subscribe()
     
@@ -142,6 +142,7 @@ closeDoc = () ->
     root._observer= null
     root._doc.del()
     root._doc.destroy()
+    root._sjs.disconnect()
 
 root.openDoc = openDoc
 root.closeDoc = closeDoc
