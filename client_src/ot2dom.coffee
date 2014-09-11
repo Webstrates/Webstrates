@@ -68,6 +68,8 @@ deleteInText = (element, path, charIndex, value) ->
         textNode = element.contents().eq(path[0])[0]
         oldString = textNode.wholeText
         newString = oldString.substring(0, charIndex) + oldString.substring(charIndex + value.length, oldString.length)
+        if newString.length == 0 #Hack to avoid that the browser removes the empty text node
+            newString = '&nbsp;'
         textNode.replaceWholeText newString
         
 setAttribute = (element, path, value) ->
