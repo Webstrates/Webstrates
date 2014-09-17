@@ -1,6 +1,16 @@
 root = exports ? window
 root.util = {}
 
+#Gets the element at a given path in a jsonml document
+root.util.elementAtPath = (snapshot, path) ->
+    if path.length > 0 and typeof path[path.length-1] == 'string'
+        return null
+    if path.length == 0 
+        return snapshot
+    else
+        return util.elementAtPath(snapshot[path[0]], path[1..path.length])
+
+#Used to make operations out of a set of string patches
 root.util.patch_to_ot = (path, patches) ->
     ops = []
     for patch in patches
@@ -14,7 +24,8 @@ root.util.patch_to_ot = (path, patches) ->
             if diff[0] == -1
                 ops.push {sd: diff[1], p: path.concat [insertionPoint]}
     return ops
-    
+
+#Generates a unique identifier    
 root.util.generateUUID = ->
   'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (c) ->
     r = Math.random() * 16 | 0
@@ -22,7 +33,8 @@ root.util.generateUUID = ->
     v.toString(16)
   )
   
-        
+
+#Given a pathnode, compute its JsonML path
 root.util.getJsonMLPathFromPathNode = (node) ->
     if not node.parent?
         return []
@@ -34,18 +46,23 @@ root.util.getJsonMLPathFromPathNode = (node) ->
             childIndex += 1
         return util.getJsonMLPathFromPathNode(node.parent).concat [childIndex]
 
-root.util.createPathTree = (node, parent, overwrite=false) ->
-    pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
+#Creates a pathTree from a DOM element
+#If a parent pathNode is provided the generated pathTree will be a subtree in the pathTree of the parent
+#Per default multiple pathNodes can be added to a dom element
+root.util.createPathTree = (DOMNode, parentPathNode, overwrite=false) ->
+    pathNode = {id: util.generateUUID(), children: [], parent: parentPathNode, DOMNode: DOMNode}
     if overwrite
-        node.__pathNodes = [pathNode]
+        DOMNode.__pathNodes = [pathNode]
     else
-        if not node.__pathNodes?
-            node.__pathNodes = []
-        node.__pathNodes.push pathNode
-    for child in node.childNodes
+        if not DOMNode.__pathNodes?
+            DOMNode.__pathNodes = []
+        DOMNode.__pathNodes.push pathNode
+    for child in DOMNode.childNodes
         pathNode.children.push(util.createPathTree(child, pathNode, overwrite))
     return pathNode
-    
+
+#Returns the last added pathNode of an element
+#If a parent DOM element is provided, we search for the pathNode that matches on parent
 root.util.getPathNode = (elem, parentElem) ->
     if parentElem? and parentElem.__pathNodes? and elem.__pathNodes?
         for parentPathNode in parentElem.__pathNodes
@@ -55,7 +72,8 @@ root.util.getPathNode = (elem, parentElem) ->
     if elem.__pathNodes? and elem.__pathNodes.length > 0
         return elem.__pathNodes[elem.__pathNodes.length - 1]
     return null
-    
+
+#Cleans up a DOM element for pathnodes in the subtree of the given parent path node
 root.util.removePathNodes = (elem, parentPathNode) ->
     if not elem.__pathNodes?
         return
@@ -66,7 +84,8 @@ root.util.removePathNodes = (elem, parentPathNode) ->
         elem.__pathNodes.splice (elem.__pathNodes.indexOf toRemove), 1
     for child in elem.childNodes
         util.removePathNodes child, toRemove 
-        
+
+#Checks consistency between a DOM tree and a pathTree        
 root.util.check = (domNode, pathNode) ->
     if domNode instanceof jQuery
         domNode = domNode[0]
@@ -82,12 +101,4 @@ root.util.check = (domNode, pathNode) ->
         throw "Different amount of children"
     for i in [0...domNode.childNodes.length]
         util.check(domNode.childNodes[i], pathNode.children[i])
-        
-root.util.elementAtPath = (snapshot, path) ->
-    if path.length > 0 and typeof path[path.length-1] == 'string'
-        return null
-    if path.length == 0 
-        return snapshot
-    else
-        return util.elementAtPath(snapshot[path[0]], path[1..path.length])
         
