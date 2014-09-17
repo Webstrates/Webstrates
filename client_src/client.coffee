@@ -26,7 +26,8 @@ $(document).ready () =>
     doc = _sjs.get 'docs', sharejsDoc 
     
     doc.subscribe()
+    $(document).empty()
     doc.whenReady () ->
-        window.dom2shareInstance = new DOM2Share doc, $('body').get(0), () ->
+        window.dom2shareInstance = new DOM2Share doc, document, () ->
             event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
             document.dispatchEvent event

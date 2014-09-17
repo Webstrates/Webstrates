@@ -21,7 +21,7 @@ Usage
 =====
 Webstrate serves (and creates) any named webpage you ask for.<br>
 Simply navigate your browser* to http://localhost:7007/[some_page_name].<br>
-Now any changes you make to the part of the DOM enclosed by the `DIV` with class `document` (ie. through the developer tools of the browser) will be persisted and distributed to any other clients that may have the page open.
+Now any changes you make to the DOM will be persisted and distributed to any other clients that may have the page open.
 
 \* Webstrate is currently only tested to work in Chrome Version 37.0.2062.120 
 

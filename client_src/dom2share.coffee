@@ -18,23 +18,28 @@ root = exports ? window
 
 class root.DOM2Share
     
-    constructor: (@doc, @targetDiv, callback = ->) ->
+    constructor: (@doc, @targetDOMElement, callback = ->) ->
         if not @doc.type
             console.log "Creating new doc", @doc.name
             @doc.create 'json0'
         if @doc.type.name != 'json0'
             console.log "WRONG TYPE"
             return
-        if not @doc.getSnapshot()
-            body = ["div",{id:"doc_"+@doc.name, class:"document"}]
-            @doc.submitOp([{"p":[], "oi":body}])
+        if @targetDOMElement.parentNode? #Its not the document root
+            if not @doc.getSnapshot()
+                body = ["div",{id:"doc_"+@doc.name, class:"document"}]
+                @doc.submitOp([{"p":[], "oi":body}])
+        else #Its the document root
+            if not @doc.getSnapshot()
+                body = ["html", {}, ['body', {}]]
+                @doc.submitOp([{"p":[], "oi":body}])
         @loadDocIntoDOM()
         callback @doc, @rootDiv
         
     loadDocIntoDOM: () ->
-        @targetDiv.appendChild($.jqml(@doc.getSnapshot())[0])
+        @targetDOMElement.appendChild($.jqml(@doc.getSnapshot())[0])
     
-        @rootDiv = $(@targetDiv).children()[0]
+        @rootDiv = $(@targetDOMElement).children()[0]
         @pathTree = util.createPathTree @rootDiv, null, true
     
         @dmp = new diff_match_patch()
