@@ -1,18 +1,6 @@
 root = exports ? window
 root.util = {}
 
-$.fn.extend {                
-    jsonMLPath: (parent = null, attribute = null) -> #Her er der noget galt med text nodes
-        elementPath = cssPath(this.get(0), parent.get(0)).map (el) -> el.childIndex
-        jsonPath = []
-        for i in elementPath
-            jsonPath.push(i+2)
-        if attribute?
-            jsonPath.push(1)
-            jsonPath.push(attribute)
-        return jsonPath
-}
-
 root.util.patch_to_ot = (path, patches) ->
     ops = []
     for patch in patches
@@ -78,4 +66,28 @@ root.util.removePathNodes = (elem, parentPathNode) ->
         elem.__pathNodes.splice (elem.__pathNodes.indexOf toRemove), 1
     for child in elem.childNodes
         util.removePathNodes child, toRemove 
+        
+root.util.check = (domNode, pathNode) ->
+    if domNode instanceof jQuery
+        domNode = domNode[0]
+    if domNode.__pathNodes.length > 1
+        console.log domNode, domNode.__pathNodes
+        throw "Node has multiple paths"
+    domNodePathNode = domNode.__pathNodes[0]
+    if domNodePathNode.id != pathNode.id
+        console.log domNode, pathNode
+        throw "No id match"
+    if domNode.childNodes.length != pathNode.children.length
+        console.log domNode, pathNode
+        throw "Different amount of children"
+    for i in [0...domNode.childNodes.length]
+        util.check(domNode.childNodes[i], pathNode.children[i])
+        
+root.util.elementAtPath = (snapshot, path) ->
+    if path.length > 0 and typeof path[path.length-1] == 'string'
+        return null
+    if path.length == 0 
+        return snapshot
+    else
+        return util.elementAtPath(snapshot[path[0]], path[1..path.length])
         

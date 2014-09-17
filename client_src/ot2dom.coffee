@@ -1,18 +1,6 @@
 root = exports ? window
 root.ot2dom = {}
 
-setPaths = (elem, root, stop = null) ->
-    if elem instanceof jQuery
-        elem = elem[0]
-    jsonPath = $(elem).jsonMLPath($(root))
-    elem.__path = jsonPath
-    if stop? and elem.isEqualNode(stop)
-        return
-    if elem.tagName == 'IFRAME'
-        return
-    for child in $(elem).contents()
-        setPaths child, root, stop
-
 applyOp = (op, div) ->
     path = op.p
     htmlPath = []
@@ -121,6 +109,5 @@ reorder = (element, path, index) ->
         else
             toMove.insertAfter(target)
     #Update path tree
-        
-root.ot2dom.setPaths = setPaths
+
 root.ot2dom.applyOp = applyOp

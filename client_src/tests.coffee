@@ -14,16 +14,26 @@ async = (func) ->
 load = () ->
     stop()
     $('body').append('<div id="testfixture"></div>')
-    openDoc "test" + new Date().getTime(), $('#testfixture').get(0), (error, doc, div) ->
-        root._testdoc = doc
-        root._rootDiv = $(div)
-        ok not error?, "No errors when loading document"
-        root._testContext = doc.createContext()
-        start()
+    
+    socket = new BCSocket null, {reconnect: true}
+    root._sjs = new sharejs.Connection socket
+    
+    doc = _sjs.get 'docs', "test" + new Date().getTime() 
+    
+    doc.subscribe()
+    doc.whenReady () ->
+        root.dom2shareInstance = new DOM2Share doc, $('#testfixture').get(0), (doc, div) ->
+            root._testdoc = doc
+            root._doc = doc
+            root._rootDiv = $(div)
+            ok not error?, "No errors when loading document"
+            root._testContext = doc.createContext()
+            start()
         
 close = () ->
     _testContext.destroy()
-    closeDoc()
+    root.dom2shareInstance.disconnect()
+    root._sjs.disconnect()
     $('#testfixture').remove()
     
     
@@ -76,50 +86,6 @@ test "Get path from tree with depth three and a sibling", () ->
     ok util.getJsonMLPathFromPathNode(pathTree.children[0].children[1]).join() == "2,3", "The path should be 2,3"
     
     
-module "JsonML path", {setup: setupTestFixture, teardown: removeTestFixture}
-    
-test "Path to text element", () ->
-    
-    $('#testfixture').append("Foo")
-    path = $($('#testfixture').contents()[0]).jsonMLPath($('#testfixture'))
-    ok path.length == 1
-    ok path[0] == 2
-
-test "Path to nested text element", () ->
-    
-    $('#testfixture').append("<div>Foo</div>")
-    path = $($($('#testfixture').children()[0]).contents()[0]).jsonMLPath($('#testfixture'))
-    ok path.length == 2
-    ok path[0] == 2
-    ok path[1] == 2
-    
-test "Path to nested and siblinged text element", () ->
-    
-    $('#testfixture').append("<div><div></div>Foo</div>")
-    path = $($($('#testfixture').children()[0]).contents()[1]).jsonMLPath($('#testfixture'))
-    ok path.length == 2
-    ok path[0] == 2
-    ok path[1] == 3
-    
-test "Path to nested and twice siblinged text element", () ->
-    
-    $('#testfixture').append("<div>Foo<div></div>Bar</div>")
-    path = $($($('#testfixture').contents()[0]).contents()[2]).jsonMLPath($('#testfixture'))
-    console.log path
-    ok path.length == 2
-    ok path[0] == 2
-    ok path[1] == 4
-    
-test "Path to nested and twice siblinged text element", () ->
-    
-    $('#testfixture').append("<div>Foo<div>Bar</div></div>")
-    path = $($($($('#testfixture').contents()[0]).contents()[1]).contents()[0]).jsonMLPath($('#testfixture'))
-    console.log path
-    ok path.length == 3
-    ok path[0] == 2
-    ok path[1] == 3
-    ok path[2] == 2
-
 createDiffMatchPatch = () ->
     root.dmp = new diff_match_patch()
 
@@ -278,7 +244,7 @@ test "Delete character in characterData", () ->
 module "DOM to JSON", {setup: load, teardown: close}
 
 test "Load a new document", () ->
-    ok _observer?, "Observer running"
+    ok root.dom2shareInstance.observer?, "Observer running"
     ok _testdoc?, "Document was loaded"
     ok _rootDiv?, "Content installed in DOM"
 
@@ -358,6 +324,7 @@ test "Remove siblings from DOM", () ->
         ops.push op
 
     onTimeout = () ->
+        console.log ops
         start()
         ok ops.length == 6, "Got six ops"
 
@@ -411,7 +378,8 @@ test "Add iFrame", () ->
         op = ops[0]
         ok op?, "Update received"
         ok op.li?, "Op was list insert"
-        ok compareJsonPaths(op.p, newElement.jsonMLPath(_rootDiv)), "op path match computed element path"
+        pathFromDom = util.getJsonMLPathFromPathNode util.getPathNode(newElement[0])
+        ok compareJsonPaths(op.p, pathFromDom), "op path match computed element path"
         equal op.li[0], 'IFRAME', "The element from op match the one inserted"
         ok op.li[1].src?, "Element from op has attr from DOM div"
         equal op.li[1].src, "http://www.cs.au.dk", "Value of element attribute match value of attribute in op"
