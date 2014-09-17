@@ -66,12 +66,13 @@ class root.DOM2Share
                 @context.submitOp op
             else if mutation.type == "childList"
                 for added in mutation.addedNodes
+                    #Check if this node already has been added (e.g. together with its parent)
                     if added.__pathNodes? and added.__pathNodes.length > 0
                         addedPathNode = util.getPathNode(added, mutation.target)
                         targetPathNode = util.getPathNode(mutation.target)
                         if targetPathNode.id == addedPathNode.parent.id
                             continue    
-                    #add to pathTree
+                    #Add the new node to the path tree
                     newPathNode = util.createPathTree added, util.getPathNode(mutation.target)
                     targetPathNode = util.getPathNode(mutation.target)
                     if mutation.previousSibling?
