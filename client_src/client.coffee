@@ -14,7 +14,3 @@ $(document).ready () =>
         window.dom2shareInstance = new DOM2Share doc, $('body').get(0), () ->
             event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
             document.dispatchEvent event
-    
-    #openDoc sharejsDoc, $('body').get(0), () ->
-    #    event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
-    #    document.dispatchEvent event
