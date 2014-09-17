@@ -38,7 +38,7 @@ module "Path tree", {setup: setupTestFixture, teardown: removeTestFixture}
 
 test "Create path tree with depth one", () ->
     pathTree = util.createPathTree $('#testfixture')[0]
-    ok $('#testfixture')[0].__pathNode.id == pathTree.id, "DOM element references the correct pathNode"
+    ok $('#testfixture')[0].__pathNodes[0].id == pathTree.id, "DOM element references the correct pathNode"
     ok pathTree.children.length == 0, "The path node has no children"
     ok not pathTree.parent?, "The path node has no parent"
     
@@ -48,14 +48,14 @@ test "Create path tree with depth two", () ->
     ok pathTree.children.length == 1, "The root of the path tree has one element"
     ok not pathTree.parent?, "The root has no parent"
     ok pathTree.children[0].parent.id == pathTree.id, "The parent of the child is the root"
-    ok $('#testfixture')[0].childNodes[0].__pathNode.id = pathTree.children[0].id, "The child DOM node references the correct node in the path tree"
+    ok $('#testfixture')[0].childNodes[0].__pathNodes[0].id = pathTree.children[0].id, "The child DOM node references the correct node in the path tree"
     
 test "Create path tree with depth three", () ->
     $('#testfixture').append("<div>Foo</div>")
     pathTree = util.createPathTree $('#testfixture')[0]
     ok pathTree.children[0].children.length == 1, "The child has one child"
     ok pathTree.children[0].children[0].parent.id == pathTree.children[0].id, "The parent of the grandchild is the child"
-    ok $('#testfixture')[0].childNodes[0].childNodes[0].__pathNode.id == pathTree.children[0].children[0].id, "The DOM grandchild matches the path tree grandchild"
+    ok $('#testfixture')[0].childNodes[0].childNodes[0].__pathNodes[0].id == pathTree.children[0].children[0].id, "The DOM grandchild matches the path tree grandchild"
     
 test "Get path from tree with depth one", () ->
     pathTree = util.createPathTree $('#testfixture')[0]
@@ -297,7 +297,7 @@ test "Add element to DOM", () ->
         op = ops[0]
         ok op?, "Update received"
         ok op.li?, "Op was list insert"
-        ok compareJsonPaths(op.p, util.getJsonMLPathFromPathNode jQuery("#foo")[0].__pathNode), "op path match computed element path"
+        ok compareJsonPaths(op.p, util.getJsonMLPathFromPathNode jQuery("#foo")[0].__pathNodes[0]), "op path match computed element path"
         equal op.li[0], 'DIV', "The element from op match the one inserted"
         ok op.li[1].id?, "Element from op has attr from DOM div"
         equal op.li[1].id, "foo", "Value of element attribute match value of attribute in op"
@@ -325,8 +325,8 @@ test "Add element before another DOM element", () ->
         fooElem = $('#foo')[0]
         barElem = $('#bar')[0]
         
-        barPath = util.getJsonMLPathFromPathNode barElem.__pathNode
-        fooPath = util.getJsonMLPathFromPathNode fooElem.__pathNode
+        barPath = util.getJsonMLPathFromPathNode barElem.__pathNodes[0]
+        fooPath = util.getJsonMLPathFromPathNode fooElem.__pathNodes[0]
         ok barOp.p.join() != barPath.join(), "Path of bar does not match op path, as the element is moved"
         ok fooOp.p.join() == fooPath.join(), "Path of foo element does match as it is prepended to the list"
 

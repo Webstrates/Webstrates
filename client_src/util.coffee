@@ -48,9 +48,30 @@ root.util.getJsonMLPathFromPathNode = (node) ->
         
 root.util.createPathTree = (node, parent=null, mutationEvent=-1) ->
     pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
-    node.__pathNode = pathNode
+    node.__pathNodes = [pathNode]
     node.__mutationEvent = mutationEvent
     for child in node.childNodes
         pathNode.children.push(util.createPathTree(child, pathNode, mutationEvent))
     return pathNode
+    
+root.util.getPathNode = (elem, parentElem) ->
+    if parentElem? and parentElem.__pathNodes? and elem.__pathNodes?
+        for parentPathNode in parentElem.__pathNodes
+            for elemPathNode in elem.__pathNodes
+                if elemPathNode.parent.id == parentPathNode.id
+                    return elemPathNode
+    if elem.__pathNodes? and elem.__pathNodes.length > 0
+        return elem.__pathNodes[elem.__pathNodes.length - 1]
+    return null
+    
+root.util.removePathNodes = (elem, parentPathNode) ->
+    if not elem.__pathNodes?
+        return
+    for pathNode in elem.__pathNodes
+        if pathNode.parent.id == parentPathNode.id
+            toRemove = pathNode
+    if toRemove?
+        elem.__pathNodes.splice (elem.__pathNodes.indexOf toRemove), 1
+    for child in elem.childNodes
+        util.removePathNodes child, toRemove 
         

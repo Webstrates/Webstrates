@@ -16,7 +16,11 @@ isSubpath = (path, paths) ->
 check = (domNode, pathNode) ->
     if domNode instanceof jQuery
         domNode = domNode[0]
-    if domNode.__pathNode.id != pathNode.id
+    if domNode.__pathNodes.length > 1
+        console.log domNode, domNode.__pathNodes
+        throw "Node has multiple paths"
+    domNodePathNode = domNode.__pathNodes[0]
+    if domNodePathNode.id != pathNode.id
         console.log domNode, pathNode
         throw "No id match"
     if domNode.childNodes.length != pathNode.children.length
@@ -25,34 +29,33 @@ check = (domNode, pathNode) ->
     for i in [0...domNode.childNodes.length]
         check(domNode.childNodes[i], pathNode.children[i])
 
-addPathNodes = (node, parent, mutationEvent, reparented) ->
-    if node.__pathNode?
-        oldPathNode = node.__pathNode
+addPathNodes = (node, parent) ->
     pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
-    node.__pathNode = pathNode
-    node.__mutationEvent = mutationEvent
-    if oldPathNode?
-        reparented[pathNode.id] = oldPathNode
+    if not node.__pathNodes?
+        node.__pathNodes = []
+    node.__pathNodes.push pathNode
     for child in node.childNodes
-        pathNode.children.push(addPathNodes(child, pathNode, mutationEvent, reparented))
+        pathNode.children.push(addPathNodes(child, pathNode))
     return pathNode
-    
+
 handleMutations = (mutations) ->
     if !_doc?
         return
     idmap = []
-    root._mutationEvent += 1
     reparented = {}
     removed = []
     for mutation in mutations
         if mutation.type == "attributes"
-            path = util.getJsonMLPathFromPathNode mutation.target.__pathNode
+            path = util.getJsonMLPathFromPathNode util.getPathNode(mutation.target)
             path.push 1
             path.push mutation.attributeName
-            op = {p:path, oi:$(mutation.target).attr(mutation.attributeName)}
+            value = $(mutation.target).attr(mutation.attributeName)
+            if not value?
+                value = ""
+            op = {p:path, oi:value}
             root._context.submitOp op
         else if mutation.type == "characterData"
-            changedPath = util.getJsonMLPathFromPathNode mutation.target.__pathNode
+            changedPath = util.getJsonMLPathFromPathNode util.getPathNode(mutation.target)
             oldText = mutation.oldValue
             newText = mutation.target.data
             if elementAtPath(_doc.getSnapshot(), changedPath) != oldText
@@ -62,34 +65,39 @@ handleMutations = (mutations) ->
             root._context.submitOp op
         else if mutation.type == "childList"
             for added in mutation.addedNodes
-                if added.__mutationEvent == root._mutationEvent
-                    continue
+                if added.__pathNodes? and added.__pathNodes.length > 0
+                    addedPathNode = util.getPathNode(added, mutation.target)
+                    targetPathNode = util.getPathNode(mutation.target)
+                    if targetPathNode.id == addedPathNode.parent.id
+                        continue    
                 #add to pathTree
-                newPathNode = addPathNodes added, mutation.target.__pathNode, root._mutationEvent, reparented
+                newPathNode = addPathNodes added, util.getPathNode(mutation.target)
+                targetPathNode = util.getPathNode(mutation.target)
                 if mutation.previousSibling?
-                    siblingPathNode = mutation.previousSibling.__pathNode
-                    prevSiblingIndex = mutation.target.__pathNode.children.indexOf siblingPathNode
-                    mutation.target.__pathNode.children = (mutation.target.__pathNode.children[0..prevSiblingIndex].concat [newPathNode]).concat mutation.target.__pathNode.children[prevSiblingIndex+1...mutation.target.__pathNode.children.length]
+                    siblingPathNode = util.getPathNode(mutation.previousSibling, mutation.target)
+                    prevSiblingIndex = targetPathNode.children.indexOf siblingPathNode
+                    targetPathNode.children = (targetPathNode.children[0..prevSiblingIndex].concat [newPathNode]).concat targetPathNode.children[prevSiblingIndex+1...targetPathNode.children.length]
                 else if mutation.nextSibling?
-                    mutation.target.__pathNode.children = [newPathNode].concat mutation.target.__pathNode.children
+                    targetPathNode.children = [newPathNode].concat targetPathNode.children
                 else
-                    mutation.target.__pathNode.children.push newPathNode
-                insertPath = util.getJsonMLPathFromPathNode added.__pathNode
+                    targetPathNode.children.push newPathNode
+                insertPath = util.getJsonMLPathFromPathNode util.getPathNode(added, mutation.target)
                 op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
                 root._context.submitOp op
             for removed in mutation.removedNodes
-                if reparented[removed.__pathNode.id]? 
-                    pathNode = reparented[removed.__pathNode.id]
-                    reparented[removed.__pathNode.id] = null
-                else 
-                    pathNode = removed.__pathNode
+                pathNode = util.getPathNode(removed, mutation.target)
+                #if not pathNode?
+                #    continue
+                targetPathNode = util.getPathNode(mutation.target)
                 path = util.getJsonMLPathFromPathNode pathNode
                 element = elementAtPath(_doc.getSnapshot(), path)
                 op = {p:path , ld:element}
                 root._context.submitOp op
                 #Remove from pathTree
-                childIndex = mutation.target.__pathNode.children.indexOf pathNode
-                mutation.target.__pathNode.children.splice childIndex, 1
+                childIndex = targetPathNode.children.indexOf pathNode
+                targetPathNode.children.splice childIndex, 1
+                util.removePathNodes removed, targetPathNode
+                
     check(_rootDiv, pathTree)
 
 loadDocIntoDOM = (doc, targetDiv) ->
@@ -110,7 +118,6 @@ loadDocIntoDOM = (doc, targetDiv) ->
         
         _observer.observe root._rootDiv, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true }
     
-    root._mutationEvent = 0
     root._observer = new MutationObserver handleMutations
     root._observer.observe root._rootDiv, { childList: true, subtree: true, attributes: true, characterData: true, attributeOldValue: true, characterDataOldValue: true }
     

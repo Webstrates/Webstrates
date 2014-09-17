@@ -93,18 +93,21 @@ insert = (element, relativePath, actualPath, value) ->
             element[0].appendChild(html[0])
         else
             element.append(html)
-        newPathNode = util.createPathTree html[0], element[0].__pathNode
+        parentPathNode = util.getPathNode(element[0])
+        newPathNode = util.createPathTree html[0], parentPathNode 
        
-        siblings= element[0].__pathNode.children
-        element[0].__pathNode.children = (siblings[0...relativePath[0]].concat [newPathNode]).concat siblings[relativePath[0]...siblings.length]
+        siblings = parentPathNode.children
+        parentPathNode.children = (siblings[0...relativePath[0]].concat [newPathNode]).concat siblings[relativePath[0]...siblings.length]
         
 deleteNode = (element, path) ->
     if path.length > 1
         deleteNode element.contents().eq(path[0]), path[1..path.length]
     if path.length == 1
         toRemove = element.contents().eq(path[0])
-        childIndex = element[0].__pathNode.children.indexOf toRemove[0].__pathNode
-        element[0].__pathNode.children.splice childIndex, 1
+        parentPathNode = util.getPathNode element[0]
+        toRemovePathNode = util.getPathNode toRemove[0], parentPathNode
+        childIndex = parentPathNode.children.indexOf toRemovePathNode 
+        parentPathNode.children.splice childIndex, 1
         toRemove.remove()
         
 reorder = (element, path, index) ->
