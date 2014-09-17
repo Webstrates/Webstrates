@@ -61,20 +61,20 @@ insertInText = (element, path, charIndex, value) ->
         insertInText element.contents().eq(path[0]), path[1..path.length], charIndex, value
     else
         textNode = element.contents().eq(path[0])[0]
-        oldString = textNode.wholeText
+        oldString = textNode.data
         newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex, oldString.length)
-        textNode.replaceWholeText newString
+        textNode.data = newString
         
 deleteInText = (element, path, charIndex, value) ->
     if path.length > 1
         deleteInText element.contents().eq(path[0]), path[1..path.length], charIndex, value
     else
         textNode = element.contents().eq(path[0])[0]
-        oldString = textNode.wholeText
+        oldString = textNode.data
         newString = oldString.substring(0, charIndex) + oldString.substring(charIndex + value.length, oldString.length)
         if newString.length == 0 #Hack to avoid that the browser removes the empty text node
             newString = '&nbsp;'
-        textNode.replaceWholeText newString
+        textNode.data = newString
         
 setAttribute = (element, path, value) ->
     if path.length > 1
