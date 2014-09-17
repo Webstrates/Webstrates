@@ -13,6 +13,9 @@
     "browserchannel": "^2.0.0",
     "express": "^4.8.0",
     "livedb": "^0.4.4",
+    "livedb-mongo": "^0.4.1",
+    "optimist": "^0.6.1",
+    "serve-static": "^1.6.2",
     "share": "^0.7.0"
   }
 }
