@@ -94,7 +94,7 @@ insert = (element, relativePath, actualPath, value) ->
         else
             element.append(html)
         parentPathNode = util.getPathNode(element[0])
-        newPathNode = util.createPathTree html[0], parentPathNode 
+        newPathNode = util.createPathTree html[0], parentPathNode, true
        
         siblings = parentPathNode.children
         parentPathNode.children = (siblings[0...relativePath[0]].concat [newPathNode]).concat siblings[relativePath[0]...siblings.length]

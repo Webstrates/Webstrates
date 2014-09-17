@@ -45,13 +45,17 @@ root.util.getJsonMLPathFromPathNode = (node) ->
                 break
             childIndex += 1
         return util.getJsonMLPathFromPathNode(node.parent).concat [childIndex]
-        
-root.util.createPathTree = (node, parent=null, mutationEvent=-1) ->
+
+root.util.createPathTree = (node, parent, overwrite=false) ->
     pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
-    node.__pathNodes = [pathNode]
-    node.__mutationEvent = mutationEvent
+    if overwrite
+        node.__pathNodes = [pathNode]
+    else
+        if not node.__pathNodes?
+            node.__pathNodes = []
+        node.__pathNodes.push pathNode
     for child in node.childNodes
-        pathNode.children.push(util.createPathTree(child, pathNode, mutationEvent))
+        pathNode.children.push(util.createPathTree(child, pathNode, overwrite))
     return pathNode
     
 root.util.getPathNode = (elem, parentElem) ->

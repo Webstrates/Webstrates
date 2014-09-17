@@ -29,15 +29,6 @@ check = (domNode, pathNode) ->
     for i in [0...domNode.childNodes.length]
         check(domNode.childNodes[i], pathNode.children[i])
 
-addPathNodes = (node, parent) ->
-    pathNode = {id: util.generateUUID(), children: [], parent: parent, DOMNode: node}
-    if not node.__pathNodes?
-        node.__pathNodes = []
-    node.__pathNodes.push pathNode
-    for child in node.childNodes
-        pathNode.children.push(addPathNodes(child, pathNode))
-    return pathNode
-
 handleMutations = (mutations) ->
     if !_doc?
         return
@@ -71,7 +62,7 @@ handleMutations = (mutations) ->
                     if targetPathNode.id == addedPathNode.parent.id
                         continue    
                 #add to pathTree
-                newPathNode = addPathNodes added, util.getPathNode(mutation.target)
+                newPathNode = util.createPathTree added, util.getPathNode(mutation.target)
                 targetPathNode = util.getPathNode(mutation.target)
                 if mutation.previousSibling?
                     siblingPathNode = util.getPathNode(mutation.previousSibling, mutation.target)
@@ -105,7 +96,7 @@ loadDocIntoDOM = (doc, targetDiv) ->
     targetDiv.appendChild($.jqml(doc.getSnapshot())[0])
     
     root._rootDiv = rootDiv = $(targetDiv).children()[0]
-    root.pathTree = util.createPathTree _rootDiv
+    root.pathTree = util.createPathTree _rootDiv, null, true
     
     root.dmp = new diff_match_patch()
 

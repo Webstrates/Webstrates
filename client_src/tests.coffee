@@ -17,7 +17,6 @@ load = () ->
     openDoc "test" + new Date().getTime(), $('#testfixture').get(0), (error, doc, div) ->
         root._testdoc = doc
         root._rootDiv = $(div)
-        root.pathTree = util.createPathTree _rootDiv[0]
         ok not error?, "No errors when loading document"
         root._testContext = doc.createContext()
         start()
