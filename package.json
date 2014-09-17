@@ -1,11 +1,11 @@
 {
   "name": "webstrate",
   "version": "0.0.1",
-  "description": "A web-based substrate for instrumental interaction",
+  "description": "Webstrate is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrate observes changes to the DOM using MutationObservers.",
   "keywords": [
-    "instrumental interaction",
+    "Operational Transformation",
     "hci",
-    "substrates"
+    "collaborative editing"
   ],
   "homepage": "",
   "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
