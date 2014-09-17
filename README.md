@@ -1,7 +1,7 @@
 Webstrate
 =========
 
-Webstrate is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareJS](https://github.com/share/ShareJS).
+Webstrate is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareJS](https://github.com/share/ShareJS). Webstrate observes changes through the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
 
 Installation
 ============
