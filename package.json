@@ -8,6 +8,7 @@
     "collaborative editing"
   ],
   "homepage": "",
+  "license": "Apache-2.0",
   "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
   "dependencies": {
     "browserchannel": "^2.0.0",
