@@ -1,4 +1,3 @@
-# This is a little prototype browserchannel wrapper for the session code.
 {Duplex} = require 'stream'
 browserChannel = require('browserchannel').server
 express = require 'express'
@@ -20,13 +19,15 @@ webserver.use(serveStatic("#{__dirname}/html"));
 webserver.use(serveStatic("#{__dirname}/lib"));
 webserver.use(serveStatic(sharejs.scriptsDir));
 
-
 mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
 backend = livedb.client(mongo);
 
 backend.addProjection '_users', 'users', 'json0', {x:true}
 
 share = sharejs.server.createClient {backend}
+
+share.use (request, next) ->
+    next()
 
 webserver.get '/:id', (req, res) ->
     if req.params.id.length > 0
