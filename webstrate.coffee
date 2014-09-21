@@ -7,17 +7,24 @@ livedbMongo = require 'livedb-mongo'
 serveStatic = require 'serve-static'
 ot = require 'livedb/lib/ot'
 jsxml= require 'jsxml'
+auth = require 'http-auth'
 
 try
   require 'heapdump'
 
 sharejs = require 'share'
 
+basic = auth.basic {
+        realm: "Webstrate"
+    }, (username, password, callback) ->
+        callback username == "webstrate" and password == "webstrate"
+
 webserver = express()
 
-webserver.use(serveStatic("#{__dirname}/html"));
-webserver.use(serveStatic("#{__dirname}/lib"));
-webserver.use(serveStatic(sharejs.scriptsDir));
+webserver.use(serveStatic("#{__dirname}/html"))
+webserver.use(serveStatic("#{__dirname}/lib"))
+webserver.use(serveStatic(sharejs.scriptsDir))
+webserver.use(auth.connect(basic))
 
 mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
 backend = livedb.client(mongo);
@@ -47,7 +54,7 @@ webserver.get '/:id', (req, res) ->
             else
                 res.send ""
         else
-            res.sendfile(__dirname+'/html/_client.html')
+            res.sendFile(__dirname+'/html/_client.html')
     else
         res.send("Please provide a document id!")
 
