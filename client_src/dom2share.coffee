@@ -61,11 +61,8 @@ class root.DOM2Share
         @context.destroy()
         
     handleMutations: (mutations) ->
-        if !@doc?
+        if not @doc?
             return
-        idmap = []
-        reparented = {}
-        removed = []
         for mutation in mutations
             if mutation.type == "attributes"
                 path = util.getJsonMLPathFromPathNode util.getPathNode(mutation.target)
