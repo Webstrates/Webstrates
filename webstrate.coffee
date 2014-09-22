@@ -42,7 +42,7 @@ webserver.get '/new', (req, res) ->
         webstrateId = shortId.generate()
         backend.fetch 'webstrates', req.query.prototype, (err, prototypeSnapshot) ->
             if req.query.v?
-                if prototypeSnapshot.v < req.query.v
+                if not req.query.v? or Number(prototypeSnapshot.v) < Number(req.query.v) or Number(req.query.v) == 0
                     version = prototypeSnapshot.v
                 else
                     version = req.query.v
@@ -80,7 +80,10 @@ webserver.get '/:id', (req, res) ->
         else
             res.sendFile __dirname+'/html/_client.html'
     else
-        res.send __dirname+'/html/index.html'
+        res.redirect '/frontpage'
+        
+webserver.get '/', (req, res) ->
+    res.redirect '/frontpage'
 
 ###
 share.use 'validate', (req, callback) ->
