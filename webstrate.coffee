@@ -8,6 +8,7 @@ serveStatic = require 'serve-static'
 ot = require 'livedb/lib/ot'
 jsxml= require 'jsxml'
 auth = require 'http-auth'
+shortId = require 'shortid'
 
 try
   require 'heapdump'
@@ -36,6 +37,9 @@ share = sharejs.server.createClient {backend}
 share.use (request, next) ->
     next()
 
+webserver.get '/new', (req, res) ->
+    res.redirect '/' + shortId.generate()
+
 webserver.get '/:id', (req, res) ->
     if req.params.id.length > 0
         if req.query.v?
@@ -54,9 +58,9 @@ webserver.get '/:id', (req, res) ->
             else
                 res.send ""
         else
-            res.sendFile(__dirname+'/html/_client.html')
+            res.sendFile __dirname+'/html/_client.html'
     else
-        res.send("Please provide a document id!")
+        res.send __dirname+'/html/index.html'
 
 ###
 share.use 'validate', (req, callback) ->
