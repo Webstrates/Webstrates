@@ -23,7 +23,7 @@ $(document).ready () =>
     socket = new BCSocket null, {reconnect: true}
     window._sjs = new sharejs.Connection socket
     
-    doc = _sjs.get 'docs', sharejsDoc 
+    doc = _sjs.get 'webstrates', sharejsDoc 
     
     doc.subscribe()
     $(document).empty()

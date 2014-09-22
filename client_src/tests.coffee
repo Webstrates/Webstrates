@@ -34,7 +34,7 @@ load = () ->
     socket = new BCSocket null, {reconnect: true}
     root._sjs = new sharejs.Connection socket
     
-    doc = _sjs.get 'docs', "test" + new Date().getTime() 
+    doc = _sjs.get 'webstrates', "test" + new Date().getTime() 
     
     doc.subscribe()
     doc.whenReady () ->

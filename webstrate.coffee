@@ -44,11 +44,11 @@ webserver.get '/:id', (req, res) ->
     if req.params.id.length > 0
         if req.query.v?
             if Number(req.query.v) > 0
-                backend.fetch 'docs', req.params.id, (err, snapshot) ->
+                backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
                     if snapshot.v < req.query.v
                         res.send "'" + req.params.id + "' does not exist in version " + req.query.v + ". Highest version is " + snapshot.v + ".", 404
                     else
-                        backend.getOps 'docs', req.params.id, 0, Number(req.query.v), (err, ops) ->
+                        backend.getOps 'webstrates', req.params.id, 0, Number(req.query.v), (err, ops) ->
                             ops.sort (a,b) ->
                                 return a.v - b.v
                             data = {v:0}
