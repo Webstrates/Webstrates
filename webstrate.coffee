@@ -46,13 +46,13 @@ webserver.get '/new', (req, res) ->
                     version = prototypeSnapshot.v
                 else
                     version = req.query.v
-                backend.getOps 'webstrates', req.params.id, 0, Number(version), (err, ops) ->
+                backend.getOps 'webstrates', req.query.prototype, 0, Number(version), (err, ops) ->
                     ops.sort (a,b) ->
                         return a.v - b.v
                     data = {v:0}
                     for op in ops
                         ot.apply data, op
-                    backend.submit 'webstrates', webstrateId, {v:0, create:{type:'json0', data:prototypeSnapshot.data}}, (err) ->
+                    backend.submit 'webstrates', webstrateId, {v:0, create:{type:'json0', data:data.data}}, (err) ->
                             res.redirect '/' + webstrateId
             else
                 backend.submit 'webstrates', webstrateId, {v:0, create:{type:'json0', data:prototypeSnapshot.data}}, (err) ->
