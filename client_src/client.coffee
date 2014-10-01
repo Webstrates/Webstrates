@@ -19,7 +19,7 @@ $(document).ready () =>
     document.title = "Webstrate - " + sharejsDoc
     if sharejsDoc.length == 0
         throw "Error: No document id provided"
-    wshost = 'ws://' + window.location.host
+    wshost = 'ws://' + window.location.host + '/ws/'
     ws = new WebSocket wshost
     window._sjs = new sharejs.Connection ws
     
