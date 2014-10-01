@@ -19,9 +19,9 @@ $(document).ready () =>
     document.title = "Webstrate - " + sharejsDoc
     if sharejsDoc.length == 0
         throw "Error: No document id provided"
-    
-    socket = new BCSocket null, {reconnect: true}
-    window._sjs = new sharejs.Connection socket
+    wshost = 'ws://' + window.location.host
+    ws = new WebSocket wshost
+    window._sjs = new sharejs.Connection ws
     
     doc = _sjs.get 'webstrates', sharejsDoc 
     

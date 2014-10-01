@@ -20,6 +20,7 @@
     "optimist": "^0.6.1",
     "serve-static": "^1.6.2",
     "share": "^0.7.0",
-    "shortid": "^2.0.1"
+    "shortid": "^2.0.1",
+    "ws": "^0.4.32"
   }
 }

@@ -1,5 +1,5 @@
 {Duplex} = require 'stream'
-browserChannel = require('browserchannel').server
+#browserChannel = require('browserchannel').server
 express = require 'express'
 argv = require('optimist').argv
 livedb = require('livedb')
@@ -9,6 +9,8 @@ ot = require 'livedb/lib/ot'
 jsxml= require 'jsxml'
 auth = require 'http-auth'
 shortId = require 'shortid'
+WebSocketServer = require('ws').Server
+http = require 'http'
 
 try
   require 'heapdump'
@@ -20,12 +22,14 @@ basic = auth.basic {
     }, (username, password, callback) ->
         callback username == "webstrate" and password == "webstrate"
 
-webserver = express()
+app = express()
+app.server = http.createServer app
+wss = new WebSocketServer {server: app.server}
 
-webserver.use(serveStatic("#{__dirname}/html"))
-webserver.use(serveStatic("#{__dirname}/lib"))
-webserver.use(serveStatic(sharejs.scriptsDir))
-webserver.use(auth.connect(basic))
+app.use(serveStatic("#{__dirname}/html"))
+app.use(serveStatic("#{__dirname}/lib"))
+app.use(serveStatic(sharejs.scriptsDir))
+app.use(auth.connect(basic))
 
 mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
 backend = livedb.client(mongo);
@@ -37,7 +41,7 @@ share = sharejs.server.createClient {backend}
 share.use (request, next) ->
     next()
 
-webserver.get '/new', (req, res) ->
+app.get '/new', (req, res) ->
     if req.query.prototype?
         webstrateId = shortId.generate()
         backend.fetch 'webstrates', req.query.prototype, (err, prototypeSnapshot) ->
@@ -60,7 +64,7 @@ webserver.get '/new', (req, res) ->
     else
         res.redirect '/' + shortId.generate()
 
-webserver.get '/:id', (req, res) ->
+app.get '/:id', (req, res) ->
     if req.params.id.length > 0
         if req.query.v?
             if Number(req.query.v) > 0
@@ -82,7 +86,7 @@ webserver.get '/:id', (req, res) ->
     else
         res.redirect '/frontpage'
         
-webserver.get '/', (req, res) ->
+app.get '/', (req, res) ->
     res.redirect '/frontpage'
 
 ###
@@ -95,35 +99,31 @@ share.use 'connect', (req, callback) ->
   callback()
 ###
 
-numClients = 0
-
-webserver.use browserChannel {webserver, sessionTimeoutInterval:5000}, (client) ->
-  numClients++
+wss.on 'connection', (client) ->
   stream = new Duplex objectMode:yes
   stream._write = (chunk, encoding, callback) ->
-    #console.log 's->c ', JSON.stringify(chunk)
-    if client.state isnt 'closed' # silently drop messages after the session is closed
-      client.send chunk
+    console.log 's->c ', chunk
+    client.send JSON.stringify chunk
     callback()
 
   stream._read = -> # Ignore. You can't control the information, man!
 
-  stream.headers = client.headers
-  stream.remoteAddress = stream.address
+  stream.headers = client.upgradeReq.headers
+  stream.remoteAddress = client.upgradeReq.connection.remoteAddress
 
   client.on 'message', (data) ->
-    #console.log 'c->s ', JSON.stringify(data)
-    stream.push data
+    console.log 'c->s ', data
+    stream.push JSON.parse data
 
   stream.on 'error', (msg) ->
-    client.stop()
+    client.close msg
 
   client.on 'close', (reason) ->
     stream.push null
     stream.emit 'close'
 
-    numClients--
-    console.log 'client went away', numClients
+    console.log 'client went away'
+    client.close reason
 
   stream.on 'end', ->
     client.close()
@@ -131,8 +131,6 @@ webserver.use browserChannel {webserver, sessionTimeoutInterval:5000}, (client) 
   # ... and give the stream to ShareJS.
   share.listen stream
 
-webserver.use '/doc', share.rest()
-
 port = argv.p or 7007
-webserver.listen port
+app.server.listen port
 console.log "Listening on http://localhost:#{port}/"
