@@ -1,5 +1,4 @@
 {Duplex} = require 'stream'
-#browserChannel = require('browserchannel').server
 express = require 'express'
 argv = require('optimist').argv
 livedb = require('livedb')
@@ -102,7 +101,6 @@ share.use 'connect', (req, callback) ->
 wss.on 'connection', (client) ->
   stream = new Duplex objectMode:yes
   stream._write = (chunk, encoding, callback) ->
-    console.log 's->c ', chunk
     client.send JSON.stringify chunk
     callback()
 
@@ -112,7 +110,6 @@ wss.on 'connection', (client) ->
   stream.remoteAddress = client.upgradeReq.connection.remoteAddress
 
   client.on 'message', (data) ->
-    console.log 'c->s ', data
     stream.push JSON.parse data
 
   stream.on 'error', (msg) ->
