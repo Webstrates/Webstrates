@@ -31,9 +31,10 @@ load = () ->
     stop()
     $('body').append('<div id="testfixture"></div>')
     
-    socket = new BCSocket null, {reconnect: true}
-    root._sjs = new sharejs.Connection socket
-    
+    wshost = 'ws://' + window.location.host + '/ws/'
+    ws = new WebSocket wshost
+    root._sjs = new sharejs.Connection ws
+        
     doc = _sjs.get 'webstrates', "test" + new Date().getTime() 
     
     doc.subscribe()
