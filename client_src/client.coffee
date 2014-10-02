@@ -20,7 +20,7 @@ $(document).ready () =>
     if sharejsDoc.length == 0
         throw "Error: No document id provided"
     wshost = 'ws://' + window.location.host + '/ws/'
-    ws = new WebSocket wshost
+    ws = new ReconnectingWebSocket wshost
     window._sjs = new sharejs.Connection ws
     
     doc = _sjs.get 'webstrates', sharejsDoc 
