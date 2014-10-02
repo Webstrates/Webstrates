@@ -101,7 +101,10 @@ share.use 'connect', (req, callback) ->
 wss.on 'connection', (client) ->
   stream = new Duplex objectMode:yes
   stream._write = (chunk, encoding, callback) ->
-    client.send JSON.stringify chunk
+    try
+        client.send JSON.stringify chunk
+    catch error
+        console.log error
     callback()
 
   stream._read = -> # Ignore. You can't control the information, man!
@@ -113,17 +116,26 @@ wss.on 'connection', (client) ->
     stream.push JSON.parse data
 
   stream.on 'error', (msg) ->
-    client.close msg
+    try
+        client.close msg
+    catch error
+        console.log error
 
   client.on 'close', (reason) ->
     stream.push null
     stream.emit 'close'
 
     console.log 'client went away'
-    client.close reason
+    try
+        client.close reason
+    catch error
+        console.log error
 
   stream.on 'end', ->
-    client.close()
+    try
+        client.close()
+    catch error
+        console.log error
 
   # ... and give the stream to ShareJS.
   share.listen stream
