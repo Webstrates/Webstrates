@@ -81,6 +81,7 @@ app.get '/:id', (req, res) ->
             else
                 res.send ""
         else
+            res.setHeader("Location", '/' + req.params.id)
             res.sendFile __dirname+'/html/_client.html'
     else
         res.redirect '/frontpage'
