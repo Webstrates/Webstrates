@@ -141,6 +141,8 @@ wss.on 'connection', (client) ->
   # ... and give the stream to ShareJS.
   share.listen stream
 
+app.use '/_share', share.rest()
+
 port = argv.p or 7007
 app.server.listen port
 console.log "Listening on http://localhost:#{port}/"
