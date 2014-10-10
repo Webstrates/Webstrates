@@ -42,7 +42,10 @@ share.use (request, next) ->
 
 app.get '/new', (req, res) ->
     if req.query.prototype?
-        webstrateId = shortId.generate()
+        if req.query.id?
+            webstrateId = req.query.id
+        else
+            webstrateId = shortId.generate()
         backend.fetch 'webstrates', req.query.prototype, (err, prototypeSnapshot) ->
             if req.query.v?
                 if not req.query.v? or Number(prototypeSnapshot.v) < Number(req.query.v) or Number(req.query.v) == 0
@@ -56,10 +59,18 @@ app.get '/new', (req, res) ->
                     for op in ops
                         ot.apply data, op
                     backend.submit 'webstrates', webstrateId, {v:0, create:{type:'json0', data:data.data}}, (err) ->
-                            res.redirect '/' + webstrateId
+                            console.log err
+                            if err?
+                                res.status(409).send("Webstrate already exsist")
+                            else
+                                res.redirect '/' + webstrateId
             else
                 backend.submit 'webstrates', webstrateId, {v:0, create:{type:'json0', data:prototypeSnapshot.data}}, (err) ->
-                    res.redirect '/' + webstrateId
+                    console.log err
+                    if err?
+                        res.status(409).send("Webstrate already exsist")
+                    else
+                        res.redirect '/' + webstrateId
     else
         res.redirect '/' + shortId.generate()
 
