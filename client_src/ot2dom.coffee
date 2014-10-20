@@ -64,6 +64,8 @@ insertInText = (element, path, charIndex, value) ->
         oldString = textNode.data
         newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex, oldString.length)
         textNode.data = newString
+        event = new CustomEvent "insertText", {detail: {position: charIndex, value: value}}
+        textNode.dispatchEvent event
         
 deleteInText = (element, path, charIndex, value) ->
     if path.length > 1
@@ -75,6 +77,9 @@ deleteInText = (element, path, charIndex, value) ->
         if newString.length == 0 #Hack to avoid that the browser removes the empty text node
             newString = ''
         textNode.data = newString
+        event = new CustomEvent "deleteText", {detail: {position: charIndex, value: value}}
+        textNode.dispatchEvent event
+        
         
 setAttribute = (element, path, value) ->
     if path.length > 1

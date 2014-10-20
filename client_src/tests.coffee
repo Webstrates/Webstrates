@@ -249,15 +249,26 @@ module "ot to DOM", {setup: createTestFixture, teardown: removeTestFixture}
 
 test "Insert character in characterData", () ->
     $('#testfixture').append "Hello world!"
+    stop()
+    
+    $('#testfixture').contents()[0].addEventListener "insertText", (e) ->
+         start()
+         ok $('#testfixture').contents()[0].wholeText == "Hello, world!", "The new text was 'Hello, world!'"
+         ok e.detail.position == 5, "Position of insert is 5"
+         ok e.detail.value == ",", "Inserted string is ','"
     ot2dom.applyOp {p: [2, 5], si: ","}, $('#testfixture')
-    ok $('#testfixture').contents()[0].wholeText == "Hello, world!", "The new text was 'Hello, world!'"
     
 test "Delete character in characterData", () ->
     $('#testfixture').append "Hello, world!"
+    stop()
+    
+    $('#testfixture').contents()[0].addEventListener "deleteText", (e) ->
+         start()
+         ok $('#testfixture').contents()[0].wholeText == "Hello world!", "The new text was 'Hello world!'"
+         ok e.detail.position == 5, "Position of delete is 5"
+         ok e.detail.value == ",", "Inserted string is ','"
     ot2dom.applyOp {p: [2, 5], sd: ","}, $('#testfixture')
-    console.log $('#testfixture').contents()[0].wholeText
-    ok $('#testfixture').contents()[0].wholeText == "Hello world!", "The new text was 'Hello world!'"
-
+    
 module "DOM to JSON", {setup: load, teardown: close}
 
 test "Load a new document", () ->
