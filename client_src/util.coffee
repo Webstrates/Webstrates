@@ -97,6 +97,7 @@ root.util.removePathNode = (pathNode) ->
     for child in pathNode.children
         util.removePathNode child
     pathNode.children = null
+    pathNode.DOMNode = null
     
 #Checks consistency between a DOM tree and a pathTree        
 root.util.check = (domNode, pathNode) ->
