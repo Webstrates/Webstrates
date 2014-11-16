@@ -64,8 +64,11 @@ class root.DOM2Share
         if not @doc?
             return
         for mutation in mutations
+            targetPathNode = util.getPathNode(mutation.target)
+            if not targetPathNode?
+                continue
             if mutation.type == "attributes"
-                path = util.getJsonMLPathFromPathNode util.getPathNode(mutation.target)
+                path = util.getJsonMLPathFromPathNode targetPathNode
                 path.push 1
                 path.push mutation.attributeName
                 value = $(mutation.target).attr(mutation.attributeName)
@@ -74,7 +77,7 @@ class root.DOM2Share
                 op = {p:path, oi:value}
                 @context.submitOp op
             else if mutation.type == "characterData"
-                changedPath = util.getJsonMLPathFromPathNode util.getPathNode(mutation.target)
+                changedPath = util.getJsonMLPathFromPathNode targetPathNode
                 oldText = mutation.oldValue
                 newText = mutation.target.data
                 if util.elementAtPath(@context.getSnapshot(), changedPath) != oldText
@@ -87,12 +90,10 @@ class root.DOM2Share
                     #Check if this node already has been added (e.g. together with its parent)
                     if added.__pathNodes? and added.__pathNodes.length > 0
                         addedPathNode = util.getPathNode(added, mutation.target)
-                        targetPathNode = util.getPathNode(mutation.target)
                         if targetPathNode.id == addedPathNode.parent.id
                             continue    
                     #Add the new node to the path tree
-                    newPathNode = util.createPathTree added, util.getPathNode(mutation.target)
-                    targetPathNode = util.getPathNode(mutation.target)
+                    newPathNode = util.createPathTree added, targetPathNode
                     if mutation.previousSibling?
                         siblingPathNode = util.getPathNode(mutation.previousSibling, mutation.target)
                         prevSiblingIndex = targetPathNode.children.indexOf siblingPathNode
@@ -105,17 +106,16 @@ class root.DOM2Share
                     op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
                     @context.submitOp op
                 for removed in mutation.removedNodes
-                    pathNode = util.getPathNode(removed, mutation.target)
-                    #if not pathNode?
-                    #    continue
-                    targetPathNode = util.getPathNode(mutation.target)
-                    path = util.getJsonMLPathFromPathNode pathNode
+                    removedPathNode = util.getPathNode(removed, mutation.target)
+                    if not removedPathNode?
+                        continue
+                    path = util.getJsonMLPathFromPathNode removedPathNode
                     element = util.elementAtPath(@context.getSnapshot(), path)
                     op = {p:path , ld:element}
                     @context.submitOp op
                     #Remove from pathTree
-                    childIndex = targetPathNode.children.indexOf pathNode
-                    targetPathNode.children.splice childIndex, 1
-                    util.removePathNodes removed, targetPathNode
+                    childIndex = removedPathNode.parent.children.indexOf removedPathNode
+                    removedPathNode.parent.children.splice(childIndex, 1)
+                    root.util.removePathNode removedPathNode
                 
         util.check(@rootDiv, @pathTree)

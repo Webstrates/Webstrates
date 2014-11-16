@@ -89,18 +89,15 @@ root.util.getPathNode = (elem, parentElem) ->
         return elem.__pathNodes[elem.__pathNodes.length - 1]
     return null
 
-#Cleans up a DOM element for pathnodes in the subtree of the given parent path node
-root.util.removePathNodes = (elem, parentPathNode) ->
-    if not elem.__pathNodes?
-        return
-    for pathNode in elem.__pathNodes
-        if pathNode.parent.id == parentPathNode.id
-            toRemove = pathNode
-    if toRemove?
-        elem.__pathNodes.splice (elem.__pathNodes.indexOf toRemove), 1
-    for child in elem.childNodes
-        util.removePathNodes child, toRemove 
-
+#Cleans up the DOM tree associated from a given pathNode
+root.util.removePathNode = (pathNode) ->
+    pathNode.parent = null
+    #Remove from DOMNode
+    pathNode.DOMNode.__pathNodes.splice (pathNode.DOMNode.__pathNodes.indexOf pathNode), 1
+    for child in pathNode.children
+        util.removePathNode child
+    pathNode.children = null
+    
 #Checks consistency between a DOM tree and a pathTree        
 root.util.check = (domNode, pathNode) ->
     if domNode instanceof jQuery
