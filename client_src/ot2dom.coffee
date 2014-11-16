@@ -17,44 +17,40 @@ limitations under the License.
 root = exports ? window
 root.ot2dom = {}
 
-applyOp = (op, div) ->
+applyOp = (op, element) ->
     path = op.p
-    htmlPath = []
+    domPath = []
     attributePath = false
-    #TODO: Refactor and document code below
+    #First convert from json path to domPath
     if path.length > 0
-        if op.si? or op.sd?
-            charIndex = op.p.pop()
-        if typeof path[path.length-1] == 'string' #attribute change
+        if op.si? or op.sd? #Its a string manipulation
+            charIndex = op.p.pop() 
+        if typeof path[path.length-1] == 'string' #its an attribute path
             attributePath = true
             if path.length > 2
                 for index in op.p[0..path.length-3]
-                    htmlPath.push index-2
-                htmlPath.push path[path.length-1]
+                    domPath.push index-2
+                domPath.push path[path.length-1]
             else
-                htmlPath.push(path[1])
+                domPath.push(path[1])
         else
             for index in op.p
-                htmlPath.push index-2
+                domPath.push index-2
     if op.oi? #object insertion
         if attributePath
-            setAttribute $(div), htmlPath, op.oi
+            setAttribute $(element), domPath, op.oi
     if op.li? #list insertion
         if not attributePath
-            insert $(div), htmlPath, htmlPath, op.li
+            insert $(element), domPath, domPath, op.li
     if op.ld? #list deletion
         if not attributePath
-            deleteNode $(div), htmlPath
-    if op.lm? #list rearrangement
-        throw "op.lm not currently supported!"
-        #if not attributePath
-        #    reorder $(div), htmlPath, op.lm-2
+            deleteNode $(element), domPath
     if op.si? #String insertion
         if not attributePath
-            insertInText $(div), htmlPath, charIndex, op.si
+            insertInText $(element), domPath, charIndex, op.si
     if op.sd? #String deletion
         if not attributePath
-            deleteInText $(div), htmlPath, charIndex, op.sd
+            deleteInText $(element), domPath, charIndex, op.sd
             
 insertInText = (element, path, charIndex, value) ->
     if path.length > 1
@@ -119,16 +115,4 @@ deleteNode = (element, path) ->
         parentPathNode.children.splice childIndex, 1
         toRemove.remove()
         
-reorder = (element, path, index) ->
-    if path.length > 1
-        reorder element.contents().eq(path[0]), path[1..path.length], index
-    if path.length == 1
-        toMove = element.contents().eq(path[0])
-        target = element.contents().eq(index)
-        if (index < path[0])
-            toMove.insertBefore(target)
-        else
-            toMove.insertAfter(target)
-    #Update path tree
-
 root.ot2dom.applyOp = applyOp
