@@ -31,4 +31,4 @@ $(document).ready () =>
         window.dom2shareInstance = new DOM2Share doc, document, () ->
             event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
             document.dispatchEvent event
-            window.top.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
+            parent.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
