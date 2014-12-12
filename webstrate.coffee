@@ -77,8 +77,8 @@ app.get '/new', (req, res) ->
 app.get '/:id', (req, res) ->
     if req.params.id.length > 0
         if req.query.v?
-            if Number(req.query.v) > 0
-                backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
+            backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
+                if Number(req.query.v) > 0
                     if snapshot.v < req.query.v
                         res.send "'" + req.params.id + "' does not exist in version " + req.query.v + ". Highest version is " + snapshot.v + ".", 404
                     else
@@ -89,8 +89,13 @@ app.get '/:id', (req, res) ->
                             for op in ops
                                 ot.apply data, op
                             res.send jsxml.toXml data.data
-            else
-                res.send ""
+                else if req.query.v == 'head'
+                    res.send jsxml.toXml snapshot.data
+                else if req.query.v == ''
+                    console.log "Snapshot version", snapshot.v
+                    res.send "" + snapshot.v
+                else
+                    res.send "Version must be a number or head"
         else
             res.setHeader("Location", '/' + req.params.id)
             res.sendFile __dirname+'/html/_client.html'
