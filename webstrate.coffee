@@ -20,6 +20,14 @@ try
 
 sharejs = require 'share'
 
+
+MongoClient = require('mongodb').MongoClient
+
+sessionLog = null;
+MongoClient.connect 'mongodb://127.0.0.1:27017/log', (err, db) ->
+    sessionLog = db.collection 'sessionLog'
+    #collection.insert({a:2}, function(err, docs) {
+
 basic = auth.basic {
         realm: "Webstrate"
     }, (username, password, callback) ->
@@ -129,9 +137,11 @@ share.use (request, next) ->
         username = "anonymous"
         provider = ""
     userId = username + ":" + provider
-    console.log request.agent
-    console.log request.agent.sessionId, "was", userId
     if request.action == "connect"
+        logItem = {sessionId: request.agent.sessionId, userId: userId, connectTime: request.agent.connectTime, remoteAddress: request.stream.remoteAddress}
+        sessionLog.insert logItem, (err, db) ->
+            if err
+                throw err
         next()
         return
     if not permissionCache[userId]?
@@ -139,7 +149,10 @@ share.use (request, next) ->
         return
     permissions = permissionCache[userId]
     if request.action in ["fetch", "bulk fetch", "getOps", "query"]
-        requestedWebstrate = request.requests.webstrates[0]
+        if request.docName?
+            requestedWebstrate = request.docName
+        else if request.requests? and request.requests.webstrates[0]?
+            requestedWebstrate = request.requests.webstrates[0]
         if permissions[requestedWebstrate]?
             if permissions[requestedWebstrate].indexOf("r") > -1
                 next()
@@ -194,10 +207,33 @@ app.get '/new', (req, res) ->
     else
         res.redirect '/' + shortId.generate()
 
+getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
+    if snapshot.data? and snapshot.data[0]? and snapshot.data[0] == 'html'
+        if snapshot.data[1]? and snapshot.data[1]['data-auth']?
+            try 
+                authData = JSON.parse snapshot.data[1]['data-auth']
+                for user in authData
+                    if user.username == username && user.provider == provider
+                        return user.permissions
+            catch error
+    return "rw"
+
 app.get '/:id', (req, res) ->
     if req.params.id.length > 0
+        session = req.session
+        if session.passport? and session.passport.user?
+            username = session.passport.user.username
+            provider = session.passport.user.provider
+        else
+            username = "anonymous"
+            provider = ""
+        userId = username+":"+provider
         if req.query.v?
             backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
+                permissions = getPermissionsForWebstrate username, provider, req.params.id, snapshot
+                if permissions.indexOf("r") < 0
+                    res.send "Permission denied"
+                    return
                 if Number(req.query.v) > 0
                     if snapshot.v < req.query.v
                         res.send "'" + req.params.id + "' does not exist in version " + req.query.v + ". Highest version is " + snapshot.v + ".", 404
@@ -216,32 +252,30 @@ app.get '/:id', (req, res) ->
                     res.send "" + snapshot.v
                 else
                     res.send "Version must be a number or head"
+        else if req.query.ops?
+            backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
+                permissions = getPermissionsForWebstrate username, provider, req.params.id, snapshot
+                if permissions.indexOf("r") < 0
+                    res.send "Permission denied"
+                    return
+                backend.getOps 'webstrates', req.params.id, 0, null, (err, ops) ->
+                    sessionsInOps = []
+                    for op in ops
+                        if op.src in sessionsInOps
+                            continue
+                        sessionsInOps.push op.src
+                    userId = sessionLog.find({"sessionId": { $in: sessionsInOps }}).toArray (err, results) ->
+                        for op in ops
+                            for session in results
+                                if op.src == session.sessionId
+                                    op.session = session
+                        res.send ops
         else
-            session = req.session
-            if session.passport? and session.passport.user?
-                username = session.passport.user.username
-                provider = session.passport.user.provider
-            else
-                username = "anonymous"
-                provider = ""
-            userId = username+":"+provider
             if not permissionCache[userId]?
                 permissionCache[userId] = {}
             backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
                 webstrate = req.params.id
-                if snapshot.data? and snapshot.data[0]? and snapshot.data[0] == 'html'
-                    if snapshot.data[1]? and snapshot.data[1]['data-auth']?
-                        try 
-                            authData = JSON.parse snapshot.data[1]['data-auth']
-                            for user in authData
-                                if user.username == username && user.provider == provider
-                                    permissionCache[userId][webstrate] = user.permissions
-                        catch error
-                            permissionCache[userId][webstrate] = "rw"
-                    else
-                        permissionCache[userId][webstrate] = "rw"
-                else 
-                    permissionCache[userId][webstrate] = "rw"
+                permissionCache[userId][webstrate] = getPermissionsForWebstrate username, provider, webstrate, snapshot
                 res.setHeader("Location", '/' + req.params.id)
                 res.sendFile __dirname+'/html/_client.html'
     else
