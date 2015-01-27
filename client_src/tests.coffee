@@ -34,18 +34,20 @@ load = () ->
     wshost = 'ws://' + window.location.host + '/ws/'
     ws = new WebSocket wshost
     root._sjs = new sharejs.Connection ws
-        
-    doc = _sjs.get 'webstrates', "test" + new Date().getTime() 
     
-    doc.subscribe()
-    doc.whenReady () ->
-        root.dom2shareInstance = new DOM2Share doc, $('#testfixture').get(0), (doc, div) ->
-            root._testdoc = doc
-            root._doc = doc
-            root._rootDiv = $(div)
-            ok not error?, "No errors when loading document"
-            root._testContext = doc.createContext()
-            start()
+    testWebstrate = "test" + new Date().getTime() 
+    $.get '/'+testWebstrate, () ->
+        doc = _sjs.get 'webstrates', testWebstrate
+    
+        doc.subscribe()
+        doc.whenReady () ->
+            root.dom2shareInstance = new DOM2Share doc, $('#testfixture').get(0), (doc, div) ->
+                root._testdoc = doc
+                root._doc = doc
+                root._rootDiv = $(div)
+                ok not error?, "No errors when loading document"
+                root._testContext = doc.createContext()
+                start()
         
 close = () ->
     _testContext.destroy()
