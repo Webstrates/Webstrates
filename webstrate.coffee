@@ -38,9 +38,10 @@ config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
 permissionCache = {}
 
 # Passport stuff
+secret = config.auth.secret
 app.use sessions {
     cookieName: 'session',
-    secret: config.auth.secret,
+    secret: secret,
     duration: config.auth.cookieDuration    
 }
 
