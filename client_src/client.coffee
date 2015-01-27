@@ -23,11 +23,17 @@ $(document).ready () =>
     ws = new ReconnectingWebSocket wshost
     window._sjs = new sharejs.Connection ws
     
-    doc = _sjs.get 'webstrates', sharejsDoc 
+    doc = _sjs.get 'webstrates', sharejsDoc
     
     doc.subscribe()
-    $(document).empty()
+    ready = false
+    setTimeout (() ->
+        if not ready
+            $('body').append("Permission denied.")),
+        500
     doc.whenReady () ->
+        $(document).empty()
+        ready = true
         window.dom2shareInstance = new DOM2Share doc, document, () ->
             event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
             document.dispatchEvent event

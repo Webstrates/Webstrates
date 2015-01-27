@@ -10,6 +10,10 @@ auth = require 'http-auth'
 shortId = require 'shortid'
 WebSocketServer = require('ws').Server
 http = require 'http'
+passport = require 'passport'
+GitHubStrategy = require('passport-github').Strategy
+sessions = require "client-sessions"
+fs = require "fs"
 
 try
   require 'heapdump'
@@ -25,10 +29,83 @@ app = express()
 app.server = http.createServer app
 wss = new WebSocketServer {server: app.server}
 
-app.use(serveStatic("#{__dirname}/html"))
-app.use(serveStatic("#{__dirname}/lib"))
-app.use(serveStatic(sharejs.scriptsDir))
+app.use serveStatic("#{__dirname}/html")
+app.use serveStatic("#{__dirname}/lib")
+app.use serveStatic(sharejs.scriptsDir)
 app.use(auth.connect(basic))
+
+config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+permissionCache = {}
+
+# Passport stuff
+app.use sessions {
+    cookieName: 'session',
+    secret: config.auth.secret,
+    duration: config.auth.cookieDuration    
+}
+
+GITHUB_CLIENT_ID = config.auth.providers.github.GITHUB_CLIENT_ID
+GITHUB_CLIENT_SECRET = config.auth.providers.github.GITHUB_CLIENT_SECRET
+callback_url = config.auth.providers.github.callback_url
+
+passport.serializeUser (user, done) ->
+  done null, user
+
+passport.deserializeUser (obj, done) ->
+  done null, obj
+
+passport.use new GitHubStrategy {
+    clientID: GITHUB_CLIENT_ID,
+    clientSecret: GITHUB_CLIENT_SECRET,
+    callbackURL: callback_url
+  },
+  (accessToken, refreshToken, profile, done) ->
+    process.nextTick () ->
+      return done null, profile
+      
+app.use passport.initialize()
+app.use passport.session()
+
+parseCookie = (str, opt) ->
+    opt = opt || {}
+    obj = {}
+    pairs = str.split(/[;,] */)
+    dec = opt.decode || decodeURIComponent;
+ 
+    pairs.forEach (pair) ->
+        eq_idx = pair.indexOf('=')
+ 
+        if eq_idx < 0
+            return
+ 
+        key = pair.substr(0, eq_idx).trim()
+        val = pair.substr(++eq_idx, pair.length).trim();
+ 
+        if '"' == val[0]
+            val = val.slice(1, -1)
+        
+ 
+        if undefined == obj[key]
+            try 
+                obj[key] = dec(val);
+            catch e 
+                obj[key] = val;
+ 
+    return obj
+
+app.get '/auth/github',
+  passport.authenticate('github'),
+  (req, res) ->
+
+app.get '/auth/github/callback', 
+  passport.authenticate('github', { failureRedirect: '/login' }),
+  (req, res) ->
+    res.redirect '/'
+
+app.get '/auth/logout', (req, res) ->
+  req.logout()
+  res.redirect '/'
+  
 
 mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
 backend = livedb.client(mongo);
@@ -37,8 +114,50 @@ backend.addProjection '_users', 'users', 'json0', {x:true}
 
 share = sharejs.server.createClient {backend}
 
+decodeCookie = (cookie) ->
+    if cookie['session']?
+        return sessions.util.decode({cookieName: 'session', secret:secret}, cookie['session']).content;
+    return null
+    
 share.use (request, next) ->
-    next()
+    session = decodeCookie(parseCookie request.agent.stream.headers.cookie)
+    if session.passport? and session.passport.user?
+        provider = session.passport.user.provider
+        username = session.passport.user.username
+    else
+        username = "anonymous"
+        provider = ""
+    userId = username + ":" + provider
+    console.log request.agent
+    console.log request.agent.sessionId, "was", userId
+    if request.action == "connect"
+        next()
+        return
+    if not permissionCache[userId]?
+        next("Forbidden")
+        return
+    permissions = permissionCache[userId]
+    if request.action in ["fetch", "bulk fetch", "getOps", "query"]
+        requestedWebstrate = request.requests.webstrates[0]
+        if permissions[requestedWebstrate]?
+            if permissions[requestedWebstrate].indexOf("r") > -1
+                next()
+                return
+        next('Forbidden')
+    else if request.action == "submit"
+        webstrate = request.docName
+        if permissions[webstrate]?
+            if permissions[webstrate].indexOf("w") > -1
+                next()
+                return
+        next('Forbidden')
+    else if request.action == "delete"
+        next("Forbidden")
+    else
+        next()
+
+app.get '/favicon.ico', (req, res) ->
+    res.send("", 404)
 
 app.get '/new', (req, res) ->
     if req.query.prototype?
@@ -97,8 +216,33 @@ app.get '/:id', (req, res) ->
                 else
                     res.send "Version must be a number or head"
         else
-            res.setHeader("Location", '/' + req.params.id)
-            res.sendFile __dirname+'/html/_client.html'
+            session = req.session
+            if session.passport? and session.passport.user?
+                username = session.passport.user.username
+                provider = session.passport.user.provider
+            else
+                username = "anonymous"
+                provider = ""
+            userId = username+":"+provider
+            if not permissionCache[userId]?
+                permissionCache[userId] = {}
+            backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
+                webstrate = req.params.id
+                if snapshot.data? and snapshot.data[0]? and snapshot.data[0] == 'html'
+                    if snapshot.data[1]? and snapshot.data[1]['data-auth']?
+                        try 
+                            authData = JSON.parse snapshot.data[1]['data-auth']
+                            for user in authData
+                                if user.username == username && user.provider == provider
+                                    permissionCache[userId][webstrate] = user.permissions
+                        catch error
+                            permissionCache[userId][webstrate] = "rw"
+                    else
+                        permissionCache[userId][webstrate] = "rw"
+                else 
+                    permissionCache[userId][webstrate] = "rw"
+                res.setHeader("Location", '/' + req.params.id)
+                res.sendFile __dirname+'/html/_client.html'
     else
         res.redirect '/frontpage'
         
