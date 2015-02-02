@@ -1,7 +1,7 @@
-Webstrate
+Webstrates
 =========
 
-Webstrate is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareJS](https://github.com/share/ShareJS). Webstrate observes changes to the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
+Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareJS](https://github.com/share/ShareJS). Webstrate observes changes to the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
 
 Installation
 ============
@@ -19,15 +19,15 @@ To install:
  
 Usage
 =====
-Webstrate serves (and creates) any named webpage you ask for.<br>
+Webstrates serves (and creates) any named webpage you ask for.<br>
 Simply navigate your browser* to http://localhost:7007/[some_page_name].<br>
 Now any changes you make to the DOM will be persisted and distributed to any other clients that may have the page open.
 
-\* Webstrate is currently only tested to work in Chrome Version 37.0.2062.120 
+\* Webstrates is currently only tested to work in Chrome Version 37.0.2062.120 
 
 Disclaimer
 ==========
-Webstrate is work-in-progress and the mapping between the DOM to a ShareJS document is not 100% water proof yet.
+Webstrates is work-in-progress and the mapping between the DOM to a ShareJS document is not 100% water proof yet.
 After each set of DOM manipulations Webstrate checks the integrity of the mapping between DOM and ShareJS document, and may throw an exception if something is off. If this happens just reload the page.
 
 License
