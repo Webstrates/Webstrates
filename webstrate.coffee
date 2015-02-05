@@ -130,7 +130,7 @@ decodeCookie = (cookie) ->
     
 share.use (request, next) ->
     session = decodeCookie(parseCookie request.agent.stream.headers.cookie)
-    if session.passport? and session.passport.user?
+    if session? and session.passport? and session.passport.user?
         provider = session.passport.user.provider
         username = session.passport.user.username
     else
@@ -221,7 +221,7 @@ getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
 app.get '/:id', (req, res) ->
     if req.params.id.length > 0
         session = req.session
-        if session.passport? and session.passport.user?
+        if session? and session.passport? and session.passport.user?
             username = session.passport.user.username
             provider = session.passport.user.provider
         else
