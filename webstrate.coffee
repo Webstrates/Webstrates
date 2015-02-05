@@ -126,6 +126,8 @@ backend.addProjection '_users', 'users', 'json0', {x:true}
 share = sharejs.server.createClient {backend}
 
 decodeCookie = (cookie) ->
+    if !cookie?
+        return null
     if cookie['session']?
         return sessions.util.decode({cookieName: 'session', secret:secret}, cookie['session']).content;
     return null
