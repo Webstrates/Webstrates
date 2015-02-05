@@ -76,6 +76,8 @@ app.use passport.initialize()
 app.use passport.session()
 
 parseCookie = (str, opt) ->
+    if not str?
+        return null;
     opt = opt || {}
     obj = {}
     pairs = str.split(/[;,] */)
