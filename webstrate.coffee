@@ -26,7 +26,6 @@ MongoClient = require('mongodb').MongoClient
 sessionLog = null;
 MongoClient.connect 'mongodb://127.0.0.1:27017/log', (err, db) ->
     sessionLog = db.collection 'sessionLog'
-    #collection.insert({a:2}, function(err, docs) {
 
 basic = auth.basic {
         realm: "Webstrate"
@@ -41,39 +40,58 @@ app.use serveStatic("#{__dirname}/html")
 app.use serveStatic("#{__dirname}/lib")
 app.use serveStatic(sharejs.scriptsDir)
 app.use(auth.connect(basic))
-
-config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+auth = false
 permissionCache = {}
 
-# Passport stuff
-secret = config.auth.secret
-app.use sessions {
-    cookieName: 'session',
-    secret: secret,
-    duration: config.auth.cookieDuration    
-}
+try 
+    config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
+    
+    # Passport stuff
+    secret = config.auth.secret
+    app.use sessions {
+        cookieName: 'session',
+        secret: secret,
+        duration: config.auth.cookieDuration    
+    }
 
-GITHUB_CLIENT_ID = config.auth.providers.github.GITHUB_CLIENT_ID
-GITHUB_CLIENT_SECRET = config.auth.providers.github.GITHUB_CLIENT_SECRET
-callback_url = config.auth.providers.github.callback_url
+    GITHUB_CLIENT_ID = config.auth.providers.github.GITHUB_CLIENT_ID
+    GITHUB_CLIENT_SECRET = config.auth.providers.github.GITHUB_CLIENT_SECRET
+    callback_url = config.auth.providers.github.callback_url
 
-passport.serializeUser (user, done) ->
-  done null, user
+    passport.serializeUser (user, done) ->
+      done null, user
 
-passport.deserializeUser (obj, done) ->
-  done null, obj
+    passport.deserializeUser (obj, done) ->
+      done null, obj
 
-passport.use new GitHubStrategy {
-    clientID: GITHUB_CLIENT_ID,
-    clientSecret: GITHUB_CLIENT_SECRET,
-    callbackURL: callback_url
-  },
-  (accessToken, refreshToken, profile, done) ->
-    process.nextTick () ->
-      return done null, profile
+    passport.use new GitHubStrategy {
+        clientID: GITHUB_CLIENT_ID,
+        clientSecret: GITHUB_CLIENT_SECRET,
+        callbackURL: callback_url
+      },
+      (accessToken, refreshToken, profile, done) ->
+        process.nextTick () ->
+          return done null, profile
       
-app.use passport.initialize()
-app.use passport.session()
+    app.use passport.initialize()
+    app.use passport.session()
+    
+    app.get '/auth/github',
+      passport.authenticate('github'),
+      (req, res) ->
+
+    app.get '/auth/github/callback', 
+      passport.authenticate('github', { failureRedirect: '/login' }),
+      (req, res) ->
+        res.redirect '/'
+
+    app.get '/auth/logout', (req, res) ->
+      req.logout()
+      res.redirect '/'
+    
+    auth = true
+catch error
+    console.log "Authentication configuration mission or incomplete, starting Webstrates with authentication disabled."
 
 parseCookie = (str, opt) ->
     if not str?
@@ -104,20 +122,6 @@ parseCookie = (str, opt) ->
  
     return obj
 
-app.get '/auth/github',
-  passport.authenticate('github'),
-  (req, res) ->
-
-app.get '/auth/github/callback', 
-  passport.authenticate('github', { failureRedirect: '/login' }),
-  (req, res) ->
-    res.redirect '/'
-
-app.get '/auth/logout', (req, res) ->
-  req.logout()
-  res.redirect '/'
-  
-
 mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
 backend = livedb.client(mongo);
 
@@ -133,8 +137,9 @@ decodeCookie = (cookie) ->
     return null
     
 share.use (request, next) ->
-    session = decodeCookie(parseCookie request.agent.stream.headers.cookie)
-    if session? and session.passport? and session.passport.user?
+    if auth
+        session = decodeCookie(parseCookie request.agent.stream.headers.cookie)
+    if auth and session? and session.passport? and session.passport.user?
         provider = session.passport.user.provider
         username = session.passport.user.username
     else
@@ -225,7 +230,7 @@ getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
 app.get '/:id', (req, res) ->
     if req.params.id.length > 0
         session = req.session
-        if session? and session.passport? and session.passport.user?
+        if auth and session? and session.passport? and session.passport.user?
             username = session.passport.user.username
             provider = session.passport.user.provider
         else
