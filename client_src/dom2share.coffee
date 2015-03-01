@@ -94,7 +94,8 @@ class root.DOM2Share
                     window.alert "Webstrates has encountered an error. Please reload the page."
                     throw error
             else if mutation.type == "childList"
-                for added in Array.prototype.slice.call(mutation.addedNodes).reverse() # JavaScript is beautiful
+                previousSibling = mutation.previousSibling
+                for added in mutation.addedNodes
                     #Check if this node already has been added (e.g. together with its parent)
                     if added.__pathNodes? and added.__pathNodes.length > 0
                         addedPathNode = util.getPathNode(added, mutation.target)
@@ -102,22 +103,23 @@ class root.DOM2Share
                             continue    
                     #Add the new node to the path tree
                     newPathNode = util.createPathTree added, targetPathNode
-                    if mutation.previousSibling?
-                        siblingPathNode = util.getPathNode(mutation.previousSibling, mutation.target)
+                    if previousSibling?
+                        siblingPathNode = util.getPathNode(previousSibling, mutation.target)
                         prevSiblingIndex = targetPathNode.children.indexOf siblingPathNode
                         targetPathNode.children = (targetPathNode.children[0..prevSiblingIndex].concat [newPathNode]).concat targetPathNode.children[prevSiblingIndex+1...targetPathNode.children.length]
+                        previousSibling = added
                     else if mutation.nextSibling?
                         targetPathNode.children = [newPathNode].concat targetPathNode.children
                     else
                         targetPathNode.children.push newPathNode
                     insertPath = util.getJsonMLPathFromPathNode util.getPathNode(added, mutation.target)
                     op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
-                for removed in Array.prototype.slice.call(mutation.removedNodes).reverse() # JavaScript is still beautiful
                     try
                         @context.submitOp op
                     catch error
                         window.alert "Webstrates has encountered an error. Please reload the page."
                         throw error
+                for removed in mutation.removedNodes
                     removedPathNode = util.getPathNode(removed, mutation.target)
                     if not removedPathNode?
                         continue
