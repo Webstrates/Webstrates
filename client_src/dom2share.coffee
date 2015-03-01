@@ -75,7 +75,11 @@ class root.DOM2Share
                 if not value?
                     value = ""
                 op = {p:path, oi:value}
-                @context.submitOp op
+                try
+                    @context.submitOp op
+                catch error
+                    window.alert "Webstrates has encountered an error. Please reload the page."
+                    throw error
             else if mutation.type == "characterData"
                 changedPath = util.getJsonMLPathFromPathNode targetPathNode
                 oldText = mutation.oldValue
@@ -84,7 +88,11 @@ class root.DOM2Share
                     #This should not happen (but will if a text node is inserted and then the text is altered right after)
                     continue
                 op = util.patch_to_ot changedPath, @dmp.patch_make(oldText, newText)
-                @context.submitOp op
+                try
+                    @context.submitOp op
+                catch error
+                    window.alert "Webstrates has encountered an error. Please reload the page."
+                    throw error
             else if mutation.type == "childList"
                 for added in Array.prototype.slice.call(mutation.addedNodes).reverse() # JavaScript is beautiful
                     #Check if this node already has been added (e.g. together with its parent)
@@ -104,15 +112,23 @@ class root.DOM2Share
                         targetPathNode.children.push newPathNode
                     insertPath = util.getJsonMLPathFromPathNode util.getPathNode(added, mutation.target)
                     op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
-                    @context.submitOp op
                 for removed in Array.prototype.slice.call(mutation.removedNodes).reverse() # JavaScript is still beautiful
+                    try
+                        @context.submitOp op
+                    catch error
+                        window.alert "Webstrates has encountered an error. Please reload the page."
+                        throw error
                     removedPathNode = util.getPathNode(removed, mutation.target)
                     if not removedPathNode?
                         continue
                     path = util.getJsonMLPathFromPathNode removedPathNode
                     element = util.elementAtPath(@context.getSnapshot(), path)
                     op = {p:path , ld:element}
-                    @context.submitOp op
+                    try
+                        @context.submitOp op
+                    catch error
+                        window.alert "Webstrates has encountered an error. Please reload the page."
+                        throw error
                     #Remove from pathTree
                     childIndex = removedPathNode.parent.children.indexOf removedPathNode
                     removedPathNode.parent.children.splice(childIndex, 1)
