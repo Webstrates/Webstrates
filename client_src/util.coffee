@@ -105,13 +105,16 @@ root.util.check = (domNode, pathNode) ->
         domNode = domNode[0]
     if domNode.__pathNodes.length > 1
         console.log domNode, domNode.__pathNodes
+        window.alert "Webstrates has encountered an error. Please reload the page."
         throw "Node has multiple paths"
     domNodePathNode = domNode.__pathNodes[0]
     if domNodePathNode.id != pathNode.id
         console.log domNode, pathNode
+        window.alert "Webstrates has encountered an error. Please reload the page."
         throw "No id match"
     if domNode.childNodes.length != pathNode.children.length
         console.log domNode, pathNode
+        window.alert "Webstrates has encountered an error. Please reload the page."
         throw "Different amount of children"
     for i in [0...domNode.childNodes.length]
         util.check(domNode.childNodes[i], pathNode.children[i])
