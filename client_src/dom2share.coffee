@@ -86,7 +86,7 @@ class root.DOM2Share
                 op = util.patch_to_ot changedPath, @dmp.patch_make(oldText, newText)
                 @context.submitOp op
             else if mutation.type == "childList"
-                for added in mutation.addedNodes
+                for added in Array.prototype.slice.call(mutation.addedNodes).reverse() # JavaScript is beautiful
                     #Check if this node already has been added (e.g. together with its parent)
                     if added.__pathNodes? and added.__pathNodes.length > 0
                         addedPathNode = util.getPathNode(added, mutation.target)
@@ -105,7 +105,7 @@ class root.DOM2Share
                     insertPath = util.getJsonMLPathFromPathNode util.getPathNode(added, mutation.target)
                     op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
                     @context.submitOp op
-                for removed in mutation.removedNodes
+                for removed in Array.prototype.slice.call(mutation.removedNodes).reverse() # JavaScript is still beautiful
                     removedPathNode = util.getPathNode(removed, mutation.target)
                     if not removedPathNode?
                         continue
