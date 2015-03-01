@@ -112,10 +112,13 @@ root.util.check = (domNode, pathNode) ->
         console.log domNode, pathNode
         window.alert "Webstrates has encountered an error. Please reload the page."
         throw "No id match"
-    if domNode.childNodes.length != pathNode.children.length
+    definedChildNodesInDom = (childNode for childNode in domNode.childNodes when childNode.__pathNodes?.length > 0)
+    if definedChildNodesInDom.length != pathNode.children.length
         console.log domNode, pathNode
         window.alert "Webstrates has encountered an error. Please reload the page."
         throw "Different amount of children"
-    for i in [0...domNode.childNodes.length]
-        util.check(domNode.childNodes[i], pathNode.children[i])
+    if definedChildNodesInDom.length != domNode.childNodes.length
+        console.log "Warning: found zombie nodes in DOM"
+    for definedChildDomNode, i in definedChildNodesInDom
+        util.check(definedChildDomNode, pathNode.children[i])
         
