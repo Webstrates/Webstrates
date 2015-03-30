@@ -87,10 +87,11 @@ insert = (element, relativePath, actualPath, value) ->
     if relativePath.length > 1
         insert element.contents().eq(relativePath[0]), relativePath[1..relativePath.length], actualPath, value
     if relativePath.length == 1
+        ns = root.util.getNs element[0]
         if typeof value == 'string'
             html = $(document.createTextNode(value))
         else
-            html = $.jqml(value)
+            html = $.jqml(value, ns)
         sibling = element.contents().eq(relativePath[0])
         if sibling.length > 0
             html.insertBefore(element.contents().eq(relativePath[0]))

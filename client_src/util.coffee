@@ -26,6 +26,19 @@ root.util.elementAtPath = (snapshot, path) ->
     else
         return util.elementAtPath(snapshot[path[0]], path[1..path.length])
 
+#Check if elem is child of a parent with an XML namespace and return it        
+root.util.getNs = (elem) ->
+    if not elem? 
+        return undefined
+    if not elem.getAttribute?
+        return undefined
+    ns = elem.getAttribute "xmlns"
+    if ns?
+        return ns;
+    if elem.parent == elem
+        return undefined
+    return root.util.getNs elem.parent
+
 #Used to make operations out of a set of string patches
 root.util.patch_to_ot = (path, patches) ->
     ops = []
