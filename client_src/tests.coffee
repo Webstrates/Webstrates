@@ -547,14 +547,16 @@ test "Edit character data", () ->
     stop()
     ops = []
     _doc.on "after op", (op) ->
+        console.log "op", op
         ops.push op
         
     onTimeout = () ->    
         start()
-        ok ops.length == 2, "Got three ops"
+        console.log ops
+        ok ops.length == 2, "Got two ops"
         ok ops[1][0].si?, "Last op was a string insertion"
     async () ->
-        $("#foo").contents()[0].replaceWholeText "Hello, world!"
+        $("#foo").contents()[0].nodeValue = "Hello, world!"
         
     setTimeout onTimeout, 500
     
