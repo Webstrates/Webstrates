@@ -35,6 +35,10 @@ $(document).ready () =>
         $(document).empty()
         ready = true
         window.dom2shareInstance = new DOM2Share doc, document, () ->
-            event = new CustomEvent "loaded", { "detail": "The share.js document has finished loading" }
+            event = new Event "loaded"
             document.dispatchEvent event
             parent.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
+            window.loaded = true
+            if window.frameElement? #If webstrate is transcluded in an iFrame raise an event on the frame element in the parent doc
+                window.frameElement.dispatchEvent event
+            
