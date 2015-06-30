@@ -6,7 +6,7 @@ livedbMongo = require 'livedb-mongo'
 serveStatic = require 'serve-static'
 ot = require 'livedb/lib/ot'
 jsxml= require 'jsxml'
-auth = require 'http-auth'
+http_auth = require 'http-auth'
 shortId = require 'shortid'
 WebSocketServer = require('ws').Server
 http = require 'http'
@@ -27,10 +27,7 @@ sessionLog = null;
 MongoClient.connect 'mongodb://127.0.0.1:27017/log', (err, db) ->
     sessionLog = db.collection 'sessionLog'
 
-basic = auth.basic {
-        realm: "Webstrate"
-    }, (username, password, callback) ->
-        callback username == "webstrate" and password == "webstrate"
+
 
 app = express()
 app.server = http.createServer app
@@ -39,14 +36,28 @@ wss = new WebSocketServer {server: app.server}
 app.use serveStatic("#{__dirname}/html")
 app.use serveStatic("#{__dirname}/lib")
 app.use serveStatic(sharejs.scriptsDir)
-app.use(auth.connect(basic))
+
+#Load configuration
+try
+    fs.statSync 'config.json'
+catch err
+    console.log "No config file present, creating one now."
+    fs.writeFileSync 'config.json', "{}"
+config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
+
+#Basic auth
+if config.basic_auth?
+    console.log "Basic auth enabled"
+    basic = http_auth.basic {
+                realm: config.basic_auth.realm,
+            }, (username, password, callback) ->
+                callback username == config.basic_auth.username and password == config.basic_auth.password
+    app.use(http_auth.connect(basic))
+
+#Webstrates authentication
 auth = false
 permissionCache = {}
-
-try 
-    config = JSON.parse(fs.readFileSync('config.json', 'utf8'));
-    
-    # Passport stuff
+if config.auth?
     secret = config.auth.secret
     app.use sessions {
         cookieName: 'session',
@@ -90,8 +101,6 @@ try
       res.redirect '/'
     
     auth = true
-catch error
-    console.log "Authentication configuration mission or incomplete, starting Webstrates with authentication disabled."
 
 parseCookie = (str, opt) ->
     if not str?
