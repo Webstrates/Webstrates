@@ -1,7 +1,7 @@
 {
   "name": "webstrate",
   "version": "0.0.1",
-  "description": "Webstrate is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrate observes changes to the DOM using MutationObservers.",
+  "description": "Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrates observes changes to the DOM using MutationObservers.",
   "keywords": [
     "Operational Transformation",
     "hci",
@@ -23,7 +23,7 @@
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
     "serve-static": "^1.6.2",
-    "share": "0.7.0",
+    "share": "0.7.3",
     "shortid": "^2.0.1",
     "ws": "0.4.32"
   }
