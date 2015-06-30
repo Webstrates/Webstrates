@@ -5,7 +5,7 @@ livedb = require('livedb')
 livedbMongo = require 'livedb-mongo'
 serveStatic = require 'serve-static'
 ot = require 'livedb/lib/ot'
-jsxml= require 'jsxml'
+jsonml = require 'jsonml-tools'
 http_auth = require 'http-auth'
 shortId = require 'shortid'
 WebSocketServer = require('ws').Server
@@ -262,9 +262,9 @@ app.get '/:id', (req, res) ->
                             data = {v:0}
                             for op in ops
                                 ot.apply data, op
-                            res.send jsxml.toXml data.data
+                            res.send jsonml.toXML data.data
                 else if req.query.v == 'head'
-                    res.send jsxml.toXml snapshot.data
+                    res.send jsonml.toXML snapshot.data
                 else if req.query.v == ''
                     console.log "Snapshot version", snapshot.v
                     res.send "" + snapshot.v
