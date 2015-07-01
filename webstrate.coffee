@@ -3,7 +3,6 @@ express = require 'express'
 argv = require('optimist').argv
 livedb = require('livedb')
 livedbMongo = require 'livedb-mongo'
-serveStatic = require 'serve-static'
 ot = require 'livedb/lib/ot'
 jsonml = require 'jsonml-tools'
 http_auth = require 'http-auth'
@@ -33,9 +32,10 @@ app = express()
 app.server = http.createServer app
 wss = new WebSocketServer {server: app.server}
 
-app.use serveStatic("#{__dirname}/html")
-app.use serveStatic("#{__dirname}/lib")
-app.use serveStatic(sharejs.scriptsDir)
+app.use('/client_src', express.static('client_src'));
+app.use(express.static('html'))
+app.use(express.static('webclient'))
+app.use(express.static(sharejs.scriptsDir))
 
 #Load configuration
 try
