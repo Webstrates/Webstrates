@@ -62,9 +62,9 @@ var JsonML = JsonML || {};
 						hasAttrib = true;
 					}
 				}
-				if (hasAttrib) {
-					jml.push(props);
-				}
+				//if (hasAttrib) {
+					jml.push(props); //Webstrates always assumes that an element has attributes.
+                //}
 
 				var child;
 				switch (jml[0].toLowerCase()) {
