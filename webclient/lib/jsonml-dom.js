@@ -11,14 +11,14 @@
 
 var JsonML = JsonML || {};
 
-/*JsonML*/ JsonML.parseDOM = function(/*DOM*/ elem, /*function*/ filter, /*boolean*/ notRecursive) {
+/*JsonML*/ JsonML.parseDOM = function(/*DOM*/ elem, /*function*/ filter) {
 	if (!elem || !elem.nodeType) {
 		// free references
 		return (elem = null);
 	}
 
 	function addChildren(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
-		if ((!notRecursive || notRecursive  == undefined) && elem.hasChildNodes()) {
+		if (elem.hasChildNodes()) {
 			for (var i=0; i<elem.childNodes.length; i++) {
 				var child = elem.childNodes[i];
 				child = JsonML.parseDOM(child, filter);

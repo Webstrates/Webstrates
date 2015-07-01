@@ -113,7 +113,7 @@ class root.DOM2Share
                     else
                         targetPathNode.children.push newPathNode
                     insertPath = util.getJsonMLPathFromPathNode util.getPathNode(added, mutation.target)
-                    op = {p:insertPath, li:JsonML.parseDOM(added, null, false)}
+                    op = {p:insertPath, li:JsonML.parseDOM(added)}
                     try
                         @context.submitOp op
                     catch error
