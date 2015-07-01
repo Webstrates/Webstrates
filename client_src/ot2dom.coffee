@@ -56,7 +56,7 @@ insertInText = (element, path, charIndex, value) ->
     if path.length > 1
         insertInText element.contents().eq(path[0]), path[1..path.length], charIndex, value
     else
-        textNode = element.contents().eq(path[0])[0]
+        textNode = if element[0].nodeType == 8 then element[0] else element.contents().eq(path[0])[0]
         oldString = textNode.data
         newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex, oldString.length)
         textNode.data = newString

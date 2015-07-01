@@ -81,13 +81,17 @@ class root.DOM2Share
                     window.alert "Webstrates has encountered an error. Please reload the page."
                     throw error
             else if mutation.type == "characterData"
+                isComment = mutation.target.nodeType == 8
                 changedPath = util.getJsonMLPathFromPathNode targetPathNode
                 oldText = mutation.oldValue
                 newText = mutation.target.data
-                if util.elementAtPath(@context.getSnapshot(), changedPath) != oldText
+                if !isComment and util.elementAtPath(@context.getSnapshot(), changedPath) != oldText
                     #This should not happen (but will if a text node is inserted and then the text is altered right after)
                     continue
                 op = util.patch_to_ot changedPath, @dmp.patch_make(oldText, newText)
+                if isComment #Update the path of the op with an extra element, as the target element is ["!", "some comment"] rather than ["some text"]
+                    p = op[0].p
+                    op[0].p = p[0...p.length-1].concat([1]).concat([p[p.length-1]])
                 try
                     @context.submitOp op
                 catch error

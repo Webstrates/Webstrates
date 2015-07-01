@@ -167,7 +167,6 @@ var JsonML = JsonML || {};
 				if ('function' === typeof filter) {
 					jml = filter(jml, elem);
 				}
-
 				// free references
 				elem = null;
 				return jml;
