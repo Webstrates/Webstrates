@@ -172,7 +172,7 @@ var JsonML = JsonML || {};
 				elem = null;
 				return jml;
 			case 8: // comment node
-				if ((elem.nodeValue||'').indexOf('DOCTYPE') !== 0) {
+                if ((elem.nodeValue||'').indexOf('DOCTYPE') !== -1) {
 					// free references
 					elem = null;
 					return null;

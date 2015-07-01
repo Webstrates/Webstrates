@@ -36,9 +36,11 @@
 		    name = elem[0];
 			i = 1;
 		};
-
+        
+        if (elem[0] === "!") {
+            return document.createComment(elem[1]);
+        }
 		for ( ; i < elem.length; i++ ) {
-
 			// if array create new element
 			if ( $.isArray( elem[i] ) ) {
 				fragment.appendChild( createObj( elem[i], xmlNs ) );
@@ -59,7 +61,7 @@
     				for(var index in elem[i])
     				{
                         if (xmlNs !== undefined) {
-                            if (index === "href" || index === "xlink:href")                                 {
+                            if (index === "href" || index === "xlink:href") {
                                selector.setAttributeNS('http://www.w3.org/1999/xlink', index, elem[i][index]);
                             }
                         }
