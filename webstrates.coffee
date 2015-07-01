@@ -262,9 +262,9 @@ app.get '/:id', (req, res) ->
                             data = {v:0}
                             for op in ops
                                 ot.apply data, op
-                            res.send jsonml.toXML data.data
+                            res.send (jsonml.toXML data.data, ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track", "wbr"])
                 else if req.query.v == 'head'
-                    res.send jsonml.toXML snapshot.data
+                    res.send (jsonml.toXML snapshot.data, ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track", "wbr"])
                 else if req.query.v == ''
                     console.log "Snapshot version", snapshot.v
                     res.send "" + snapshot.v
