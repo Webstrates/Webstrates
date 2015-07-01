@@ -7,6 +7,8 @@
 
 	Copyright (c)2006-2012 Stephen M. McKamey
 	Distributed under The MIT License: http://jsonml.org/license
+
+    Adapted to work with Webstrates by Clemens N. Klokmose
 */
 
 var JsonML = JsonML || {};
@@ -68,7 +70,7 @@ var JsonML = JsonML || {};
 				switch (jml[0].toLowerCase()) {
 					case 'frame':
 					case 'iframe':
-                        break; //Do not recursively serialize content in iFrames
+                        break; //Do not recursively serialize content in iFrames (CNK)
 						/*try {
 							if ('undefined' !== typeof elem.contentDocument) {
 								// W3C

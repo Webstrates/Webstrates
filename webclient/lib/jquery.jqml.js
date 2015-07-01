@@ -1,7 +1,10 @@
 /* jqml - jQuery JSONML Plugin
  * Author: Trevor Norris
  * This document is licensed as free software under the terms of the
- * MIT License: http://www.opensource.org/licenses/mit-license.php */
+ * MIT License: http://www.opensource.org/licenses/mit-license.php 
+
+ * Adapted to work with Webstrates by Clemens N. Klokmose
+*/
 
 (function( $, document ) {
     function getNs(elem) {
