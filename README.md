@@ -100,9 +100,9 @@ Access rights are added to a webstrate as an attribute on the *HTML* tag.
 	...
 	</html>
 
-Users can log in through http://localhost:7007/auth/github
-
 The above example provides the user *cklokmose* authenticated using GitHub permissions to read and write, while anonymous users only have read access.
+
+Users can log in through http://localhost:7007/auth/github
 
 In the future more authentication providers will be supported.
 
