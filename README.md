@@ -16,6 +16,8 @@ To install:
     * npm install
     * cake build
     * coffee webstrates.coffee
+	
+Alternatively use [Vagrant](utils/vagrant) to create and run a VM configured with Webstrates.
  
 Basic Usage
 ===========
