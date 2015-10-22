@@ -3,6 +3,8 @@ Webstrates
 
 Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareJS](https://github.com/share/ShareJS). Webstrates observes changes to the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
 
+Webstrates itself is a webserver and transparent web client  that persists and synchronizes any changes done to the Document Object Model (DOM) of any page served between clients of the same page, including changes to inlined JavaScript or CSS. By using transclusions through iFrames we achieve an application-to-document like relationship between two webstrates. The 'application', however, is a malleable and collaborative object as well, as any change to its DOM will persist and be shared between clients. With examples built upon Webstrates we have demonstrated how transclusion combined with the use of CSS injection and the principles of instrumental interaction can allow multiple users to collaborate same webstrate through highly personalized and extensible editors. 
+
 Installation
 ============
 Requirements:
