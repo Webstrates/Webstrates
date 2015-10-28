@@ -53,32 +53,45 @@ Webstrates triggers a few events on the DOM.
 ###Events when a webstrate has finished loading
 When the Webstrates client has finished loading a webstrate it will trigger a *loaded* event on the *document*.
 
-	document.addEventListener('loaded', function(e) {
-		//The Webstrates client has now finished loading data from the server
-	});
+```javascript
+document.addEventListener('loaded', function(e) {
+	//The Webstrates client has now finished loading data from the server
+});
+````
+	
+If the webstrate is transcluded in an iframe the webstrate will trigger a *transcluded* event on the *iframe* element in the parent webstrate.
+
+```javascript
+some_iframe.addEventListener('transcluded', function(e) {
+	//The transcluded webstrate has finished loading data from the server
+});
+```
 
 ###Events on text nodes
 Webstrates does finegrained synchronization on text nodes, however to update a textnode in the browser, the whole text is replaces. To allow more finegrained interaction with text Webstrates raises the following two events on textnodes: 
-	
-	textNode.addEventListener("insertText", function(e) {
-		e.detail.value; //Stores the inserted text
-		e.detail.position; //Stores the position of the insert
-	});
-	textNode.addEventListener("deleteText", function(e) {
-		e.detail.value; //Stores the deleted text
-		e.detail.position; //Stores the position of the delete
-	});
+
+```javascript
+textNode.addEventListener("insertText", function(e) {
+	e.detail.value; //Stores the inserted text
+	e.detail.position; //Stores the position of the insert
+});
+textNode.addEventListener("deleteText", function(e) {
+	e.detail.value; //Stores the deleted text
+	e.detail.position; //Stores the position of the delete
+});
+```
 	
 ###Authentication
 
 ####Server level basic authentication
 To enable basic authentication on the Webstrates server add the following to *config.json*:
-
-    "basic_auth": {
-        "realm": "Webstrates",
-        "username": "some_username",
-        "password": "some_password"
-    }
+```javascript
+"basic_auth": {
+	"realm": "Webstrates",
+	"username": "some_username",
+	"password": "some_password"
+}
+```
 	
 ####Per webstrate access rights (VERY EXPERIMENTAL)
 It is possible to enable per webstrate access rights using [GitHub](https://github.com) as authentication provider. 
@@ -86,23 +99,27 @@ This requires registering an OAuth application with GitHub [here](https://github
 
 Add the following to your *config.json*:
 
-    "auth": {
-        "secret": "This is a secrret",
-        "cookieDuration": 31536000000,
-        "providers": {
-            "github": {
-                "GITHUB_CLIENT_ID": "YOUR GITHUB CLIENT ID",
-                "GITHUB_CLIENT_SECRET": "YOUR GITHUB CLIENT SECRET",
-                "callback_url": "http://localhost:7007/auth/github/callback"
-            }
-        }
-    }
+```javascript
+"auth": {
+	"secret": "This is a secrret",
+	"cookieDuration": 31536000000,
+	"providers": {
+		"github": {
+			"GITHUB_CLIENT_ID": "YOUR GITHUB CLIENT ID",
+			"GITHUB_CLIENT_SECRET": "YOUR GITHUB CLIENT SECRET",
+			"callback_url": "http://localhost:7007/auth/github/callback"
+		}
+	}
+}
+```
 	
 Access rights are added to a webstrate as an attribute on the *HTML* tag.
 
-    <html data-auth="[{"username": "cklokmose", "provider": "github", "permissions": "rw"}, {"username": "anonymous", "provider": "", "permissions": "r"}]">
-	...
-	</html>
+```html
+<html data-auth="[{"username": "cklokmose", "provider": "github", "permissions": "rw"}, {"username": "anonymous", "provider": "", "permissions": "r"}]">
+...
+</html>
+```
 
 The above example provides the user *cklokmose* authenticated using GitHub permissions to read and write, while anonymous users only have read access.
 
