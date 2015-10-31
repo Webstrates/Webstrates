@@ -29,6 +29,11 @@ Now any changes you make to the DOM either through JavaScript or the developer t
 
 \* Webstrates is currently only tested under Chrome
 
+jQuery
+------
+
+The Webstrates client includes jQuery (currently version 1.7.2). It is therefore possible to use jQuery directly (i.e. by using *$*) without having to include jQuery in a webstrate it self.
+
 Advanced Use
 ============
 
