@@ -27,6 +27,8 @@ Webstrates serves (and creates) any named webpage you ask for.<br>
 Simply navigate your browser* to http://localhost:7007/[some_page_name].<br>
 Now any changes you make to the DOM either through JavaScript or the developer tools will be persisted and distributed to any other clients that may have the page open.
 
+See the [tutorial](tutorial) for an introduction to developing with Webstrates.
+
 \* Webstrates is currently only tested under Chrome
 
 jQuery
