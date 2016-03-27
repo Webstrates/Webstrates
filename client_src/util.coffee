@@ -61,7 +61,14 @@ root.util.generateUUID = ->
     v = if c is 'x' then r else (r & 0x3|0x8)
     v.toString(16)
   )
-  
+
+#Extract domain from URL
+root.util.extractDomain = (url) ->
+    if url.indexOf("://") > -1
+        domain = url.split('/')[2]
+    else
+        domain = url.split('/')[0]
+    return domain                                                                                            
 
 #Given a pathnode, compute its JsonML path
 root.util.getJsonMLPathFromPathNode = (node) ->

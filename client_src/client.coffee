@@ -36,8 +36,14 @@ $(document).ready () =>
         ready = true
         window.dom2shareInstance = new DOM2Share doc, document, () ->
             document.dispatchEvent(new CustomEvent "loaded")
-            parent.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
             window.loaded = true
+            if parent == window
+                return
+            parent.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
+            referrerDomain = util.extractDomain document.referrer
+                domain = util.extractDomain location.href
+            if referrerDomain != domain #If we are in an iframe and the referrer domain and this domain does not match, we assume the parent frame is from a different domain and we return to not violate cross-domain restrictions on iframes
+                return
             if window.frameElement? #If webstrate is transcluded in an iFrame raise an event on the frame element in the parent doc
                 event = new CustomEvent "transcluded", {detail: {name: sharejsDoc}, bubbles: true, cancelable: true}
                 window.frameElement.dispatchEvent event
