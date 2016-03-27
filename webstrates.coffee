@@ -293,7 +293,11 @@ app.get '/:id', (req, res) ->
                 permissionCache[userId] = {}
             backend.fetch 'webstrates', req.params.id, (err, snapshot) ->
                 webstrate = req.params.id
-                permissionCache[userId][webstrate] = getPermissionsForWebstrate username, provider, webstrate, snapshot
+                permissions = getPermissionsForWebstrate username, provider, webstrate, snapshot
+                permissionCache[userId][webstrate] = permissions
+                if permissions.indexOf("r") < 0
+                        res.send "Permission denied"
+                        return
                 res.setHeader("Location", '/' + req.params.id)
                 res.sendFile __dirname+'/html/_client.html'
     else

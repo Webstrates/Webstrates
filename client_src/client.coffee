@@ -29,7 +29,7 @@ $(document).ready () =>
     ready = false
     setTimeout (() ->
         if not ready
-            $('body').append("Permission denied.")),
+            $('body').append("Loading...")),
         500
     doc.whenReady () ->
         $(document).empty()
