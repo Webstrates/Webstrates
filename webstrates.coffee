@@ -304,16 +304,6 @@ app.get '/:id', (req, res) ->
 app.get '/', (req, res) ->
     res.redirect '/frontpage'
 
-###
-share.use 'validate', (req, callback) ->
-  err = 'noooo' if req.snapshot.data?.match /x/
-  callback err
-
-share.use 'connect', (req, callback) ->
-  console.log req.agent
-  callback()
-###
-
 wss.on 'connection', (client) ->
   stream = new Duplex objectMode:yes
   stream._write = (chunk, encoding, callback) ->
