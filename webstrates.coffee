@@ -26,8 +26,6 @@ sessionLog = null;
 MongoClient.connect 'mongodb://127.0.0.1:27017/log', (err, db) ->
     sessionLog = db.collection 'sessionLog'
 
-
-
 app = express()
 app.server = http.createServer app
 wss = new WebSocketServer {server: app.server}
@@ -343,7 +341,6 @@ wss.on 'connection', (client) ->
     stream.push null
     stream.emit 'close'
 
-    console.log 'client went away'
     try
         client.close reason
     catch error
