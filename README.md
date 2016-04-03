@@ -112,9 +112,12 @@ Add the following to your *config.json*:
 	"cookieDuration": 31536000000,
 	"providers": {
 		"github": {
-			"GITHUB_CLIENT_ID": "YOUR GITHUB CLIENT ID",
-			"GITHUB_CLIENT_SECRET": "YOUR GITHUB CLIENT SECRET",
-			"callback_url": "http://localhost:7007/auth/github/callback"
+            "node_module": "passport-github",
+            "config": {
+                "clientID": "GITHUB CLIENT ID",
+                "clientSecret": "GITHUB SECRET",
+                "callbackURL": "http://<your server>/auth/github/callback"
+            }
 		}
 	}
 }

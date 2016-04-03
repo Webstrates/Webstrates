@@ -10,32 +10,42 @@ shortId = require 'shortid'
 WebSocketServer = require('ws').Server
 http = require 'http'
 passport = require 'passport'
-GitHubStrategy = require('passport-github').Strategy
 sessions = require "client-sessions"
 fs = require "fs"
+util = require "./util.coffee"
 
 try
   require 'heapdump'
 
 sharejs = require 'share'
 
-
+# Setup MongoDB connection for the session log
 MongoClient = require('mongodb').MongoClient
-
 sessionLog = null;
 MongoClient.connect 'mongodb://127.0.0.1:27017/log', (err, db) ->
     sessionLog = db.collection 'sessionLog'
 
+# Create express app and websocket server
 app = express()
 app.server = http.createServer app
 wss = new WebSocketServer {server: app.server}
 
+# Serve all static files (including source coffee files)
 app.use('/client_src', express.static('client_src'));
 app.use(express.static('html'))
 app.use(express.static('webclient'))
 app.use(express.static(sharejs.scriptsDir))
 
-#Load configuration
+# Setup connection to MongoDB for ShareJS
+mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
+
+# Setup livedb to use MongoDB as backend
+backend = livedb.client(mongo);
+
+# Setup ShareJS to use LiveDB as backend
+share = sharejs.server.createClient {backend}
+
+# Load configuration
 try
     fs.statSync 'config.json'
 catch err
@@ -43,7 +53,7 @@ catch err
     fs.writeFileSync 'config.json', "{}"
 config = JSON.parse(fs.readFileSync('config.json', 'utf8'))
 
-#Basic auth
+# Setup basic auth if configured in the config file
 if config.basic_auth?
     console.log "Basic auth enabled"
     basic = http_auth.basic {
@@ -52,7 +62,7 @@ if config.basic_auth?
                 callback username == config.basic_auth.username and password == config.basic_auth.password
     app.use(http_auth.connect(basic))
 
-#Webstrates authentication
+# Setup Webstrates authentication if configured in the config file (currently only tested with GitHub as provider)
 auth = false
 permissionCache = {}
 if config.auth?
@@ -60,92 +70,55 @@ if config.auth?
     app.use sessions {
         cookieName: 'session',
         secret: secret,
-        duration: config.auth.cookieDuration    
+        duration: config.auth.cookieDuration
     }
 
-    GITHUB_CLIENT_ID = config.auth.providers.github.GITHUB_CLIENT_ID
-    GITHUB_CLIENT_SECRET = config.auth.providers.github.GITHUB_CLIENT_SECRET
-    callback_url = config.auth.providers.github.callback_url
-
     passport.serializeUser (user, done) ->
-      done null, user
+        done null, user
 
     passport.deserializeUser (obj, done) ->
-      done null, obj
+        done null, obj
 
-    passport.use new GitHubStrategy {
-        clientID: GITHUB_CLIENT_ID,
-        clientSecret: GITHUB_CLIENT_SECRET,
-        callbackURL: callback_url
-      },
-      (accessToken, refreshToken, profile, done) ->
-        process.nextTick () ->
-          return done null, profile
-      
+    # Iterate auth providers and initialize their strategies.
+    for key of config.auth.providers
+        PassportStrategy = require(config.auth.providers[key].node_module).Strategy
+        passport.use new PassportStrategy config.auth.providers[key].config,
+        (accessToken, refreshToken, profile, done) ->
+            process.nextTick () ->
+                return done null, profile
+
     app.use passport.initialize()
     app.use passport.session()
-    
-    app.get '/auth/github',
-      passport.authenticate('github'),
-      (req, res) ->
 
-    app.get '/auth/github/callback', 
-      passport.authenticate('github', { failureRedirect: '/login' }),
-      (req, res) ->
-        res.redirect '/'
+    # Setup login and callback URLs
+    for provider of config.auth.providers
+        app.get '/auth/'+provider,
+            passport.authenticate(provider), (req, res) ->
+
+        app.get '/auth/'+provider+'/callback',
+            passport.authenticate(provider, { failureRedirect: '/auth/'+provider }), (req, res) ->
+                res.redirect '/'
+
+        console.log provider + " based authentication enabled"
 
     app.get '/auth/logout', (req, res) ->
-      req.logout()
-      res.redirect '/'
-    
+        req.logout()
+        res.redirect '/'
+
     auth = true
 
-parseCookie = (str, opt) ->
-    if not str?
-        return null;
-    opt = opt || {}
-    obj = {}
-    pairs = str.split(/[;,] */)
-    dec = opt.decode || decodeURIComponent;
- 
-    pairs.forEach (pair) ->
-        eq_idx = pair.indexOf('=')
- 
-        if eq_idx < 0
-            return
- 
-        key = pair.substr(0, eq_idx).trim()
-        val = pair.substr(++eq_idx, pair.length).trim();
- 
-        if '"' == val[0]
-            val = val.slice(1, -1)
-        
- 
-        if undefined == obj[key]
-            try 
-                obj[key] = dec(val);
-            catch e 
-                obj[key] = val;
- 
-    return obj
-
-mongo = livedbMongo('mongodb://localhost:27017/webstrate?auto_reconnect', {safe:true});
-backend = livedb.client(mongo);
-
-backend.addProjection '_users', 'users', 'json0', {x:true}
-
-share = sharejs.server.createClient {backend}
-
+# Decode a cookie into a JSON object
 decodeCookie = (cookie) ->
     if !cookie?
         return null
     if cookie['session']?
         return sessions.util.decode({cookieName: 'session', secret:secret}, cookie['session']).content;
     return null
-    
+
+# Handle permissions for requests to ShareJS (over Websockets)
 share.use (request, next) ->
     if auth
-        session = decodeCookie(parseCookie request.agent.stream.headers.cookie)
+        session = decodeCookie(util.parseCookie request.agent.stream.headers.cookie)
     if auth and session? and session.passport? and session.passport.user?
         provider = session.passport.user.provider
         username = session.passport.user.username
@@ -154,6 +127,7 @@ share.use (request, next) ->
         provider = ""
     userId = username + ":" + provider
     if request.action == "connect"
+        #Log connection
         logItem = {sessionId: request.agent.sessionId, userId: userId, connectTime: request.agent.connectTime, remoteAddress: request.stream.remoteAddress}
         sessionLog.insert logItem, (err, db) ->
             if err
@@ -161,10 +135,12 @@ share.use (request, next) ->
         next()
         return
     if not permissionCache[userId]?
+        # This happens if the client has not actually opened a page
         next("Forbidden")
         return
     permissions = permissionCache[userId]
     if request.action in ["fetch", "bulk fetch", "getOps", "query"]
+        # Check for read permissions
         if request.docName?
             requestedWebstrate = request.docName
         else if request.requests? and request.requests.webstrates[0]?
@@ -175,6 +151,7 @@ share.use (request, next) ->
                 return
         next('Forbidden')
     else if request.action == "submit"
+        # Check for write permissions
         webstrate = request.docName
         if permissions[webstrate]?
             if permissions[webstrate].indexOf("w") > -1
@@ -189,6 +166,9 @@ share.use (request, next) ->
 app.get '/favicon.ico', (req, res) ->
     res.send("", 404)
 
+# /new creates a new webstrate.
+# An id for the new webstrate can be provide, if not it is autogenerated
+# A reference to a prototype can be given, and then the new webstrate will be a copy of the given prototype
 app.get '/new', (req, res) ->
     if req.query.prototype?
         if req.query.id?
@@ -223,6 +203,7 @@ app.get '/new', (req, res) ->
     else
         res.redirect '/' + shortId.generate()
 
+# Extract permission data from a webstrate
 getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
     if snapshot.data? and snapshot.data[0]? and snapshot.data[0] == 'html'
         if snapshot.data[1]? and snapshot.data[1]['data-auth']?
@@ -234,6 +215,12 @@ getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
             catch error
     return "rw"
 
+# Get a webstrate.
+# ?v=10 will result in version 10 of the given webstrate (without the client loaded)
+# ?v=head gives the newest version of the webstrate (without the client loaded)
+# ?v returns the version number of head
+# When a previous version is fetched, the server will convert JsonML from the backend to HTML for the browser
+# GET on a webstrate will set the permissions in the permission cache for the given user, which is used when requests for ShareJS arrives over a websocket connection
 app.get '/:id', (req, res) ->
     if req.params.id.length > 0
         session = req.session
@@ -304,6 +291,7 @@ app.get '/:id', (req, res) ->
 app.get '/', (req, res) ->
     res.redirect '/frontpage'
 
+# Setup websocket connections and interaction with ShareJS
 wss.on 'connection', (client) ->
   stream = new Duplex objectMode:yes
   stream._write = (chunk, encoding, callback) ->
@@ -313,7 +301,7 @@ wss.on 'connection', (client) ->
         console.log error
     callback()
 
-  stream._read = -> # Ignore. You can't control the information, man!
+  stream._read = -> # Ignore. 
 
   stream.headers = client.upgradeReq.headers
   stream.remoteAddress = client.upgradeReq.connection.remoteAddress
