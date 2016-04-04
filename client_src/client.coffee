@@ -15,36 +15,53 @@ limitations under the License.
 ###
 
 $(document).ready () =>
-    sharejsDoc = window.location.pathname[1..window.location.pathname.length]
-    document.title = "Webstrate - " + sharejsDoc
-    if sharejsDoc.length == 0
-        throw "Error: No document id provided"
+    # Get the ID of the webstrate from the location
+    webstrate = window.location.pathname[1..window.location.pathname.length]
+    document.title = "Webstrate - " + webstrate
+    if webstrate.length == 0
+        throw "Error: No webstrate id provided"
+
+    # Establish a websocket connection to the server
     wshost = 'ws://' + window.location.host + '/ws/'
     ws = new ReconnectingWebSocket wshost
+
+    # Hand the websocket over to ShareJS
     window._sjs = new sharejs.Connection ws
-    
-    doc = _sjs.get 'webstrates', sharejsDoc
-    
+
+    # Get the ShareJS doc representing the webstrate
+    doc = _sjs.get 'webstrates', webstrate
+
+    # Subscribe to remote operations
     doc.subscribe()
+
+    # After half a second show that we are loading for the impatient.
     ready = false
     setTimeout (() ->
         if not ready
             $('body').append("Loading...")),
         500
+
+    # Setup a callback for ShareJS having finished loading the doc
     doc.whenReady () ->
+        # When ready first empty the current DOM completely
         $(document).empty()
         ready = true
+        # Setup a mapping between the ShareJS document and the DOM
         window.dom2shareInstance = new DOM2Share doc, document, () ->
+            # When everything is setup trigger a loaded event on the document
             document.dispatchEvent(new CustomEvent "loaded")
             window.loaded = true
             if parent == window
                 return
-            parent.postMessage "loaded", '*' #Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
+            # Tell the outer window that loading is finished (e.g. if embedded in an iFrame)
+            parent.postMessage "loaded", '*' 
             referrerDomain = util.extractDomain document.referrer
             domain = util.extractDomain location.href
-            if referrerDomain != domain #If we are in an iframe and the referrer domain and this domain does not match, we assume the parent frame is from a different domain and we return to not violate cross-domain restrictions on iframes
+            # If we are in an iframe and the referrer domain and this domain does not match, we assume the parent frame is from a different domain and we return to not violate cross-domain restrictions on iframes
+            if referrerDomain != domain 
                 return
-            if window.frameElement? #If webstrate is transcluded in an iFrame raise an event on the frame element in the parent doc
+            # If webstrate is transcluded in an iFrame raise an event on the frame element in the parent doc
+            if window.frameElement? 
                 event = new CustomEvent "transcluded", {detail: {name: sharejsDoc}, bubbles: true, cancelable: true}
                 window.frameElement.dispatchEvent event
             
