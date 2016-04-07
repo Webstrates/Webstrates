@@ -62,6 +62,6 @@ $(document).ready () =>
                 return
             # If webstrate is transcluded in an iFrame raise an event on the frame element in the parent doc
             if window.frameElement? 
-                event = new CustomEvent "transcluded", {detail: {name: sharejsDoc}, bubbles: true, cancelable: true}
+                event = new CustomEvent "transcluded", {detail: {name: webstrate}, bubbles: true, cancelable: true}
                 window.frameElement.dispatchEvent event
             
