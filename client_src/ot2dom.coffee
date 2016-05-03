@@ -106,7 +106,7 @@ insert = (element, relativePath, actualPath, value) ->
         sibling = element.contents().eq(relativePath[0])
         if sibling.length > 0
             # There is a sibling, we will insert the node before it
-            html.insertBefore(element.contents().eq(relativePath[0]))
+            element[0].insertBefore(html[0], sibling[0])
         # There's no sibling, so lets insert it (with a small hack to avoid JQuery not actually inserting a script node
         else if html[0].tagName? and html[0].tagName.toLowerCase() == "script" 
             element[0].appendChild(html[0])
