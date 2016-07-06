@@ -226,9 +226,13 @@ getPermissionsForWebstrate = (username, provider, webstrate, snapshot) ->
         if snapshot.data[1]? and snapshot.data[1]['data-auth']?
             try 
                 authData = JSON.parse snapshot.data[1]['data-auth']
+                permissions = ""
                 for user in authData
+                    if user.username == "anonymous" && user.provider = ""
+                        permissions = user.permissions
                     if user.username == username && user.provider == provider
                         return user.permissions
+                return permissions
             catch error
     return "rw"
 
