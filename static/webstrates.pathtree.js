@@ -1,0 +1,179 @@
+/*
+Webstrates PathTree (webstrates.pathree.js)
+
+PathTree is a tree data structure mapping to the DOM, but with some extended attributes. Each node
+in a PathTree consists of a unique id, a list of children, a parent, and the node's mapped DOM
+element.
+
+The primary purposes of the PathTree are to:
+  1) Maintain a copy of the DOM tree's structure pre-mutation, so operations on the pre-mutation DOM
+     tree can be rewritten to work on the post-mutation DOM tree.
+  2) Facilitate lightweight creation of JsonML which is used when creating operations that are to be
+     sent to the Webstrates server.
+  3) Allow for verifying the integrity of the document by comparing every DOM node to its respective
+     PathTree node.
+*/
+var root = typeof module === "object" && module.exports ? module.exports : window;
+
+root.webstrates = (function(webstrates) {
+	"use strict";
+
+	/**
+	 * Generate a unique identifier (UUID4).
+	 * @return {UUID}
+	 */
+	var generateUUID = function() {
+		return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {
+			var r = Math.random() * 16 | 0;
+			var v = c === 'x' ? r : (r & 0x3) | 0x8;
+			return v.toString(16);
+		});
+	};
+
+	/**
+	 * Create a PathTree from a DOM element. If a parentPathTree is provided, the created
+	 * PathTree will be a subtree of the parent.
+	 * @param {DOMNode} DOMNode	DOMNode to create PathTree from.
+	 * @param {PathTree} parentPathTree	PathTree to add as parent.
+	 * @param {bool} overwrite	Whether existing PathTree on the DOMNode should be overwritten by the
+	 * new PathTree or just appended to it.
+	 * @return {PathTree} Created PathTree.
+	 */
+	var PathTree = function(DOMNode, parentPathTree, overwrite) {
+		this.id = generateUUID();
+		this.children = [];
+		this.parent = parentPathTree;
+		this.DOMNode = DOMNode;
+
+		// When moving an element around, a node may exist in two places at once for a brief moment.
+		// __pathNodes therefore has to be a list.
+		if (overwrite || !DOMNode.__pathNodes || DOMNode.__pathNodes.length === 0) {
+			DOMNode.__pathNodes = [this];
+		} else {
+			DOMNode.__pathNodes.push(this);
+		}
+
+		Array.from(DOMNode.childNodes).forEach(function(childNode) {
+			this.children.push(new PathTree(childNode, this, overwrite));
+		}.bind(this));
+
+	};
+
+	/**
+	 * Creates a JsonML representation of the PathTree.
+	 * @return {JsonML} JsonML representation of PathTree.
+	 */
+	PathTree.prototype.toPath = function() {
+		if (!this.parent) {
+			return [];
+		}
+
+		var childIndex = this.parent.children.findIndex(function(sibling) {
+			return sibling.id === this.id;
+		}.bind(this));
+
+		// In the JsonML representation, the list elements start at position 2 in the object:
+		//   [tag-name, attributes, ...element-list]
+		var ELEMENT_LIST_OFFSET = 2;
+		return [...this.parent.toPath(), ELEMENT_LIST_OFFSET + childIndex];
+	};
+
+	/**
+	 * Remove a PathTree by removing itself from parent as well as removing all children.
+	 * @param {bool} shallow Does not remove itself from parent if true (deletion if shallow).
+	 * @return {PathTree}    The deleted PathTree, consisting only of an object with an id.
+	 */
+	PathTree.prototype.remove = function(shallow) {
+		// TODO: Why can't we do this EVERY time? If we do this on the children as well, the integrity
+		// check fails.
+		if (!shallow) {
+			// Remove ourselves from our parent.
+			this.parent.children.splice(this.parent.children.indexOf(this), 1);
+		}
+		this.parent = null;
+
+		// Remove ourselves from our DOMNode.
+		this.DOMNode.__pathNodes.splice(this.DOMNode.__pathNodes.indexOf(this), 1);
+		this.DOMNode = null;
+
+		// Remove all our children.
+		this.children.forEach(function(child) {
+			child.remove(true);
+		});
+		this.children = null;
+
+		return this;
+	};
+
+	/**
+	 * Checks the integrity of the document by recursively comparing the elements of the PathTree to
+	 * that of the DOM node.
+	 * @return {Array of results}
+	 */
+	PathTree.prototype.check = function() {
+		if (this.DOMNode.__pathNodes.length > 1) {
+			console.log(this.DOMNode, this.DOMNode.__pathNodes);
+			window.alert("Webstrates has encountered an error. Please reload the page.");
+			throw "Node has multiple paths";
+		}
+		var domNodePathNode = this.DOMNode.__pathNodes[0];
+		if (domNodePathNode.id !== this.id) {
+			console.log(this.DOMNode, this);
+			window.alert("Webstrates has encountered an error. Please reload the page.");
+			throw "No id match";
+		}
+		var definedChildNodesInDom = (function() {
+			var j, len, ref, ref1;
+			ref = this.DOMNode.childNodes;
+			var results = [];
+			for (var j = 0, len = ref.length; j < len; j++) {
+				var childNode = ref[j];
+				if (((ref1 = childNode.__pathNodes) != null ? ref1.length : void 0) > 0) {
+					results.push(childNode);
+				}
+			}
+			return results;
+		}.bind(this))();
+		if (definedChildNodesInDom.length !== this.children.length) {
+			console.log(this.DOMNode, this);
+			window.alert("Webstrates has encountered an error. Please reload the page.");
+			throw "Different amount of children";
+		}
+		if (definedChildNodesInDom.length !== this.DOMNode.childNodes.length) {
+			console.warn("Warning: Found zombie nodes in DOM.");
+		}
+		var results = [];
+		for (var i = 0, j = 0, len = definedChildNodesInDom.length; j < len; i = ++j) {
+			results.push(this.children[i].check());
+		}
+		return results;
+	};
+
+	/**
+	 * Returns the last added pathNode of an element
+	 * If a parent DOM element is provided, we search for the pathNode that matches on parent
+	 */
+	PathTree.getPathNode = function(elem, parentElem) {
+		if (!elem || !elem.__pathNodes) {
+			return null;
+		}
+
+		if (!parentElem || !parentElem.__pathNodes) {
+			return elem.__pathNodes[elem.__pathNodes.length - 1];
+		}
+
+		var matchingElement = null;
+		parentElem.__pathNodes.some(function(parentPathNode) {
+			return (matchingElement = elem.__pathNodes.find(function(pathNode) {
+				return pathNode.parent.id === parentPathNode.id
+			}));
+		});
+
+		return matchingElement;
+	}
+
+	webstrates.PathTree = PathTree;
+
+	return webstrates;
+
+})(root.webstrates || {});

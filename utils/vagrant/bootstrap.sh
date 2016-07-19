@@ -10,9 +10,7 @@ sudo apt-get install -y npm
 git clone https://github.com/cklokmose/Webstrates.git
 cd Webstrates
 npm set strict-ssl false
-sudo npm install -g coffee-script
 sudo npm install
-cake build
 cd ..
 sudo cat << EOF > webstrates_temp
 start on runlevel [2345]
@@ -24,7 +22,7 @@ chdir /home/vagrant/Webstrates
 respawn
 respawn limit 20 5
 
-exec /usr/bin/coffee webstrates.coffee
+exec node webstrates.js
 EOF
 sudo mv webstrates_temp /etc/init/webstrates.conf
 sudo initctl reload-configuration

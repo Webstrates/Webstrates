@@ -1,30 +1,51 @@
 {
   "name": "webstrate",
-  "version": "0.0.1",
+  "version": "1.0.0",
   "description": "Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrates observes changes to the DOM using MutationObservers.",
   "keywords": [
     "Operational Transformation",
-    "hci",
-    "collaborative editing"
+    "HCI",
+    "Collaborative Editing"
   ],
+  "babel": {
+    "presets": [
+      "es2015-webpack",
+      "stage-0"
+    ]
+  },
+  "scripts": {
+    "start": "node webstrates.js",
+    "build-libs": "browserify node_modules/sharedb/lib/client/index.js --standalone sharedb > static/lib/sharedb.js",
+    "build-babel": "cd static && babel webstrates.* --out-dir ../build",
+    "babel-version": "babel --version"
+  },
   "homepage": "",
   "license": "Apache-2.0",
   "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
   "dependencies": {
+    "babel-cli": "^6.10.1",
+    "babel-core": "^6.10.4",
+    "babel-preset-es2015": "^6.9.0",
+    "babel-preset-es2015-webpack": "^6.4.1",
+    "babel-preset-stage-0": "^6.5.0",
     "browserchannel": "^2.0.0",
+    "browserify": "^13.0.1",
     "client-sessions": "^0.7.0",
     "express": "^4.8.0",
+    "fs-sync": "^1.0.2",
     "http-auth": "^2.2.0",
     "jsonml-tools": "git+http://github.com/cklokmose/jsonml-tools.git#master",
-    "livedb": "^0.4.4",
-    "livedb-mongo": "^0.4.1",
-    "mongodb": "^1.4.29",
+    "mongodb": "^2.1.19",
     "optimist": "^0.6.1",
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
     "serve-static": "^1.6.2",
-    "share": "0.7.3",
+    "sharedb": "^0.11.36",
+    "sharedb-mongo": "^0.8.7",
     "shortid": "^2.0.1",
     "ws": "0.4.32"
+  },
+  "devDependencies": {
+    "selenium-webdriver": "^2.53.2"
   }
 }
