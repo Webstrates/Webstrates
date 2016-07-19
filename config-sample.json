@@ -1,0 +1,21 @@
+{
+	"db": "mongodb://127.0.0.1:27017/webstrate",
+	"auth": {
+		"cookie": {
+			"secret": "This is a secret",
+			"cookieName": "session",
+			"duration": 31536000000
+		},
+		"permissionTimeout": 300,
+		"defaultPermissions": [
+			{"username": "anonymous", "provider": "", "permissions": "rw"}
+		],
+		"providers": {
+		}
+	},
+	"basicAuth": {
+		"realm": "webstrate",
+		"username": "web",
+		"password": "strate"
+	}
+}
