@@ -118,7 +118,8 @@ module.exports = function(documentManager, authConfig) {
 		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === "html" &&
 			snapshot.data[1] && snapshot.data[1]['data-auth']) {
 			try {
-				permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"'));
+				permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
+					.replace(/&quot;/g, "\"").replace(/&amp;/g, "&"));
 			} catch (err) {
 				console.warn("Couldn't parse document permissions for", snapshot.id);
 				// We don't have to do anything. No valid document permissions.

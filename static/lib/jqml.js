@@ -68,12 +68,13 @@
 						selector = document.createElement(name);
 					};
 					for (var index in elem[i]) {
+						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 						if (xmlNs !== undefined) {
 							if (index === "href" || index === "xlink:href") {
-								selector.setAttributeNS('http://www.w3.org/1999/xlink', index, elem[i][index]);
+								selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
 							}
 						}
-						selector.setAttribute(index, elem[i][index]);
+						selector.setAttribute(index, value);
 					}
 				}
 

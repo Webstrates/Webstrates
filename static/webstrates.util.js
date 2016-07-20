@@ -28,8 +28,31 @@ root.webstrates = (function(webstrates) {
 		return elementAtPath(snapshot[head], tail);
 	}
 
+	/**
+	 * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
+	 * @param  {string} value Unescaped string.
+	 * @return {string}       Escaped string.
+	 * @public
+	 */
+	var escape = function(value) {
+		if (!value) return "";
+		return value.replace(/&/g, '&amp;').replace(/\"/g, "&quot;");
+	}
+
+	/**
+	 * Replaces HTML entities for ampersands (&) and double-quotes (") with their actual character
+	 * representations.
+	 * @param  {string} value Escaped string.
+	 * @return {string}       Unescaped string.
+	 * @public
+	 */
+	var unescape = function(value) {
+		if (!value) return "";
+		return value.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
+	}
+
 	webstrates.util = {
-		elementAtPath
+		elementAtPath, escape, unescape
 	};
 
 	return webstrates;
