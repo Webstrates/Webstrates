@@ -55,7 +55,7 @@ root.webstrates = (function(webstrates) {
 		var targetPathNodeJsonML = targetPathNode.toPath();
 		var path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, mutation.attributeName];
 		var oldValue = mutation.oldValue;
-		var newValue = mutation.target.getAttribute(mutation.attributeName);
+		var newValue = webstrates.util.escape(mutation.target.getAttribute(mutation.attributeName));
 
 		// dmp.patch_make does not accept empty strings, so if we are creating a new attribute (or
 		// setting an attribute's value for the first time), we have to create the operation manually.
@@ -71,7 +71,8 @@ root.webstrates = (function(webstrates) {
 			return [op];
 		}
 
-		var pathTreeNode = webstrates.util.elementAtPath(sjsDoc.data, [...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
+		var pathTreeNode = webstrates.util.elementAtPath(sjsDoc.data,
+			[...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
 		if (pathTreeNode[mutation.attributeName] !== oldValue) {
 			// This should not happen, but it will if a text node is inserted and then altered right
 			// after. If this happens, we can ignore it.
@@ -169,8 +170,9 @@ root.webstrates = (function(webstrates) {
 	 */
 	var createOp = function(mutation, sjsDoc) {
 			var targetPathNode = webstrates.PathTree.getPathNode(mutation.target);
-			// It doesn't make sense to create operation for a node that doesn't exist, so we return. This may happen if
-			// another user performs an operation on an element that we have just deleted.
+			// It doesn't make sense to create operation for a node that doesn't exist, so we return.
+			// This may happen if another user performs an operation on an element that we have just
+			// deleted.
 			if (!targetPathNode) {
 				return;
 			}

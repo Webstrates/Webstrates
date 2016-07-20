@@ -62,11 +62,11 @@ root.webstrates = (function(webstrates) {
 		if (tail.length > 0) {
 			var key = head - jsonml.ELEMENT_LIST_OFFSET;
 			var childElement = parentElement.childNodes[key];
-			return setAttribute(childElement, tail, value);
+			return setAttribute(childElement, tail, webstrates.util.unescape(value));
 		}
 
 		var key = head;
-		parentElement.setAttribute(key, value || "");
+		parentElement.setAttribute(key, webstrates.util.unescape(value));
 	};
 
 	/**
