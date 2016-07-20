@@ -213,7 +213,7 @@ root.webstrates = (function(webstrates) {
 			// parent frame is from a different domain and we return to not violate cross-domain
 			// restrictions on iframes.
 			var referrerDomain = (function() {
-				var a = document.createElement("a");
+				var a = document.__createElement("a");
 				a.href = document.referrer;
 				return a.host;
 			})();
@@ -310,25 +310,21 @@ root.webstrates = (function(webstrates) {
 		 * @private
 		 */
 		var attachWebstrateObjectToNode = function(node) {
-			var callbackLists = {};
+			var callbackLists = {
+				insertText: [],
+				deleteText: []
+			};
 			node.webstrate = {};
 
+			// Make it possible to attach event listeners on events defined in callbackLists.
 			node.webstrate.on = function(event, callback) {
 				addCallbackToEvent(event, callback, callbackLists, window);
 			};
 
-			if (node.nodeType === Node.TEXT_NODE) {
-				callbackLists.insertText = [];
-				callbackLists.deleteText = [];
-
-				// If we are working with a text node, we want to be able to trigger insertText and
-				// deleteText events ourselves, so we expose a fireEvent method.
-				node.webstrate.fireEvent = function(event, ...parameters) {
-					triggerCallbacks(callbackLists[event], ...parameters);
-				};
-
-				return node;
-			}
+			// Make it possible to trigger insertText and deleteText events on text nodes and attributes.
+			node.webstrate.fireEvent = function(event, ...parameters) {
+				triggerCallbacks(callbackLists[event], ...parameters);
+			};
 
 			if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "iframe") {
 				callbackLists.transcluded = [];
