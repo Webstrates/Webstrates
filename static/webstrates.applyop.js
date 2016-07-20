@@ -251,14 +251,17 @@ root.webstrates = (function(webstrates) {
 			parentElement.data = newString;
 		}
 
+		// If the change is to an attribute, include the attribute name, otherwise undefined.
+		var attributeName = typeof key === "string" ? key : undefined;
+
 		// Create and dispatch deprecated events. This should be removed, eventually.
 		var event = new CustomEvent("insertText", {
-			detail: { position: charIndex, value: value }
+			detail: { position: charIndex, value: value, attributeName: attributeName }
 		});
 		parentElement.dispatchEvent(event);
 
 		// Send out new events.
-		parentElement.webstrate.fireEvent("insertText", charIndex, value);
+		parentElement.webstrate.fireEvent("insertText", charIndex, value, attributeName);
 
 		return newString;
 	};
@@ -295,14 +298,17 @@ root.webstrates = (function(webstrates) {
 			parentElement.data = newString;
 		}
 
+		// If the change is to an attribute, include the attribute name, otherwise undefined.
+		var attributeName = typeof key === "string" ? key : undefined;
+
 		// Create and dispatch deprecated events. This should be removed, eventually.
 		var event = new CustomEvent("deleteText", {
-			detail: { position: charIndex, value: value }
+			detail: { position: charIndex, value: value, attributeName: attributeName }
 		});
 		parentElement.dispatchEvent(event);
 
 		// Send out new events.
-		parentElement.webstrate.fireEvent("deleteText", charIndex, value);
+		parentElement.webstrate.fireEvent("deleteText", charIndex, value, attributeName);
 
 		return newString;
 	};
