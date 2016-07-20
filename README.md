@@ -70,7 +70,7 @@ The user may subscribe to certain events triggered by Webstrates using `webstrat
 When the Webstrates client has finished loading a webstrate, it will trigger `loaded` event on webstrate instance. Using the default `client.html` and `client.js`,  the webstrance instance will be attached to the point element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
 
 ```javascript
-webstrate.on('loaded', function(webstrateId, clientId) {
+webstrate.on("loaded", function(webstrateId, clientId) {
 	// The Webstrates client has now finished loading.
 });
 ```
@@ -87,7 +87,7 @@ myIframe.webstrate.on("transcluded", function(webstrateId, clientId) {
 
 ### Events on text nodes
 
-Webstrates does fine-grained synchronization on text nodes, however, to update a text node in the browser, the whole text is replaced. To allow more finegrained interaction with text, Webstrates also dispatches text insertion and deletion events on text nodes:
+Webstrates does fine-grained synchronization on text nodes and attributes, however, to update a text node or attribute in the browser, the whole text is replaced. To allow more fine-grained interaction with text, Webstrates also dispatches text insertion and deletion events on text nodes and element nodes:
 
 ```javascript
 textNode.webstrate.on("insertText", function(position, value) {
@@ -97,18 +97,26 @@ textNode.webstrate.on("insertText", function(position, value) {
 textNode.webstrate.on("deleteText", function(position, value) {
 	// Some text has just been deleted from textNode.
 });
+
+elementNode.webstrate.on("insertText", function(position, value, attributeName) {
+	// Some text has just been inserted into an attribute on elementNode.
+});
+
+elementNode.webstrate.on("deleteText", function(position, value, attributeName) {
+	// Some text has just been deleted from an attribute on textNode.
+});
 ```
 
 #### Full list of `on` events
 
-| Event         | Arguments                 | Description                                                       |
-|---------------|---------------------------|-------------------------------------------------------------------|
-| `loaded`      | Webstrate Id, Client ID   | Triggered when the webstrate document has finished loading.       |
-| `transcluded` | Webstrate Id, Client ID   | Triggered if a webstrate is transcluded and has finished loading. |
-| `clientJoin`  | Client ID                 | Triggered when a client joins the document.                       |
-| `clientPart`  | Client ID                 | Triggered when a client leaves the document.                      |
-| `insertText`  | Position, Value           | Triggered when a text has been inserted into a Text Node.         |
-| `deleteText`  | Position, Value           | Triggered when text has been deleted from a Text Node.            |
+| Event         | Arguments                          | Description                                                            |
+|---------------|------------------------------------|------------------------------------------------------------------------|
+| `loaded`      | Webstrate Id, Client ID            | Triggered when the webstrate document has finished loading.            |
+| `transcluded` | Webstrate Id, Client ID            | Triggered if a webstrate is transcluded and has finished loading.      |
+| `clientJoin`  | Client ID                          | Triggered when a client joins the document.                            |
+| `clientPart`  | Client ID                          | Triggered when a client leaves the document.                           |
+| `insertText`  | Position, Value [, Attribute Name] | Triggered when a text has been inserted into a text node or attribute. |
+| `deleteText`  | Position, Value [, Attribute Name] | Triggered when text has been deleted from a text node or attribute.    |
 
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
