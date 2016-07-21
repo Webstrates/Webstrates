@@ -5,3 +5,5 @@ This project adheres to [Semantic Versioning](http://semver.org/).
 ## 1.0.0 (July 19, 2016)
 
 The entire Webstrates codebase has been rewritten to no longer depend on CoffeeScript, to use ShareDB instead of ShareJS, and a multitude of other improvements.
+
+For developers that have previously been using the ShareJS version of Webstrates, the database will not be entirely compatible. Documents will work, but the document history and operations lists will not. To fix this, use the [migration tool](https://github.com/Webstrates/sharedb-migration-tool).

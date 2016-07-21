@@ -22,8 +22,7 @@ To install:
     * Run `npm start`.
     * Navigate to `http://localhost:7007/` in your browser and start using Webstrates!
 
-Alternatively, [use Vagrant](utils/vagrant) to create and run a VM configured with Webstrates.
-
+Note: If you are updating from the ShareJS version of Webstrates, you may want to migrate the database. See the [Change Log](docs/CHANGELOG.md) for more information.
 Basic Usage
 ===========
 Webstrates serves (and creates) any named webpage you ask for. Simply navigate your browser* to `http://localhost:7007/<some_name>`.
