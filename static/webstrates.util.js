@@ -9,13 +9,16 @@ var root = typeof module === "object" && module.exports ? module.exports : windo
 root.webstrates = (function(webstrates) {
 	"use strict";
 
+	var util = {};
+
 	/**
 	 * Get the element at a given path in a JsonML document.
 	 * @param  {JsonML} snapshot ShareJS Context (a JsonML document).
 	 * @param  {DOMPath} path    Path to follow in snapshot.
 	 * @return {JsonML}          Element at path in snapshot.
+	 * @public
 	 */
-	var elementAtPath = function(snapshot, path) {
+	util.elementAtPath = function(snapshot, path) {
 		if (path.length > 0 && typeof path[path.length-1] === "string") {
 			return null;
 		}
@@ -25,8 +28,23 @@ root.webstrates = (function(webstrates) {
 			return snapshot;
 		}
 
-		return elementAtPath(snapshot[head], tail);
+		return util.elementAtPath(snapshot[head], tail);
 	}
+
+	/**
+	 * Traverses an element tree and applies a callback to each element.
+	 * @param {DOMNode}   element Element tree to traverse.
+	 * @param {Function} callback Callback.
+	 * @public
+	 */
+	util.recursiveForEach = function(element, callback) {
+		callback(element);
+
+		var childNodes = element.content ? element.content.childNodes : element.childNodes;
+		Array.from(childNodes).forEach(function(childNode) {
+			util.recursiveForEach(childNode, callback);
+		});
+	};
 
 	/**
 	 * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
@@ -34,7 +52,7 @@ root.webstrates = (function(webstrates) {
 	 * @return {string}       Escaped string.
 	 * @public
 	 */
-	var escape = function(value) {
+	util.escape = function(value) {
 		if (!value) return "";
 		return value.replace(/&/g, '&amp;').replace(/\"/g, "&quot;");
 	}
@@ -46,14 +64,12 @@ root.webstrates = (function(webstrates) {
 	 * @return {string}       Unescaped string.
 	 * @public
 	 */
-	var unescape = function(value) {
+	util.unescape = function(value) {
 		if (!value) return "";
 		return value.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 	}
 
-	webstrates.util = {
-		elementAtPath, escape, unescape
-	};
+	webstrates.util = util;
 
 	return webstrates;
 
