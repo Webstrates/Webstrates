@@ -82,7 +82,7 @@ var JsonML = JsonML || {};
 								// deprecated
 								child = elem.document;
 							}
-	
+
 							child = fromHTML(child, filter);
 							if (child) {
 								jml.push(child);
