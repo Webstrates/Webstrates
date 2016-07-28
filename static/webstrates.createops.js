@@ -1,7 +1,7 @@
 /*
-Webstrates CreateOp (webstrates.createop.js)
+Webstrates CreateOps (webstrates.createops.js)
 
-This file exposes the createOp(mutation, sjsDoc) function on the Webstrates scope. This function
+This file exposes the createOps(mutation, sjsDoc) function on the Webstrates scope. This function
 takes a MutationRecord (created by the MutationObserver) and returns a list of json0 OT operations
 (see https://github.com/ottypes/json0) that can be applied to a DOM element using the ApplyOp
 module.
@@ -40,7 +40,7 @@ root.webstrates = (function(webstrates) {
 		});
 
 		return ops;
-	}
+	};
 
 	/**
 	 * Creates attribute operation (object insertion) from mutation.
@@ -50,12 +50,12 @@ root.webstrates = (function(webstrates) {
 	 * @param  {ShareDB Document} sjsDoc ShareDB Document.
 	 * @return {Ops}                     Operation created from mutation wrapped in a list.
 	 */
-	var attributeMutation = function(mutation, targetPathNode, sjsDoc) {
+	var attributeMutation = function(mutation, target, targetPathNode, sjsDoc) {
 		var ATTRIBUTE_INDEX = 1;
 		var targetPathNodeJsonML = targetPathNode.toPath();
 		var path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, mutation.attributeName];
 		var oldValue = mutation.oldValue;
-		var newValue = webstrates.util.escape(mutation.target.getAttribute(mutation.attributeName));
+		var newValue = webstrates.util.escape(target.getAttribute(mutation.attributeName));
 
 		// dmp.patch_make does not accept empty strings, so if we are creating a new attribute (or
 		// setting an attribute's value for the first time), we have to create the operation manually.
@@ -91,11 +91,11 @@ root.webstrates = (function(webstrates) {
 	 * @param  {ShareDB Document} sjsDoc ShareDB Document.
 	 * @return {Ops}                     Operation created from mutation wrapped in a list.
 	 */
-	var characterDataMutation = function(mutation, targetPathNode, sjsDoc) {
-		var isComment = mutation.target.nodeType === 8;
+	var characterDataMutation = function(mutation, target, targetPathNode, sjsDoc) {
+		var isComment = target.nodeType === document.COMMENT_NODE;
 		var path = targetPathNode.toPath();
 		var oldValue = mutation.oldValue;
-		var newValue = mutation.target.data;
+		var newValue = target.data;
 
 		if (!isComment && webstrates.util.elementAtPath(sjsDoc.data, path) !== oldValue) {
 			// This should not happen, but it will if a text node is inserted and then altered right
@@ -109,7 +109,7 @@ root.webstrates = (function(webstrates) {
 		}
 
 		return ops;
-	}
+	};
 
 	/**
 	 * Creates node insertion and deletion operations from mutation.
@@ -119,12 +119,12 @@ root.webstrates = (function(webstrates) {
 	 * @param  {ShareDB Document} sjsDoc ShareDB Document.
 	 * @return {Ops}                     List of operations created from mutation.
 	 */
-	var childListMutation = function(mutation, targetPathNode, sjsDoc) {
+	var childListMutation = function(mutation, target, targetPathNode, sjsDoc) {
 		var ops = [];
 
 		var previousSibling = mutation.previousSibling;
 		Array.from(mutation.addedNodes).forEach(function(addedNode) {
-			var addedPathNode = webstrates.PathTree.getPathNode(addedNode, mutation.target);
+			var addedPathNode = webstrates.PathTree.getPathNode(addedNode, target);
 			if (addedPathNode && targetPathNode.id === addedPathNode.parent.id) {
 				return;
 			}
@@ -132,7 +132,7 @@ root.webstrates = (function(webstrates) {
 			var newPathNode = new webstrates.PathTree(addedNode, targetPathNode);
 			if (previousSibling) {
 				var previousSiblingPathNode = webstrates.PathTree.getPathNode(previousSibling,
-					mutation.target);
+					target);
 				var previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
 				targetPathNode.children.splice(previousSiblingIndex + 1, 0, newPathNode);
 				previousSibling = addedNode;
@@ -142,13 +142,13 @@ root.webstrates = (function(webstrates) {
 				targetPathNode.children.push(newPathNode);
 			}
 
-			var path = webstrates.PathTree.getPathNode(addedNode, mutation.target).toPath();
+			var path = webstrates.PathTree.getPathNode(addedNode, target).toPath();
 			var op = { li: JsonML.fromHTML(addedNode), p: path };
 			ops.push(op);
 		});
 
 		Array.from(mutation.removedNodes).forEach(function(removedNode) {
-			var removedPathNode = webstrates.PathTree.getPathNode(removedNode, mutation.target);
+			var removedPathNode = webstrates.PathTree.getPathNode(removedNode, target);
 			if (removedPathNode == null) {
 				return;
 			}
@@ -162,14 +162,23 @@ root.webstrates = (function(webstrates) {
 		return ops;
 	};
 
+
 	/**
-	 * Creates an operation from a mutation.
+	 * Creates operations from a mutation.
 	 * @param  {MutationRecord} mutation MutationRecord created by MutationObserver.
 	 * @param  {ShareDB Document} sjsDoc ShareDB Document.
 	 * @return {Ops}                     List of operations created from mutation.
 	 */
-	var createOp = function(mutation, sjsDoc) {
-			var targetPathNode = webstrates.PathTree.getPathNode(mutation.target);
+	var createOps = function(mutation, sjsDoc, fragmentParentMap) {
+			// DocumentFragments (as per the specification) can't have parents, even if they actually do.
+			// Therefore, they also can't exist in the PathTree. Instead, we pretend that they *are*
+			// their parents. Since this is only used with <template>s, whose only children are a single
+			// documentFragment, this makes sense. The JsonML also does not store the documentFragment,
+			// but it is automatically created when creating a <template> tag.
+			var target = mutation.target.nodeType === document.DOCUMENT_FRAGMENT_NODE ?
+				fragmentParentMap[mutation.target.id] : mutation.target;
+
+			var targetPathNode = webstrates.PathTree.getPathNode(target);
 			// It doesn't make sense to create operation for a node that doesn't exist, so we return.
 			// This may happen if another user performs an operation on an element that we have just
 			// deleted.
@@ -178,14 +187,17 @@ root.webstrates = (function(webstrates) {
 			}
 
 			switch (mutation.type) {
-				case "attributes": return attributeMutation(mutation, targetPathNode, sjsDoc); break;
-				case "characterData": return characterDataMutation(mutation, targetPathNode, sjsDoc); break;
-				case "childList": return childListMutation(mutation, targetPathNode, sjsDoc);	break;
+				case "attributes":
+					return attributeMutation(mutation, target, targetPathNode, sjsDoc); break;
+				case "characterData":
+					return characterDataMutation(mutation, target, targetPathNode, sjsDoc); break;
+				case "childList":
+					return childListMutation(mutation, target, targetPathNode, sjsDoc); break;
 				default: throw `Unsupported mutation type: ${type}`;
 			}
 	};
 
-	webstrates.createOp = createOp
+	webstrates.createOps = createOps
 
 	return webstrates;
 

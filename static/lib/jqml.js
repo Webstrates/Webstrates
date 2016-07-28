@@ -41,7 +41,7 @@
 		var selector;
 		var name = null
 
-		// check if is an element or array of elements
+		// Check if is an element or array of elements
 		if (typeof elem[0] == 'string') {
 			name = elem[0];
 			i = 1;
@@ -52,11 +52,11 @@
 		}
 
 		for (; i < elem.length; i++) {
-			// if array create new element
+			// If array create new element
 			if (isArray(elem[i])) {
 				fragment.appendChild(createObj(elem[i], xmlNs));
 
-				// if object set element attributes
+				// If object set element attributes
 			} else if (isPlainObject(elem[i])) {
 				if (name) {
 					if (xmlNs === undefined) {
@@ -78,11 +78,11 @@
 					}
 				}
 
-				// if string or number insert text node
+				// If string or number insert text node
 			} else if (typeof elem[i] == 'number' || typeof elem[i] == 'string') {
 				fragment.appendChild(document.createTextNode(elem[i]));
 
-				// if is an element append to fragment
+				// If is an element append to fragment
 			} else if (elem[i].nodeType) {
 				fragment.appendChild(elem[i]);
 			}
@@ -92,18 +92,22 @@
 			selector = document.createElement(name);
 		}
 
-		// if a selector is set append children and return
+		// If a selector is set append children and return
 		if (selector) {
-			selector.appendChild(fragment);
+			// When creating <templates>, we need the document to actually contain an documentFragment.
+			// If we just add a documentFragment to an element, the children of documentFragment will
+			// actually be added instead. To prevent this, we add the children to the `content` property
+			// if it exists.
+			(selector.content || selector).appendChild(fragment);
 			return selector;
 		}
 
-		// otherwise return children of fragment
+		// Otherwise return children of fragment
 		return fragment.childNodes;
 	}
 
 	global.jqml = function(arg, namespace) {
-		// return new jQuery object of elements
+		// Return new jQuery object of elements
 		return createObj(arg, namespace);
 	};
 

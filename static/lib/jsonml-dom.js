@@ -5,10 +5,10 @@
 	Created: 2007-02-15-2235
 	Modified: 2012-11-03-2051
 
-	Copyright (c)2006-2012 Stephen M. McKamey
+	Copyright (c) 2006-2012 Stephen M. McKamey
 	Distributed under The MIT License: http://jsonml.org/license
 
-    Adapted to work with Webstrates by Clemens N. Klokmose
+	Adapted to work with Webstrates by Clemens N. Klokmose and Kristian B. Antonsen
 */
 
 var JsonML = JsonML || {};
@@ -17,9 +17,12 @@ var JsonML = JsonML || {};
 	'use strict';
 
 	var addChildren = function(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
-		if (elem.hasChildNodes()) {
-			for (var i=0; i<elem.childNodes.length; i++) {
-				var child = elem.childNodes[i];
+		// elem.content may have childNodes if elem is a template (i.e. elem.content is a document
+		// fragment).
+		if (elem.hasChildNodes() || (elem.content && elem.content.hasChildNodes())) {
+			var childNodes = elem.content ? elem.content.childNodes : elem.childNodes;
+			for (var i=0; i<childNodes.length; i++) {
+				var child = childNodes[i];
 				child = fromHTML(child, filter);
 				if (child) {
 					jml.push(child);
@@ -95,9 +98,10 @@ var JsonML = JsonML || {};
 							// unwrap comment blocks
 							child = child.replace('<!--', '').replace('-->', '');
 							jml.push(child);
-						} else if (elem.hasChildNodes()) {
-							for (i=0; i<elem.childNodes.length; i++) {
-								child = elem.childNodes[i];
+						} else if (elem.hasChildNodes() || (elem.content && elem.content.hasChildNodes())) {
+							var childNodes = elem.content ? elem.content.childNodes : elem.childNodes;
+							for (i=0; i<childNodes.length; i++) {
+								child = childNodes[i];
 								child = fromHTML(child, filter);
 								if (child && 'string' === typeof child) {
 									// unwrap comment blocks

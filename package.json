@@ -43,6 +43,7 @@
     "sharedb": "^0.11.36",
     "sharedb-mongo": "^0.8.7",
     "shortid": "^2.0.1",
+    "websocket": "^1.0.23",
     "ws": "0.4.32"
   },
   "devDependencies": {
