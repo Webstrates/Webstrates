@@ -53,10 +53,11 @@ root.webstrates = (function(webstrates) {
 			DOMNode.__pathNodes.push(this);
 		}
 
-		Array.from(DOMNode.childNodes).forEach(function(childNode) {
+		var childNodes = DOMNode.hasChildNodes() ? DOMNode.childNodes :
+			(DOMNode.content && DOMNode.content.childNodes) || [];
+		Array.from(childNodes).forEach(function(childNode) {
 			this.children.push(new PathTree(childNode, this, overwrite));
 		}.bind(this));
-
 	};
 
 	/**
@@ -116,15 +117,18 @@ root.webstrates = (function(webstrates) {
 			window.alert("Webstrates has encountered an error. Please reload the page.");
 			throw "Node has multiple paths";
 		}
+
 		var domNodePathNode = this.DOMNode.__pathNodes[0];
 		if (domNodePathNode.id !== this.id) {
 			console.log(this.DOMNode, this);
 			window.alert("Webstrates has encountered an error. Please reload the page.");
 			throw "No id match";
 		}
+
 		var definedChildNodesInDom = (function() {
 			var j, len, ref, ref1;
-			ref = this.DOMNode.childNodes;
+			ref = this.DOMNode.hasChildNodes() ? this.DOMNode.childNodes
+				: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
 			var results = [];
 			for (var j = 0, len = ref.length; j < len; j++) {
 				var childNode = ref[j];
@@ -132,20 +136,29 @@ root.webstrates = (function(webstrates) {
 					results.push(childNode);
 				}
 			}
+			//console.log(results);
 			return results;
 		}.bind(this))();
+
 		if (definedChildNodesInDom.length !== this.children.length) {
-			console.log(this.DOMNode, this);
+			console.log(definedChildNodesInDom, this.children, this);
 			window.alert("Webstrates has encountered an error. Please reload the page.");
 			throw "Different amount of children";
 		}
-		if (definedChildNodesInDom.length !== this.DOMNode.childNodes.length) {
+
+
+		var childNodes = this.DOMNode.hasChildNodes() ? this.DOMNode.childNodes
+				: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
+		if (definedChildNodesInDom.length !== childNodes.length) {
+			console.log(definedChildNodesInDom, childNodes);
 			console.warn("Warning: Found zombie nodes in DOM.");
 		}
+
 		var results = [];
 		for (var i = 0, j = 0, len = definedChildNodesInDom.length; j < len; i = ++j) {
 			results.push(this.children[i].check());
 		}
+
 		return results;
 	};
 

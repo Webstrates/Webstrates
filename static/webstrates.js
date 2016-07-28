@@ -17,6 +17,8 @@ root.webstrates = (function(webstrates) {
 
 		var COLLECTION_NAME = "webstrates";
 
+		var fragmentObservers = {};
+		var fragmentParentMap = {};
 		var observer, sdbDoc, rootElement, pathTree;
 		var observerOptions = {
 			childList: true,
@@ -115,7 +117,7 @@ root.webstrates = (function(webstrates) {
 			populateElementWithDocument(webstrateId, sdbDoc, targetElement);
 			rootElement = targetElement.children[0];
 			pathTree = new webstrates.PathTree(rootElement, null, true);
-			setupMutationObserver(sdbDoc, rootElement, function afterMutationCallback() {
+			setupMutationObservers(sdbDoc, rootElement, function afterMutationCallback() {
 				pathTree.check();
 			});
 			setupOpListener(sdbDoc, rootElement);
@@ -238,33 +240,121 @@ root.webstrates = (function(webstrates) {
 		};
 
 		/**
+		 * Traverses an element tree and applies a callback to each element.
+		 * @param {DOMNode}   element Element tree to traverse.
+		 * @param {Function} callback Callback.
+		 * @private
+		 */
+		var recursiveForEach = function(element, callback) {
+			callback(element);
+
+			var childNodes = element.content ? element.content.childNodes : element.childNodes;
+			Array.from(childNodes).forEach(function(childNode) {
+				recursiveForEach(childNode, callback);
+			});
+		};
+
+		/**
 		 * Sets up mutation observer on element to generate ops and submit them on a document.
+		 * Also sets up mutation observers on existing and future documentFragments created.
 		 * @param  {ShareDBDocument} doc           Document to submit operations on.
 		 * @param  {DOMElement} rootElement         Element to listen for mutations on.
 		 * @param  {Callback} afterMutationCallback Function to be called after each op had applied.
 		 * @return {MutationObserver}               Created observer.
 		 * @private
 		 */
-		var setupMutationObserver = function(doc, rootElement, afterMutationCallback) {
-			observer = new MutationObserver(function MutationObserverLoop(mutations) {
+		var setupMutationObservers = function(doc, rootElement, afterMutationCallback) {
+
+			/**
+			 * Set ups a Mutation Observer on a Document Fragment.
+			 * @param {DocumentFragment} fragment Fragment to observe.
+			 * @param {DOMElement} element        Element containing fragment.
+			 * @private
+			 */
+			var setupFragmentObserver = function(fragment, element) {
+				if (fragment.id) {
+					return;
+				}
+				fragment.id = Math.random().toString(36).substr(2, 8);
+				var fragmentObserver = new MutationObserver(MutationObserverLoop);
+				fragmentObserver.observe(fragment, observerOptions);
+				fragmentObservers[fragment.id] = [fragment, fragmentObserver];
+				fragmentParentMap[fragment.id] = element;
+			};
+
+			/**
+			 * Removes a Mutation Observer from a Document Fragment.
+			 * @param {DocumentFragment} fragment Fragment to remove observer from.
+			 * @private
+			 */
+			var teardownFragmentObserver = function(fragment) {
+				if (!fragment.id || !fragmentParentMap[fragment.id]) {
+					return;
+				}
+				var [fragment, fragmentObserver] = fragmentObservers[fragment.id];
+				fragmentObserver.disconnect();
+				delete fragmentObservers[fragment.id];
+				delete fragmentParentMap[fragment.id];
+			};
+
+			/**
+			 * Loops over mutations, creates and sends ops, and sets up additional Mutation Observers on
+			 * Document Fragments if needed.
+			 * @param {List of MutationRecords} mutations List of mutations.
+			 */
+			var  MutationObserverLoop = function(mutations) {
 				mutations.forEach(function forEachMutation(mutation) {
-					var op = webstrates.createOp(mutation, doc);
+					var ops = webstrates.createOps(mutation, doc, fragmentParentMap);
 					// In rare cases, what happens doesn't amount to an operation, so we ignore it. See the
-					// CreateOp module for details.
-					if (!op) {
+					// CreateOps module for details.
+					if (!ops || ops.length === 0) {
 						return;
 					}
+
 					try {
-						doc.submitOp(op);
+						doc.submitOp(ops);
 					} catch (error) {
 						// window.alert("Webstrates has encountered an error. Please reload the page.");
-						throw error;
+						console.error(ops, error);
+					}
+
+					// The global mutation observer does not observe on changes to documentFragments within
+					// the document, so we have to create and manage individual observers for each
+					// documentFragment manually.
+					if (mutation.type === "childList") {
+						Array.from(mutation.addedNodes).forEach(function(addedNode) {
+							recursiveForEach(addedNode, function(element) {
+								if (element.content &&
+									element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+									console.log("Setting up observer", element);
+									setupFragmentObserver(element.content, element);
+								}
+							});
+						});
+						Array.from(mutation.removedNodes).forEach(function(removedNode) {
+							recursiveForEach(removedNode, function(element) {
+								if (element.content &&
+									element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+									teardownFragmentObserver(element.content);
+								}
+							});
+						});
 					}
 				});
 				afterMutationCallback();
-			});
+			};
 
+			observer = new MutationObserver(MutationObserverLoop);
 			observer.observe(rootElement, observerOptions);
+
+			// The global mutation observer does not observe on changes to documentFragments within the
+			// document, so we have to create and manage individual observers for each documentFragment
+			// manually.
+			recursiveForEach(rootElement, function(element) {
+				if (element.content && element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+					setupFragmentObserver(element.content, element);
+				}
+			});
 		};
 
 		/**
@@ -280,9 +370,24 @@ root.webstrates = (function(webstrates) {
 					return;
 				}
 
+				// We disable the mutation observers before applying the operations. Otherwise, applying the
+				// operations would cause new mutations to be created, which in turn would cause the
+				// creation of new operations, leading to a livelock for all clients.
+				Object.keys(fragmentObservers).forEach(function(fragmentId) {
+					var [fragment, fragmentObserver] = fragmentObservers[fragmentId];
+					fragmentObserver.disconnect();
+				});
 				observer.disconnect();
+
+				// Apply operations to document.
 				ops.forEach(function forEachOp(op) {
 					webstrates.applyOp(op, rootElement);
+				});
+
+				// And reenable MuationObservers.
+				Object.keys(fragmentObservers).forEach(function(fragmentId) {
+					var [fragment, fragmentObserver] = fragmentObservers[fragmentId];
+					fragmentObserver.observe(fragment, observerOptions);
 				});
 				observer.observe(rootElement, observerOptions);
 			});

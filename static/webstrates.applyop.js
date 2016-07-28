@@ -107,10 +107,13 @@ root.webstrates = (function(webstrates) {
 		var newElement = typeof value === 'string' ?
 			document.createTextNode(value) : jqml(value, namespace);
 
+		// If parentElement.content exists, parentElement contains a documentFragment, and we should be
+		// adding the content to this documentFragment instead. This happens when parentElement is a
+		// <template>.
 		if (childElement) {
-			parentElement.insertBefore(newElement, childElement);
+			(parentElement.content || parentElement).insertBefore(newElement, childElement);
 		} else {
-			appendChildWithoutScriptExecution(parentElement, newElement);
+			appendChildWithoutScriptExecution((parentElement.content || parentElement), newElement);
 		}
 
 		var parentPathNode = webstrates.PathTree.getPathNode(parentElement);
@@ -128,7 +131,7 @@ root.webstrates = (function(webstrates) {
 	var deleteNode = function(parentElement, path) {
 		var [head, ...tail] = path;
 		var key = head - jsonml.ELEMENT_LIST_OFFSET;
-		var childElement = parentElement.childNodes[key];
+		var childElement = (parentElement.content || parentElement).childNodes[key];
 
 		if (tail.length > 0) {
 			return deleteNode(childElement, tail);
@@ -244,7 +247,7 @@ root.webstrates = (function(webstrates) {
 				return insertInText(childElement, tail, charIndex, value);
 			}
 
-			var isComment = parentElement.nodeType === 8;
+			var isComment = parentElement.nodeType === document.COMMENT_NODE;
 			var parentElement = isComment ? parentElement : childElement;
 			var oldString = parentElement.data;
 			var newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex);
