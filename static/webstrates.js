@@ -182,8 +182,19 @@ root.webstrates = (function(webstrates) {
 				}
 			}
 			callbackLists[event].push(callback);
-		}
+		};
 
+		var removeCallbackFromEvent = function(event, callback, callbackLists) {
+			if (!callbackLists[event]) {
+				console.error("On-event '" + event + "' does not exist");
+				return;
+			}
+
+			var callbackIdx = callbackLists[event].indexOf(callback);
+			if (callbackIdx !== -1) {
+				callbackLists[event].splice(callbackIdx, 1);
+			}
+		};
 
 		/**
 		 * Notify potential parent windows (if we are loaded in an iframe) that we have finished
@@ -215,7 +226,7 @@ root.webstrates = (function(webstrates) {
 			// parent frame is from a different domain and we return to not violate cross-domain
 			// restrictions on iframes.
 			var referrerDomain = (function() {
-				var a = document.__createElement("a");
+				var a = document.createElement("a");
 				a.href = document.referrer;
 				return a.host;
 			})();
@@ -239,20 +250,6 @@ root.webstrates = (function(webstrates) {
 			}
 		};
 
-		/**
-		 * Traverses an element tree and applies a callback to each element.
-		 * @param {DOMNode}   element Element tree to traverse.
-		 * @param {Function} callback Callback.
-		 * @private
-		 */
-		var recursiveForEach = function(element, callback) {
-			callback(element);
-
-			var childNodes = element.content ? element.content.childNodes : element.childNodes;
-			Array.from(childNodes).forEach(function(childNode) {
-				recursiveForEach(childNode, callback);
-			});
-		};
 
 		/**
 		 * Sets up mutation observer on element to generate ops and submit them on a document.
@@ -276,7 +273,7 @@ root.webstrates = (function(webstrates) {
 					return;
 				}
 				fragment.id = Math.random().toString(36).substr(2, 8);
-				var fragmentObserver = new MutationObserver(MutationObserverLoop);
+				var fragmentObserver = new MutationObserver(mutationToOps);
 				fragmentObserver.observe(fragment, observerOptions);
 				fragmentObservers[fragment.id] = [fragment, fragmentObserver];
 				fragmentParentMap[fragment.id] = element;
@@ -298,11 +295,11 @@ root.webstrates = (function(webstrates) {
 			};
 
 			/**
-			 * Loops over mutations, creates and sends ops, and sets up additional Mutation Observers on
-			 * Document Fragments if needed.
+			 * Loops over mutations, creates and sends ops.
 			 * @param {List of MutationRecords} mutations List of mutations.
+			 * @private
 			 */
-			var  MutationObserverLoop = function(mutations) {
+			var mutationToOps = function(mutations) {
 				mutations.forEach(function forEachMutation(mutation) {
 					var ops = webstrates.createOps(mutation, doc, fragmentParentMap);
 					// In rare cases, what happens doesn't amount to an operation, so we ignore it. See the
@@ -317,22 +314,41 @@ root.webstrates = (function(webstrates) {
 						// window.alert("Webstrates has encountered an error. Please reload the page.");
 						console.error(ops, error);
 					}
+				});
+				afterMutationCallback();
+			};
 
-					// The global mutation observer does not observe on changes to documentFragments within
-					// the document, so we have to create and manage individual observers for each
-					// documentFragment manually.
+			/**
+			 * Recursively traverses a DOM Node and sets up additional `mutationToOps` Mutation
+			 * Observers on Document Fragments, as well as adding webstrate objects to all nodes.
+			 * @param {DOMNode} element Node to traverse.
+			 * @private
+			 */
+			var maintainElement = function(element) {
+				// We want to add a webstrate object to every element to make it possible to attach
+				// `on` event listeners.
+				attachWebstrateObjectToNode(element);
+
+				// The global mutation observer does not observe on changes to documentFragments
+				// within the document, so we have to create and manage individual observers for
+				// each documentFragment manually.
+				if (element.content && element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+					setupFragmentObserver(element.content, element);
+				}
+			};
+
+			/**
+			 * Continuously runs `maintainElement` on all newly created elements, as well as removing
+			 * mutation observer on Document Fragments that no longer exist.
+			 */
+			var documentMaintainer = function(mutations) {
+				mutations.forEach(function forEachMutation(mutation) {
 					if (mutation.type === "childList") {
 						Array.from(mutation.addedNodes).forEach(function(addedNode) {
-							recursiveForEach(addedNode, function(element) {
-								if (element.content &&
-									element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-									console.log("Setting up observer", element);
-									setupFragmentObserver(element.content, element);
-								}
-							});
+							webstrates.util.recursiveForEach(addedNode, maintainElement);
 						});
 						Array.from(mutation.removedNodes).forEach(function(removedNode) {
-							recursiveForEach(removedNode, function(element) {
+							webstrates.util.recursiveForEach(removedNode, function(element) {
 								if (element.content &&
 									element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
 									teardownFragmentObserver(element.content);
@@ -341,20 +357,17 @@ root.webstrates = (function(webstrates) {
 						});
 					}
 				});
-				afterMutationCallback();
 			};
 
-			observer = new MutationObserver(MutationObserverLoop);
+			// Set up `mutationToOps` mutation observer.
+			observer = new MutationObserver(mutationToOps);
 			observer.observe(rootElement, observerOptions);
 
-			// The global mutation observer does not observe on changes to documentFragments within the
-			// document, so we have to create and manage individual observers for each documentFragment
-			// manually.
-			recursiveForEach(rootElement, function(element) {
-				if (element.content && element.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-					setupFragmentObserver(element.content, element);
-				}
-			});
+			// Set up `documentMaintainer` mutation observer.
+			var maintainerObserver = new MutationObserver(documentMaintainer);
+			maintainerObserver.observe(rootElement, observerOptions);
+			// And run the maintainer on the just-initialized document.
+			webstrates.util.recursiveForEach(rootElement, maintainElement);
 		};
 
 		/**
@@ -421,9 +434,14 @@ root.webstrates = (function(webstrates) {
 			};
 			node.webstrate = {};
 
-			// Make it possible to attach event listeners on events defined in callbackLists.
+			// Make it possible to registers event listeners on events defined in callbackLists.
 			node.webstrate.on = function(event, callback) {
 				addCallbackToEvent(event, callback, callbackLists, window);
+			};
+
+			// Make it possible to unregister event listeners.
+			node.webstrate.off = function(event, callback) {
+				removeCallbackFromEvent(event, callback, callbackLists);
 			};
 
 			// Make it possible to trigger insertText and deleteText events on text nodes and attributes.
@@ -459,32 +477,6 @@ root.webstrates = (function(webstrates) {
 			// If the node is neither an iframe, nor a text node, we don't do anything more.
 			return node;
 		}
-
-		/**
-		 * Override document.createElement, document.createElementNS and document.createTextNode. These
-		 * are being overriden, so we can intercept every creation of nodes to attach a webstrates
-		 * objects.
-		 */
-		document.__createElement = document.createElement;
-		document.createElement = function(tagName) {
-			var elementNode = document.__createElement(tagName);
-			attachWebstrateObjectToNode(elementNode);
-			return elementNode;
-		};
-
-		document.__createElementNS = document.createElementNS;
-		document.createElementNS = function(namespaceURI, tagName) {
-			var elementNode = document.__createElementNS(namespaceURI, tagName);
-			attachWebstrateObjectToNode(elementNode);
-			return elementNode;
-		};
-
-		document.__createTextNode = document.createTextNode;
-		document.createTextNode = function(data) {
-			var textNode = document.__createTextNode(data);
-			attachWebstrateObjectToNode(textNode);
-			return textNode;
-		};
 
 		/**
 		 * Override addEventListener to show warnings when using it to listen for Webstrates events,
@@ -525,6 +517,10 @@ root.webstrates = (function(webstrates) {
 		module.on = function(event, callback) {
 			return addCallbackToEvent(event, callback, callbackLists, window);
 		};
+
+		module.off = function(event, callback) {
+			return removeCallbackFromEvent(event, callback, callbackLists);
+		}
 
 		/**
 		 * Exposes an object with references to objects useful for testing.

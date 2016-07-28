@@ -117,6 +117,16 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 | `insertText`  | Position, Value [, Attribute Name] | Triggered when a text has been inserted into a text node or attribute. |
 | `deleteText`  | Position, Value [, Attribute Name] | Triggered when text has been deleted from a text node or attribute.    |
 
+All the events can also be unregistered using `off`, e.g.:
+
+```javascript
+
+webstrate.on("loaded", function loadedFunction() {
+	// Work here...
+	webstrate.off("loaded", loadedFunction);
+});
+```
+
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
 Authentication
