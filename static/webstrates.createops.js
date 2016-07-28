@@ -197,7 +197,7 @@ root.webstrates = (function(webstrates) {
 			}
 	};
 
-	webstrates.createOps = createOps
+	webstrates.createOps = createOps;
 
 	return webstrates;
 
