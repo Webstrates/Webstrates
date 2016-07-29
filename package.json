@@ -19,9 +19,14 @@
     "build-babel": "cd static && babel webstrates.* --out-dir ../build",
     "babel-version": "babel --version"
   },
-  "homepage": "",
+  "homepage": "http://www.webstrates.net",
   "license": "Apache-2.0",
-  "author": "Clemens N. Klokmose <clemens@cs.au.dk>",
+  "author": "Clemens N. Klokmose <clemens@cavi.au.dk>",
+  "contributors": [
+    { "name" : "Kristian Borup Antonsen", 
+      "email" : "kba@cs.au.dk"
+    }
+  ],
   "dependencies": {
     "babel-cli": "^6.10.1",
     "babel-core": "^6.10.4",
