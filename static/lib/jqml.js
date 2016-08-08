@@ -2,7 +2,8 @@
  * Author: Trevor Norris
  * This document is licensed as free software under the terms of the
  * MIT License: http://www.opensource.org/licenses/mit-license.php
- * Adapted to work with Webstrates by Clemens N. Klokmose
+ * Adapted to work with Webstrates by Clemens N. Klokmose and
+ * Kristian B. Antonsen
  */
 (function(document, global) {
 
@@ -59,6 +60,7 @@
 				// If object set element attributes
 			} else if (isPlainObject(elem[i])) {
 				if (name) {
+					name = webstrates.util.sanitizeTagName(name);
 					if (xmlNs === undefined) {
 						xmlNs = getNs(elem[i]);
 					}
@@ -89,6 +91,7 @@
 		}
 
 		if (!selector && name) {
+			name = webstrates.util.sanitizeTagName(name);
 			selector = document.createElement(name);
 		}
 

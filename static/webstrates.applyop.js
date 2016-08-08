@@ -33,23 +33,6 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
-	 * Append a DOM element childElement to another DOM element. If the DOM element to be appended is
-	 * a script, prevent the execution of the script.
-	 * @param {DOMNode} parentElement Parent element.
-	 * @param {DOMNode} childElement  Child element.
-	 */
-	var appendChildWithoutScriptExecution = function(parentElement, childElement) {
-		if (childElement.tagName && childElement.tagName.toLowerCase() === "script") {
-			var script = childElement.innerHTML;
-			childElement.innerHTML = "// Execution prevention";
-			parentElement.appendChild(childElement);
-			childElement.innerHTML = script;
-		} else {
-			parentElement.appendChild(childElement);
-		}
-	};
-
-	/**
 	 * Recursively navigates an element using path to set the value as an attribute.
 	 * @param {DOMNode} parentElement DOMNode used as root element for path navigation.
 	 * @param {DOMPath} path          Path to follow on DOMNode. Last element of path is the attribute
@@ -113,7 +96,7 @@ root.webstrates = (function(webstrates) {
 		if (childElement) {
 			(parentElement.content || parentElement).insertBefore(newElement, childElement);
 		} else {
-			appendChildWithoutScriptExecution((parentElement.content || parentElement), newElement);
+			webstrates.util.appendChildWithoutScriptExecution((parentElement.content || parentElement), newElement);
 		}
 
 		var parentPathNode = webstrates.PathTree.getPathNode(parentElement);
@@ -176,7 +159,7 @@ root.webstrates = (function(webstrates) {
 
 			// Move all children.
 			while (oldElement.firstChild) {
-				appendChildWithoutScriptExecution(newElement, oldElement.firstChild);
+				webstrates.util.appendChildWithoutScriptExecution(newElement, oldElement.firstChild);
 			}
 			// TODO: Is .slice() necessary? Probably not.
 			newElementPathNode.children = oldElementPathNode.children.slice();

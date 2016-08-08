@@ -32,6 +32,24 @@ root.webstrates = (function(webstrates) {
 	}
 
 	/**
+	 * Append a DOM element childElement to another DOM element parentElement. If the DOM element to
+	 * be appended is a script, prevent the execution of the script. If a referenceNode is specified,
+	 * the element is inserted before the referenceNode.
+	 * @param {DOMNode} parentElement Parent element.
+	 * @param {DOMNode} childElement  Child element.
+	 */
+	util.appendChildWithoutScriptExecution = function(parentElement, childElement, referenceNode) {
+		if (childElement.tagName && childElement.tagName.toLowerCase() === "script") {
+			var script = childElement.innerHTML;
+			childElement.innerHTML = "// Execution prevention";
+			parentElement.insertBefore(childElement, referenceNode || null);
+			childElement.innerHTML = script;
+		} else {
+			parentElement.insertBefore(childElement, referenceNode || null);
+		}
+	};
+
+	/**
 	 * Traverses an element tree and applies a callback to each element.
 	 * @param {DOMNode}   element Element tree to traverse.
 	 * @param {Function} callback Callback.
@@ -44,6 +62,25 @@ root.webstrates = (function(webstrates) {
 		Array.from(childNodes).forEach(function(childNode) {
 			util.recursiveForEach(childNode, callback);
 		});
+	};
+
+	/**
+	 * Removes illegal characters from tag names.
+	 * @param  {string} tagName Unsanitized tag name.
+	 * @return {string}         Sanitized tag name.
+	 */
+	util.sanitizeTagName = function(tagName) {
+		// Defined according to the specification (https://www.w3.org/TR/REC-xml/#NT-Name), but does not
+		// support some special characters, because the regex won't accept them.
+		var NAME_START_CHAR_REGEX = /\:|[A-Z]|\_|[a-z]/;
+		var NAME_CHAR_REGEX = /\-|\.|[0-9]/;
+
+		return tagName.split("").map(function(char, index) {
+			if (NAME_START_CHAR_REGEX.test(char) || (index > 0 && NAME_CHAR_REGEX.test(char))) {
+				return char;
+			}
+			return "_";
+		}).join("");
 	};
 
 	/**
