@@ -42,6 +42,19 @@ root.webstrates = (function(webstrates) {
 		return ops;
 	};
 
+	/** Checks whether a string makes for a valid tag name.
+	* @param {string} tagName Tag name.
+	* @return {bool}          Whether the tag name is valid or not.
+	*/
+	var isValidTagName = function(tagName) {
+		try {
+			document.createElement(tagName);
+		} catch (e) {
+			return false;
+		}
+		return true;
+	};
+
 	/**
 	 * Creates attribute operation (object insertion) from mutation.
 	 * @param  {MutationRecord} mutation MutationRecord created by MutationObserver.
@@ -126,6 +139,11 @@ root.webstrates = (function(webstrates) {
 		Array.from(mutation.addedNodes).forEach(function(addedNode) {
 			var addedPathNode = webstrates.PathTree.getPathNode(addedNode, target);
 			if (addedPathNode && targetPathNode.id === addedPathNode.parent.id) {
+				return;
+			}
+
+			if (!isValidTagName(addedNode.tagName)) {
+				addedNode.remove();
 				return;
 			}
 
