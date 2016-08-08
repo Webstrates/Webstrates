@@ -42,19 +42,6 @@ root.webstrates = (function(webstrates) {
 		return ops;
 	};
 
-	/** Checks whether a string makes for a valid tag name.
-	* @param {string} tagName Tag name.
-	* @return {bool}          Whether the tag name is valid or not.
-	*/
-	var isValidTagName = function(tagName) {
-		try {
-			document.createElement(tagName);
-		} catch (e) {
-			return false;
-		}
-		return true;
-	};
-
 	/**
 	 * Creates attribute operation (object insertion) from mutation.
 	 * @param  {MutationRecord} mutation MutationRecord created by MutationObserver.
@@ -142,9 +129,32 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 
-			if (!isValidTagName(addedNode.tagName)) {
-				addedNode.remove();
-				return;
+			if (addedNode.nodeType === document.ELEMENT_NODE) {
+				var sanitizedTagName = webstrates.util.sanitizeTagName(addedNode.tagName);
+				// If the name is unsanitized, we remove the element and replace it with an identical
+				// element with a sanitized tag name.
+				if (sanitizedTagName !== addedNode.tagName) {
+					var replacementNode = document.createElementNS(addedNode.tagName.namespaceURI,
+						sanitizedTagName);
+
+					// Move all children.
+					while (addedNode.firstChild) {
+						webstrates.util.appendChildWithoutScriptExecution(replacementNode,
+							addedNode.firstChild);
+					}
+
+					// Copy all attributes.
+					for (var i = 0; i < addedNode.attributes.length; i++) {
+						var attr = addedNode.attributes.item(i);
+						replacementNode.setAttribute(attr.nodeName, attr.nodeValue);
+					}
+
+					// Insert the element before addedNode.
+					webstrates.util.appendChildWithoutScriptExecution(addedNode.parentElement,
+						replacementNode, addedNode);
+					addedNode.remove();
+					addedNode = replacementNode;
+				}
 			}
 
 			var newPathNode = new webstrates.PathTree(addedNode, targetPathNode);
@@ -167,14 +177,24 @@ root.webstrates = (function(webstrates) {
 
 		Array.from(mutation.removedNodes).forEach(function(removedNode) {
 			var removedPathNode = webstrates.PathTree.getPathNode(removedNode, target);
-			if (removedPathNode == null) {
+			// If an element has no path node, it hasn't been registered in the JsonML at all, so it won't
+			// exist on other clients, and therefore creating an op to delete it wouldn't make sense.
+			if (!removedPathNode) {
 				return;
 			}
 
-			var path = removedPathNode.toPath()
-			var op = { ld: webstrates.util.elementAtPath(sjsDoc.data, path), p: path };
-			ops.push(op);
+			var path = removedPathNode.toPath();
 			removedPathNode.remove();
+			var element = webstrates.util.elementAtPath(sjsDoc.data, path);
+			// If the element doesn't exist in the DOM, we can't create an op for its deletion, and we
+			// shouldn't either, so we return. This happens when we replace an unsanitized tag with a
+			// sanitized one.
+			if (!element) {
+				return;
+			}
+
+			var op = { ld: element, p: path };
+			ops.push(op);
 		});
 
 		return ops;

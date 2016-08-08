@@ -136,7 +136,6 @@ root.webstrates = (function(webstrates) {
 					results.push(childNode);
 				}
 			}
-			//console.log(results);
 			return results;
 		}.bind(this))();
 
