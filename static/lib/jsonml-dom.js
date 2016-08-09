@@ -17,10 +17,8 @@ var JsonML = JsonML || {};
 	'use strict';
 
 	var addChildren = function(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
-		// elem.content may have childNodes if elem is a template (i.e. elem.content is a document
-		// fragment).
-		if (elem.hasChildNodes() || (elem.content && elem.content.hasChildNodes())) {
-			var childNodes = elem.content ? elem.content.childNodes : elem.childNodes;
+		var childNodes;
+		if (childNodes = webstrates.util.getChildNodes(elem)) {
 			for (var i=0; i<childNodes.length; i++) {
 				var child = childNodes[i];
 				child = fromHTML(child, filter);
@@ -69,7 +67,7 @@ var JsonML = JsonML || {};
 					jml.push(props); //Webstrates always assumes that an element has attributes.
                 //}
 
-				var child;
+				var child, childNodes;
 				switch (jml[0].toLowerCase()) {
 					case 'frame':
 					case 'iframe':
@@ -98,8 +96,9 @@ var JsonML = JsonML || {};
 							// unwrap comment blocks
 							child = child.replace('<!--', '').replace('-->', '');
 							jml.push(child);
-						} else if (elem.hasChildNodes() || (elem.content && elem.content.hasChildNodes())) {
-							var childNodes = elem.content ? elem.content.childNodes : elem.childNodes;
+						// elem.content may have childNodes if elem is a template (i.e. elem.content is a
+						// document fragment).
+						} else if (childNodes = webstrates.util.getChildNodes(elem)) {
 							for (i=0; i<childNodes.length; i++) {
 								child = childNodes[i];
 								child = fromHTML(child, filter);
