@@ -33,8 +33,9 @@ root.webstrates = (function(webstrates) {
 
 	/**
 	 * Append a DOM element childElement to another DOM element parentElement. If the DOM element to
-	 * be appended is a script, prevent the execution of the script. If a referenceNode is specified,
-	 * the element is inserted before the referenceNode.
+	 * be appended is a script, prevent the execution of the script. If the parentElement is a
+	 * <template>, add the child to the parentElement's documentFragment instead. If a referenceNode
+	 * is specified, the element is inserted before the referenceNode.
 	 * @param {DOMNode} parentElement Parent element.
 	 * @param {DOMNode} childElement  Child element.
 	 */
@@ -45,9 +46,22 @@ root.webstrates = (function(webstrates) {
 			parentElement.insertBefore(childElement, referenceNode || null);
 			childElement.innerHTML = script;
 		} else {
+			// If parentElement.content exists, parentElement contains a documentFragment, and we should
+			// be adding the content to this documentFragment instead. This happens when parentElement is
+			// a <template>.
+			if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
+				parentElement = parentElement.content;
+			}
 			parentElement.insertBefore(childElement, referenceNode || null);
 		}
 	};
+
+	util.getChildNodes = function(parentElement) {
+		if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
+			parentElement = parentElement.content;
+		}
+		return parentElement.childNodes;
+	}
 
 	/**
 	 * Traverses an element tree and applies a callback to each element.
@@ -58,8 +72,7 @@ root.webstrates = (function(webstrates) {
 	util.recursiveForEach = function(element, callback) {
 		callback(element);
 
-		var childNodes = element.content ? element.content.childNodes : element.childNodes;
-		Array.from(childNodes).forEach(function(childNode) {
+		Array.from(util.getChildNodes(element)).forEach(function(childNode) {
 			util.recursiveForEach(childNode, callback);
 		});
 	};

@@ -101,7 +101,10 @@
 			// If we just add a documentFragment to an element, the children of documentFragment will
 			// actually be added instead. To prevent this, we add the children to the `content` property
 			// if it exists.
-			(selector.content || selector).appendChild(fragment);
+			if (selector.content && selector.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+				selector = selector.content;
+			}
+			selector.appendChild(fragment);
 			return selector;
 		}
 
