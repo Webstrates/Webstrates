@@ -1,12 +1,8 @@
 <html><head>
   <script id="script-main">var loading = false;
-
 function reloadScriptSelector() {
-  	$('#editor').hide();
-	$('#editorlabel').empty();
-  	$('#editorlabel').append("Scripts and styles (with an ID) in " + $("#target").attr("src") + ":");
-  
-	scripts = $("#target").contents().find('script');
+  	if (!loading) return;
+  	scripts = $("#target").contents().find('script');
   	styles = $("#target").contents().find('style');
   	$("#scriptselect").empty();
   	scriptGroup = $('<optgroup label="Scripts"/>');
@@ -23,134 +19,247 @@ function reloadScriptSelector() {
       	option = "<option value='" + $(this).attr("id") + "'>" + $(this).attr("id") + "</option>";
       	styleGroup.append(option);
 	});
+  	var historyItem = $("#history").find("li")[0];
   	$("#scriptselect").attr("value", "");
 	$("#scriptselect").prop("selectedIndex", -1);
+	$("#scriptselect").find("option").each(function(){
+      	if (this.getAttribute("value") == $(historyItem).attr("data-editedId")) {
+        	$(this).prop("selected", "selected");
+      	}
+  	});
 };
 
-function showEditor() {
-  	$("#content").hide();
-  	$("#editorpane").show();
-};
-
-function closeEditor() {
-  	window.editing = false;
-  	editor.setValue("");
-	$("#editorpane").hide();
-  	$("#target").attr("src", "");
-  	$("#urlbar").attr("value", "");
-	$("#content").show();
-  	$('#editorframe').attr("data-cursorStart", false);
-    $('#editorframe').attr("data-cursorEnd", false);
-  	$('#editorframe').attr("data-editedId", false);
-	$('#editorframe').attr("data-editedType", false);
-   	$('#editorframe').attr("data-editedContentType", false);
-	$("#scriptselect").attr("value", "");
-    $("#scriptselect").prop("selectedIndex", -1);
-};
-
-window.onmessage = function(e) {
-  if (e.data == "loaded" && $("#target").attr("src").length > 0) {
-    if (loading) {
-      reloadScriptSelector();
-      $("#target").contents().find("iframe").each(function() {
-        this.contentWindow.location.assign("about:blank");
-      });
-      loading = false;
-    }
-    showEditor();
-    $("#loader").hide();
-  }
-}
+webstrate.on("loaded", function() {
+  	document.querySelector("#target").webstrate.on("transcluded", function() {
+	  	window.editorHistory = [];
+    	$("#history").find("li").each(function() {
+      		window.editorHistory.push(this.innerHTML);
+        });
+    	reloadScriptSelector();
+      	loadTextInEditor();
+  	});
+});
 
 function reloadIframe() {
   	window.editing = false;
-  	editor.setValue("");
   	url = $("#urlbar").val();
   	if (url.length === 0) {
-    	$('#editorlabel').empty();
-	    $("#scriptselect").empty();
+    	$("#scriptselect").empty();
+    }
+  	var historyItem = $("#history").find("li")[0];
+  	if (historyItem.hasAttribute("data-editedId")) {
+    	$("#editorframe").attr("data-editedId", $(historyItem).attr("data-editedId"));
+   		$("#editorframe").attr("data-editedType", $(historyItem).attr("data-editedType"));
+    	$("#editorframe").attr("data-editedContentType", $(historyItem).attr("data-editedContentType"));
+    } else {
+    	$("#editorframe").attr("data-editedId", "");
+   		$("#editorframe").attr("data-editedType", "");
+    	$("#editorframe").attr("data-editedContentType", "");
     }
   	$("#target").attr("src", url);
-  	$("#loader").show();
-  	loading = true;
+  	editor.focus();
 };
 
-$("#urlbar").keydown( function() {
-	  $("#urlbar").attr("value", $("#urlbar").val());
+var historyIndex = 0;
+$("#urlbar").keydown( function(event) {
+  	var url = $("#urlbar").val()
+    if (url !== $("#target").attr("src")) {
+    	$(this).removeClass("loaded");  
+    }
+  	if (event.keyCode == 13) { //Enter
+	  	$("#urlbar").attr("value", url);
+      	var historyElement;
+      	$("#history").find("li").each(function() {
+          if (this.innerHTML == url) {
+            historyElement = this;
+            $(this).remove();
+          }
+      	});
+      	if (historyElement == undefined) {
+        	historyElement = $("<li>"+url+"</li>");
+        }
+      	$("#history").prepend(historyElement);
+        $(this).addClass("loaded");
+      	reloadIframe();
+      	loading = true;
+  	}
+  	if (event.keyCode == 38) { //Key up
+    	if (historyIndex < editorHistory.length - 1) historyIndex++;
+  		$("#urlbar").val(editorHistory[historyIndex]);
+      	event.preventDefault();
+      	$(this).removeClass("loaded");
+      	if ($("#urlbar").val() == $("#target").attr("src")) $(this).addClass("loaded");
+      	return;
+    }
+  	if (event.keyCode == 40) {
+    	if (historyIndex > 0) historyIndex--;
+  		$("#urlbar").val(editorHistory[historyIndex]);
+    	event.preventDefault();
+      	if ($("#urlbar").val() == $("#target").attr("src")) $(this).addClass("loaded");
+      	return;
+  	}
+  	if (event.keyCode == 27) { //Escape
+    	window.editor.focus();
+  	}
+  	historyIndex = 0;
 });
 
 $("#scriptselect").change(function() {
       var selected = $(':selected', this);
   	  $(this).attr("value", $(':selected', this).attr("value"));
       typeLabel = selected.closest('optgroup').attr('label');
-      if(typeLabel === "Scripts") {
-      	$("#editorframe").attr("data-editedId", $(this).attr("value"));
-        $("#editorframe").attr("data-editedType", 'script');
-        $("#editorframe").attr("data-editedContentType", "text/javascript");
+      var editedId = $(this).attr("value");
+      var editedType;
+  	  var editedContentType;
+  	  if(typeLabel === "Scripts") {
+        editedType = 'script';
+        editedContentType = "text/javascript";
       } else if (typeLabel === "Styles") {
-      	$("#editorframe").attr("data-editedId", $(this).attr("value"));
-        $("#editorframe").attr("data-editedType", 'style');
-        $("#editorframe").attr("data-editedContentType", "text/css");
+        editedType = 'style';
+        editedContentType = "text/css";
+
       }
-    });</script>
-  <style id="style-main">body {
-	margin: 0px;
-  	background-color: rgb(32, 32, 32);
+      $("#editorframe").attr("data-editedId", editedId);
+      $("#editorframe").attr("data-editedType", editedType);
+      $("#editorframe").attr("data-editedContentType", editedContentType);
+      var historyItem = $("#history").find("li")[0];
+  	  $(historyItem).attr("data-editedId", editedId);
+      $(historyItem).attr("data-editedType", editedType);
+      $(historyItem).attr("data-editedContentType", editedContentType);
+
+  	  editor.focus();
+});
+
+</script>
+  <style id="style-main">
+body, html {
+   height: 100%;
 }
+  
+#editorpane, #editor {
+   height: 100%;  
+}
+
 .header {
 	width: 100%;
   	background-color: rgb(61, 61,61);
   	border-bottom: 1px solid rgb(77, 77, 77);
-	text-align: center;
+	text-align: left;
 	color: white;
   	font-size: 14px;
+  	position: fixed;
+  	bottom: 0px;
+  	padding-left: 1em;
+  	font-family: "Menlo", "consolas",  monospace;
+  	padding-top: 2px;
+}
+
+#urlbar {
+	border: none;
+  	background-color: transparent;
+  	color: orange;
+  	font-family: "Menlo", "consolas", monospace;
+  	font-size: 12px;
+}
+
+#history {
+	display: none;  
+}
+
+#manual {
+	position: absolute;
+  	margin-left: 1em;
+  	z-index: -1;
+    color: rgb(200, 200, 200); 
+}
+
+#manual h1 {
+  	color: #f8f8f2;
+}
+
+#manual h2 {
+  	color: #f8f8f2;
+}
+
+#manual dt {
+	font-family: "Menlo", "consolas", monospace;
+  	color: #f8f8f2;
+}
+
+#manual dd {
+	color: rgb(200, 200, 200);  
+}
+
+#urlbar.loaded {
+	color: white;  
+}
+
+#urlbar:focus {
+	outline: none;  
+}
+
+#closeEditor {
+  color: white;
+  background-color: transparent;
+  border: none;
+  font-family: "Menlo", "consolas", monospace;
 }
 
 #editorframe {
 	width: 100%;
 	height: 100%;
 	border: 0px;
+  	padding-bottom: 1em;
+  	box-sizing: border-box;
 }
 
-#urlbar {
-	border: 5px solid white; 
-  	font-family: monospace;
-  	font-size: 14px;
-  	width: 28.5em;
-  	text-align: center; 
+#content {
+	background-color: transparent;  
+}
+
+#scriptselect {
+	background-color: transparent;
+  	border: none;
+  	color: white;
+  	font-size: 12px;
+  	font-family: Menlo monospace;	
+}
+
+#scriptselect:focus {
+    outline: none;
+}
+
+#scriptselect option {
+  	background-color: rgb(61, 61,61);
+    color: #f8f8f2;
+}
+
+#scriptselect optgroup {
+    background-color: rgb(61, 61,61);
 }
 
 .frontpage {
 	width: 100%;
   	height: 100%;
   	padding-top: 10em;
-  	background-color: rgb(32, 32, 32);
+  	background-color: transparent;
 	text-align: center;
 	color: white;
 }
-
-#loader {
-	background-position: center;
-  	background-repeat: no-repeat;
-  	width:            100%;
-	height:           4em;
-	background-image: url('data:image/gif;base64,R0lGODlhfgAWAPQAAP///wAAADY2NjIyMnBwcGxsbFZWVkJCQj4+PjAwMC4uLkBAQEhISEpKSkxMTE5OTlJSUlRUVERERDQ0NDg4ODo6Ojw8PFxcXAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAACH+GkNyZWF0ZWQgd2l0aCBhamF4bG9hZC5pbmZvACH5BAAKAAAAIf8LTkVUU0NBUEUyLjADAQAAACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUsGPCGXKKVyO8NemJimmj5JX57fX+Eg4GFiIckgoCMiY+LE5MDCmwCRApwDA0Ong5an6KgCShapqUnp6qpJquurSWvsrEkswKTE5YHbXEOD8APAwPBxcIDFMnKycPLy83OzMjRFNDR1s7Yz9PX3NneIpO7VQmcvw8Q6ZPp7OyTFfDx8O/y8fT1Fff1+vL89hP45gEM6E9gvGTh1vDCZEUOsHbr2rmbYKGixYqTLl7MqBEjxY4WOHYUqZHkxo8jUf+WRFkBoQCF5DqhYxdBRISbOG+KAGlhJ0ifHYFqFHqRqEWjFZH2FMBTaEsRMBkmkEmzpoCcOZVqZfqTa1CvQ8EWFXuUbFKzSy8+fXmJyNRfVW1i1Yl2a9O6eO/q7bq34lqYAwogeDszndW5dPuGVTyWcVnHZxX/FTxAqsPCECJKzKzyJE+TFkF7/Nw5dOnRIEWHZOkyqltzD9VN2Cw7YL6B+Aretq27N+59v/sF/3eQQsK2BzTBDjbMGHNv26hVg65MW3Xq0qRbz05t+/Rl4XQhV27uU6hRnm6NUA+11nr37VHJZzUfViBx49/EmVMHD/9FIzRiiCMBQlIggAkhiIs2gQkS2OCAAVIyjlRpnGHhhRhmqCEaWSAHxIcghijiiDosZMAUKKao4oosPgHDizDGKOOMMIQAACH5BAAKAAEALAAAAAB+ABYAAAX/oCCOZGmeaKqubOu+JyHPdG3feK7vfO//M4OIcCgaj8ikcslsOp/QqNQ4PCQU2IR2y+16v+CweEwum79YRYJYVQwm8NFEK2nY7xL6Ha+dmOYJfiWAgiSEf32IgYqFcomDjwJwEwMKbAJECpMlWg6en56doJ9aKKUnpyapnAmmraivqrGsg3CWB21xAhS8FAMDD8HCwb/Dw7+9yb4Dyr3IzcvQ0dDPzdXK18nXIraXRIu7FBXjcBDm5+bl6Odw4+7u7e/wE/Lz9eT09/H1+/L97/t4cVuDC5MVEbwqWFiobh2EhuvgLJw4USLFihMuYtTIMCNHixpBXhRJEWQFgQII/1Z5JY6iiAgwY8J8KTOmCI4WbnLUqZHnRZ8uBeAEOpHoQp8nRag0yFJhUQE1bUKNGsFoTqE7sfbU+pNr0KFen4KlmDSlt4O7nB6dGpVm27Brx2aVu5VuV7tlVQ4ogKBpUKpV2da0ShjuVbtf5yquOzEv3wFMEbbs6DDdhMoPPYbUPJJzSc8bP4LuiJNkaAsnKSg9Cy4hPswQ0f2zpy8fP9v+cAPUTfv2vQoBVUtamkmXNmDGiCFPns0ZM2rPrUXHNv24tOa8sE9D2a1gcV0jRI1yIH7UKhLnw89Cv169q/ew4Mvp3uYNeEB19jTIkyD/Hv6NDASOIZE4MqCBAQ53oDWACR4CyYCTVMJaGmdUaOGFGGaIRhZnAeHhhyCGKKIOBRkwxYkopqjiik/A4OKLMMYoIwwhAAAh+QQACgACACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUMJvDRRDsxzROShn4v0eb3en0JdSV3hCSGdnSKg4yHcouFkQJwEwMKbAJECpUlWihaDqKjoqGko58nqSarngmgr6qxrLOuhXCYB21xAhS+FAMDv8PAAw/HyMfBycnBxL/Oz8XS09LRz9fE2cPZIriZRI29FBXlcOXo6HAQ7O3s6+7t5+nqE/T19+b2+fP3/fT/0vXz5W2NLk1WRPiqYKEhnIYQIcKLB2FivIcRJU7IqJGjw40eMXIUmZFkRJEVCP8KMFglFrmIIjxaEBGhps2aNG/ajOmRJ0efGYHCFCBTKESjDYGmFMESoUuGR4n2FKBzJ9WqEZDOlPqTa1CvQ4uCjSo24tKV4BL2gpp0bFusWa9W1UrX7dayU/F2NUuBKZsBBRA8DTsVbs65duvq/bqY8F6IZxMEHuBU4cuPMi260ywP5EjPJUGfFN0xJGnMpiGrbBqO0EJ9+SpwfjeBIu3YAfHx2+ePN0DfAoHrTtmXEusDnFxDE2bNGDNlzp9vW05tui/r1bAx1159e/FvBzd1ItGKfIJTqM6jd1B+RHumtczDmi+Lvhzwbd7wMi4OkR9AgfwHoCCPFNQfJAcaWCA3fwsmIkmCDN5nSS4tpXHGhRhmqOGGaGSRFhAghijiiCTqcJABU6So4oostvgEDDDGKOOMNMIQAgAh+QQACgADACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUMJvDRRDsxzRP10l3S6PslWnx+fYB4dnSHhnqIi4okd3mPjAJwEwMKbAJECpUlWiifJ1oOpKWko6aloSarngmgr6KxrLOuenCYB21xAhS+FAMDv8PAwsS+wQ/Ky8rJzMvBx8jGx9HS1tXUxNjb2iK4mUSKvhXlcOXo6Ofp6hMQ7/DvcPHx6+wV9uz56fvt9+YT/uELWM7XtzW6NFkRQc6CQzgOI0aEKHGiO3ryLmKkWNECx4ofJYa02PHhhJIeT/86rGBQAMIqsShUkCgCZc2SIiLo3KkzJ8+dNzsGrTiUpgCbR3EmFbrUAksRLxXGnBmxaNWmRn8CFaC1J9arSMMqFctU4lOX4Rb2ourQatuvb7tG8KnVrQW7eOHe1ZvXLAWobAYUQDDVKFmiXLvS/dl3rOOyjxH7hTp4gFSGMkmWHGkSY0bPEDinRCm6tMqOpiOy/Is2obg85AAK7AcQ9DzPtAfOJngvt2/e+ni3nJOWE+xf3IYlRz7gGbTmzh8snyatWPXp1q9pU+6N0oRcu3iNaEWC/PgEqVShT+/APNRa5eGfh0Vf1q3vxd+Ih5QokpxAgxACYICF+HeQI/8heKA6gZRMkiCD/H0DxyVpXZHFGRhmqOGGHHqRRlREACHiiCSWaKIOCRkwxYostujii0/AIOOMNNZoIwwhAAAh+QQACgAEACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUMJvDRRDsxzRP10j1PuksagIESWn+BgIN4dnSKiXqLjo19jwJwEwMKbAJECpUlWiifJ6EmWg6mp6alqKejngmgr6KxpLOuenCYB21xAhS+FAMDv8PAwsS+wcfIAw/Nzs3Bz8/JytTH1sTYw9q/2CK4mUSNvhXlcOXo6Ofp6hPs7RDx8vFw8/Pr7/js+un87e/m3JXz9W2NLk1WRJCzwBAOw4cPHUKMOGEiRXvy6mGEINFix4kfIYakaLFhRYYVCP8KMFglFoUKEEWUtCCzZE2LIiLo3KkzJ8+dNycGjSlg5tCHRxkGTSmCJUKXMJEWtTkVZ1WhAn4Czao1QlKaV4kaDSt1LESmK8Ml7BVVKVm3Zql29cpV69e7b8HGtXqWQlM2AwoggCqW6l6sc33azYv3cGG+D9EmEDzgqcKXJEuONDlTI0bP9jZbEE36pEfTIE2n9Jv2oLg85AICrOBPNkDQ9yZs5CgwX+99v/sF/3e7t8o5ajnB7mbsWvNsz7cxkwZtOnVuy5QV0459e7Xn3ybk2sVrRCsS583XQp9gFav27h2kb7pePaz7sm6JT/6m/B5GfMgxiYAJFGIIIgYKMmA9QZEQGCCDD1KyoISRVHKJWldkccaGHHbo4YdepOEUEUCUaOKJKKaow0EGTOHiizDGKOMTMNRo44045ghDCAAh+QQACgAFACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUMJvDRRDsxzRP10j1P2tu1Eg2CgxKAg4R0f3iKfHKJeo8CcBMDCmwCRAqTJVoonSefJqGcCQ6mp6ZaqKijJK0jryKxAq2TlgdtcQIUvBQDA73BvsDCvL/FxsTFvw/Nzs3Mz87HyNTLysLW2dgicLdVi7sUFeRw5Ofn5ujpE+vs7uUTEPP083D19eru+uv86P7vyPHqtgYXJisieFWwwBAOw4cPHUKMOGEiRYsN5eGzp3GjRIsfJ4aEOPIiwwoDaf9dIpIg4cKHIjBaiImRpkWbE0VE2Mlzp86ePHFCFApTgEyiDHGilLUS4a6XSY3WlHqTak6rQwUADap1awSkM7EWPSo2KsSlKg2ydJmVrNupZL1+7boVrN2yYd+epMAU14ACCFo+bQu3cNW4Xn/WxXtX79WzfGkBHnBQsEKTICtiLJlR5r2NED571JzZM2mRp0mSRhm5ILg8CuPBqwBQNrzatDviE7273W3f+4D3E/4PeMo5TTXB7qUtWHPm2JxHhy5t2oDq0KYnQzaM+/PtvbpN+HZQeSNagkWlJ+VpvatSq1LBjz+rvntY92W5t5X8jS5JkTgSTh8BEjSggIEc0kBBIQkkeAiD5wF4oIER+gHJgJNU0tQVWZzh4YcghiiiF2m4dhAQKKao4oos6mCQAVPEKOOMNNb4BAw45qjjjjzCEAIAIfkEAAoABgAsAAAAAH4AFgAABf+gII5kaZ5oqq5s674nIc90bd94ru987/8zg4hwKBqPyKRyyWw6n9Co1Dg8JBTYhHbL7Xq/4LB4TC6bv1hFglhVDCbw0UQ7Mc0T9dI9T9rb6X8JEg2EhRJag4WEh3iBfHKAepECcBMDCmwCRAqVJVoonyehJqOeCaAJDqqrqlqsrKUksSOzIrGVmAdtcQIUvhQDA7/DwMLEvsHHyMbHycrBD9HS0dDT0s7NzMTY29oicLlVjb0UFeZw5unp6OrrE+3u8Ofv8nAQ9/j39vn47PD+7QCq8+fr2xpdmqyI8FXBgkM4DiNGhChx4oSKFjE+vKhxHz8IHvlRxDiyYkmJIyv/FBRwUNzChhFFaLQgU2NNjDcr5pQoIoLPnz57Av25M6aAmUUd5lRpKxORU71gKj1qkypOqzqx8tRqdChRAV6Dcp2KdCxNrExZOlUYdWvZt1XhXg0bQajXpGflZpWYtuWAAgiglnMbt/BVvVvp2h2Kt7HZpRRsAR6QUPDgjTNPZuzIkWRnkxM+6gstWjNmzpk7q4ysFuHTPAznyasgMF49ev9wByT9MWS+2rJvzybIes5aTrB/cRu2XLk25s+dKytm7dqA6tSiL5vefPuvbxPCJUT+iCVUUudNoVovKtWrVu7f1zLPHr0ecMff8KI0CdK4Pv0Z9J9/5fEniCKLIIJgOwOMFOiHJAMKyEcll6x1RRZnZKjhhhx26EUaLSUExIgklmjiiTogZMAULLbo4oswPgHDjDTWaOONMIQAACH5BAAKAAcALAAAAAB+ABYAAAX/oCCOZGmeaKqubOu+JyHPdG3feK7vfO//M4OIcCgaj8ikcslsOp/QqNQ4PCQU2IR2y+16v+CweEwum79YRYJYVQwm8NFEOzHNE/XSPU/a2+l/eIESDYWGElqEhoWIgnqAj44CcBMDCmwCRAqUJVooniegJqKdCZ+moQkOq6yrWq2tpCSyI7KUlwdtcQIUvRQDA77Cv8HDvcDGx8XGyMnNzAMP0tPSwNTUz8PZwtkicLhVjr0V5HDk5+fm6OkT6+zu5e3w6u5wEPf49/b5+PTr/ujo9fK2JlcmKyLGWVgIZ6FDhw0fQpwgcWJFhhQvRqy4jx+Ejvw2ShT5cGOFgQIK/4ZLWOGhiIsWXl6UWZGmRJsuBcAUEaGnz548f/rE6ZDoQpsnRag8iIpCy6I6Z0atOfVm1Zw7r0IVOlQAV6Baj4aNWTVpSkxEmj4Vm7WtVLdUs36NEJSrUbJwLZhVOaAAArVY3wqOO9iq3K91hd5dXJaCUr8DmCZ0alFjRo6XR2YuubkyZo/6JoD+2BkjTJMol6bNMy4evAoA382TV4/2P9sBRYMGmS+269nnUM5Be2ATa1/bkC/Ttpxbc+XJiEW3dq1atOoPkiubvtzbBHAHjfNRimpU+VKn0qc6BYvVq/YOaJFXL+cbcTecCEqSA6lPf/776TeegIMswkgiBjbQyDWAk/xHoHeVgJdWGmdUaOGFGGaIRhbEAeHhhyCGKKIOBhkwxYkopqjiik/A4OKLMMYoIwwhAAAh+QQACgAIACwAAAAAfgAWAAAF/6AgjmRpnmiqrmzrvichz3Rt33iu73zv/zODiHAoGo/IpHLJbDqf0KjUODwkFNiEdsvter/gsHhMLpu/WEWCWFUMJvDRRDsxzRP10j1P2tvpf3iBfHJaEg2IiRKGiYqAeo8CcBMDCmwCRAqTJVoonSefJqGcCZ6loKeiCQ6sraxarq6jJLOTlgdtcQIUvBQDA73BvsDCvL/FxsTFx8jMy8rCvw/T1NPS1dTO0dAicLdVgrsUFeRw5Ofn5ujpE+vs7uXt8Oru9OtwEPn6+fj7+vbo6PHqtgYXJisieFWwwBAOw4cPHUKMOGEiRYsNK2KUaJHjxH7+IID05xEixwoDBf8UBJdw4UMRGC3AxDjTYs2JNyHmfCkgpogIQIMC/Sk06E6GN1GKWHnw1DidPWlGtTkVZ1WoPq/yzFrUqICuQ7UirapU5SUiTl2OzcpWaluqb62CjUC061GZZCksZTOgAIK0WN0KhjvYalyoc+sWvZtUr0q/A5omfJoxZsmLGzV21PyRs0nPFEPymyBaJOjKDFE6Zoo2j8J48CoAfDdPXj3b93AH1M2u9Mh9s2GTSznn7AFNrntpC7ZcOTTmz50jGza9eTJs2QZgtxY9WbBuE74dRE5IZSpSptKjUq/KVKxWsN47mDWiljfjbjYRDNcnUiH+/5UniX/7CegHJAkc0kg7A4skuCCDBA7I3ySVGHdFFmdkqOGGHHboRRqsHQDEiCSWaOKJOhhkwBQstujiizA+AcOMNNZo440whAAAIfkEAAoACQAsAAAAAH4AFgAABf+gII5kaZ5oqq5s674nIc90bd94ru987/8zg4hwKBqPyKRyyWw6n9Co1Dg8JBTYhHbL7Xq/4LB4TC6bv1hFglhVDCbw0UQ7Mc0T9dI9T9rb6X94gXxygHpaEg2KixKIi4yGAnATAwpsAkQKkyVaKJ0nnyahnAmepaCnoqmkDq2urVqvr6OScJYHbXECFLwUAwO9wb7Awry/xcbExcfIzMvKws7RAw/V1tW/19fSIraXRIK7FBXkcOTn5+bo6RPr7O7l7fDq7vTr9uhwEPv8+/r9/Ojx6rYGFyYrInhVsMAQDsOHDx1CjDhhIkWLDStilGiR40SPEP8BhCASIMcKAwX/FKxyahxEERgtwMQ402LNiTdfCoiZ82FPhiIiCB0qNCjRoTdRilh5sOVCnztpRrU5FWdVnTyvQs2a9ShSAV6LVlWq8hvCXU+BalXLVWpbqm+tdg1r1GtSCkvZDCiAwClWt4DhBpY7+C/VsBHqHr27lO+ApgldZowJ8uJGjR0xf9QckrPlzCP9TQhNEjNKvGUNgsujMB68CvjezZNXj/Y92/lwy65NumQ/gajnmNXEupe0YMeNQ0O+XDmyYc+TJ4tOTRu26ta51bqVS9cIWt9XkQC/VHx4U+hRmZLlKhZ7B7QmcT/oZhPBcH0iFcK/n9B9/5Lo998ggSTySAONJGDgNSMJ8jFJJWZdkcUZFFZo4YUYepEGU0QA4eGHIIYoog4GGTDFiSimqOKKT8Dg4oswxigjDCEAACH5BAAKAAoALAAAAAB+ABYAAAX/oCCOZGmeaKqubOu+JyHPdG3feK7vfO//M4OIcCgaj8ikcslsOp/QqNQ4PCQU2IR2y+16v+CweEwum79YRYJYVQwm8NFEOzHNE/XSPU/a2+l/eIF8coB6hn1aEg2MjRKKjQySCwpsAkQKcIQCWiidJ58moSWjJKUjpyKpnAmeCQ6wsbBasg2SDJUHbXECFL4UAwO/w8DCxL7Bx8jGx8nKzs3MxNDT0sPBD9na2djaDra4lkSCvRQV53Dn6urp6+wT7u/x6PDz7fH37vnr++8Q/wD/wQGY7RuDNbouWRHhq4KFh3AeSpQYcSLFCRYvZoSIcWPFjB8thpw48mLAgAMJ/z5ghLBKq14OJYrYaGHmRpsZcVrUOZGnTAE0fT4UWlNAhKNIj4qIEPDBt5YKX5rrCfRm1ZxXd2alGnTrz65grSZNupTpP6cNoI5jGHOoV7dhscbVOper1a5jkZYl+JTNgAIIpLYtWvfr3cNyEdNVTDWvUqNNnwIeEJXhVI40S2L22BFkZ5GfSYbWyDnzhJMAU55dmVaclTwN6c2r0E+2vXr4cOvTzY+3vNuzVZ9UXdCW2gOZYP+ids3acufLlBWTzvw5dejTnw3Ytq1bcUm5dvFC9VJUeVLnTaUn76o9qPWq4LOSJYtWLHDhEmJ6M97PIXKJAFiIgCL4F+AmAhg4IDyCChYISSOMPJLAIozcQolrV2RxxoYcdujhh16kcRwQJJZo4oko6pCQAVO06OKLMMb4BAw01mjjjTjCEAIAIfkEAAoACwAsAAAAAH4AFgAABf+gII5kaZ5oqq5s674nIc90bd94ru987/8zg4hwKBqPyKRyyWw6n9Co1Dg8JBTYhHbL7Xq/4LB4TC6bv1hFglhVLBjwhlyinZgm9Xu+hE/Y+XskfX+CgSODen6JhIdaEnINcAwLCgQGDQJECpINDp4OWiihJ6MmpSWnJKkjqyKtAq+xCZ8OkXCVF5iacQ4Pvg8DAxTDxMPBxcXHyMbCyxTKy9DI0snN0dbT2NW/D7W3BLmZVgydvhDnExMV6+zr6e3t7/Du6vMV8vP48Prx9fn++wD2OwfBl7c14YgkkGOOYDoLECNCfCgxIsWKFi5W1CiRo8UJGCeCDOlRZMiMEwj/FnwgB6EuK+VURhBxkmZImxhxVtQpkWdEnxCBWhBKVEAEld0auBS3sBfBCDMF1JR6k2pOqzux9tT6k2tQr0PBFoVKMOlShTHPQS06tW1Vt1fhZpW7lew5s+AaDCiAoOkDmWzfCo47eG7hrXS7Hi1bK0EBAxKYMvzrcCTGkihPYt5seWPnjp8/ag4tEilLpXmZkutFGQI/dq/p2bsnEHZt2fZi056tu3fKu0kZnD2waTU3asSQM3P2TFty58udKW/OfLr1Ady8McD1svjqT7JEJRBPntR48+VNnVcvnpat7ak1vYkzx5AIRIAU5Wd0374A/IXoFyB///kHYCMJPCKHNSSUWPLSFVmcIeGEFFZooRdprHFAFUB06OGHIIaow4YCGDDFiSimqOKKT8Dg4oswxigjDCEAADsAAAAAAAAAAAA=');
-}
-
-#target {
-	width: 100%;
-  	height: 100%
-}
-#editor {
-  position: absoute;
-  left: 0px;
-  top: 0px;
-  width: 100%;
-  height: 97.5%;
-}
 </style>  
-</head><body><div id="editorpane" style="display: none;"><div id="editorheader" class="header"><span id="editorlabel">Scripts and styles (with an ID) in /todo_shortened:</span><select id="scriptselect" value=""><optgroup label="Scripts"><option value="script-main">script-main</option></optgroup><optgroup label="Styles"><option value="style-main">style-main</option></optgroup></select><button id="closeEditor" onclick="closeEditor()">Close editor</button></div><div id="editor" style="display: block;"><iframe id="editorframe" src="about:blank" data-editedid="false" data-editedtype="false" data-editedcontenttype="false" data-cursorstart="false" data-cursorend="false"></iframe>
-  <script id="script-codemirror" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+</head><body><iframe id="target" src="" seamless="true" style="display: none;"></iframe><div id="editorpane" style=""><div id="manual"><h1>Instructions</h1>
+  Type a webstrate ID in the bottom left input field and hit enter.<br>
+  Choose which script or style element to edit in the drop down menu to the right of the ID input field.<h2>Shortcuts</h2>
+  <dl>
+      <dt>Ctrl-O</dt><dd>Open webstrate</dd><dt>Ctrl-B</dt><dd>Select script/style</dd><dt>Ctrl-F / Cmd-F</dt><dd>Start searching</dd>
+      <dt>Ctrl-G / Cmd-G</dt><dd>Find next</dd>
+      <dt>Shift-Ctrl-G / Shift-Cmd-G</dt><dd>Find previous</dd>
+      <dt>Shift-Ctrl-F / Cmd-Option-F</dt><dd>Replace</dd>
+      <dt>Shift-Ctrl-R / Shift-Cmd-Option-F</dt><dd>Replace all</dd>
+      <dt>Alt-F</dt><dd>Persistent search (dialog doesn't autoclose,
+      enter to find next, Shift-Enter to find previous)</dd>
+      <dt>Alt-G</dt><dd>Jump to line</dd>
+    </dl></div><div id="editorheader" class="header"><ul id="history"><li></li></ul><input type="text" id="urlbar" value="" placeholder="webstrate ID" class="loaded"><select id="scriptselect" value="script-photo-instrument"></select></div><div id="editor" style="display: block;"><iframe id="editorframe" src="about:blank" data-editedid="" data-editedtype="" data-editedcontenttype="" data-cursorstart="{&quot;line&quot;:0,&quot;ch&quot;:0}" data-cursorend="{&quot;line&quot;:0,&quot;ch&quot;:0}" style="display: none;"></iframe><script id="script-codemirror" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 // This is CodeMirror (http://codemirror.net), a code editor
@@ -165,7 +274,7 @@ $("#scriptselect").change(function() {
   else if (typeof define == "function" && define.amd) // AMD
     return define([], mod);
   else // Plain browser env
-    this.CodeMirror = mod();
+    (this || window).CodeMirror = mod();
 })(function() {
   "use strict";
 
@@ -173,27 +282,29 @@ $("#scriptselect").change(function() {
 
   // Kludges for bugs and behavior differences that can't be feature
   // detected are enabled based on userAgent etc sniffing.
+  var userAgent = navigator.userAgent;
+  var platform = navigator.platform;
 
-  var gecko = /gecko\/\d/i.test(navigator.userAgent);
-  var ie_upto10 = /MSIE \d/.test(navigator.userAgent);
-  var ie_11up = /Trident\/(?:[7-9]|\d{2,})\..*rv:(\d+)/.exec(navigator.userAgent);
+  var gecko = /gecko\/\d/i.test(userAgent);
+  var ie_upto10 = /MSIE \d/.test(userAgent);
+  var ie_11up = /Trident\/(?:[7-9]|\d{2,})\..*rv:(\d+)/.exec(userAgent);
   var ie = ie_upto10 || ie_11up;
   var ie_version = ie && (ie_upto10 ? document.documentMode || 6 : ie_11up[1]);
-  var webkit = /WebKit\//.test(navigator.userAgent);
-  var qtwebkit = webkit && /Qt\/\d+\.\d+/.test(navigator.userAgent);
-  var chrome = /Chrome\//.test(navigator.userAgent);
-  var presto = /Opera\//.test(navigator.userAgent);
+  var webkit = /WebKit\//.test(userAgent);
+  var qtwebkit = webkit && /Qt\/\d+\.\d+/.test(userAgent);
+  var chrome = /Chrome\//.test(userAgent);
+  var presto = /Opera\//.test(userAgent);
   var safari = /Apple Computer/.test(navigator.vendor);
-  var mac_geMountainLion = /Mac OS X 1\d\D([8-9]|\d\d)\D/.test(navigator.userAgent);
-  var phantom = /PhantomJS/.test(navigator.userAgent);
+  var mac_geMountainLion = /Mac OS X 1\d\D([8-9]|\d\d)\D/.test(userAgent);
+  var phantom = /PhantomJS/.test(userAgent);
 
-  var ios = /AppleWebKit/.test(navigator.userAgent) && /Mobile\/\w+/.test(navigator.userAgent);
+  var ios = /AppleWebKit/.test(userAgent) && /Mobile\/\w+/.test(userAgent);
   // This is woefully incomplete. Suggestions for alternative methods welcome.
-  var mobile = ios || /Android|webOS|BlackBerry|Opera Mini|Opera Mobi|IEMobile/i.test(navigator.userAgent);
-  var mac = ios || /Mac/.test(navigator.platform);
-  var windows = /win/i.test(navigator.platform);
+  var mobile = ios || /Android|webOS|BlackBerry|Opera Mini|Opera Mobi|IEMobile/i.test(userAgent);
+  var mac = ios || /Mac/.test(platform);
+  var windows = /win/i.test(platform);
 
-  var presto_version = presto && navigator.userAgent.match(/Version\/(\d*\.\d*)/);
+  var presto_version = presto && userAgent.match(/Version\/(\d*\.\d*)/);
   if (presto_version) presto_version = Number(presto_version[1]);
   if (presto_version && presto_version >= 15) { presto = false; webkit = true; }
   // Some browsers use the wrong event properties to signal cmd/ctrl on OS X
@@ -217,7 +328,7 @@ $("#scriptselect").change(function() {
     setGuttersForLineNumbers(options);
 
     var doc = options.value;
-    if (typeof doc == "string") doc = new Doc(doc, options.mode);
+    if (typeof doc == "string") doc = new Doc(doc, options.mode, null, options.lineSeparator);
     this.doc = doc;
 
     var input = new CodeMirror.inputStyles[options.inputStyle](this);
@@ -239,6 +350,7 @@ $("#scriptselect").change(function() {
       focused: false,
       suppressEdits: false, // used to disable editing during key handlers when in readOnly mode
       pasteIncoming: false, cutIncoming: false, // help recognize paste/cut edits in input.poll
+      selectingText: false,
       draggingText: false,
       highlight: new Delayed(), // stores highlight worker timeout
       keySeq: null,  // Unfinished key sequence
@@ -559,7 +671,7 @@ $("#scriptselect").change(function() {
       if (horiz.clientWidth) scroll(horiz.scrollLeft, "horizontal");
     });
 
-    this.checkedOverlay = false;
+    this.checkedZeroWidth = false;
     // Need to set a minimum width to see the scrollbar on IE7 (but must not set it on IE8).
     if (ie && ie_version < 8) this.horiz.style.minHeight = this.vert.style.minWidth = "18px";
   }
@@ -594,29 +706,43 @@ $("#scriptselect").change(function() {
         this.horiz.firstChild.style.width = "0";
       }
 
-      if (!this.checkedOverlay && measure.clientHeight > 0) {
-        if (sWidth == 0) this.overlayHack();
-        this.checkedOverlay = true;
+      if (!this.checkedZeroWidth && measure.clientHeight > 0) {
+        if (sWidth == 0) this.zeroWidthHack();
+        this.checkedZeroWidth = true;
       }
 
       return {right: needsV ? sWidth : 0, bottom: needsH ? sWidth : 0};
     },
     setScrollLeft: function(pos) {
       if (this.horiz.scrollLeft != pos) this.horiz.scrollLeft = pos;
+      if (this.disableHoriz) this.enableZeroWidthBar(this.horiz, this.disableHoriz);
     },
     setScrollTop: function(pos) {
       if (this.vert.scrollTop != pos) this.vert.scrollTop = pos;
+      if (this.disableVert) this.enableZeroWidthBar(this.vert, this.disableVert);
     },
-    overlayHack: function() {
+    zeroWidthHack: function() {
       var w = mac && !mac_geMountainLion ? "12px" : "18px";
-      this.horiz.style.minHeight = this.vert.style.minWidth = w;
-      var self = this;
-      var barMouseDown = function(e) {
-        if (e_target(e) != self.vert && e_target(e) != self.horiz)
-          operation(self.cm, onMouseDown)(e);
-      };
-      on(this.vert, "mousedown", barMouseDown);
-      on(this.horiz, "mousedown", barMouseDown);
+      this.horiz.style.height = this.vert.style.width = w;
+      this.horiz.style.pointerEvents = this.vert.style.pointerEvents = "none";
+      this.disableHoriz = new Delayed;
+      this.disableVert = new Delayed;
+    },
+    enableZeroWidthBar: function(bar, delay) {
+      bar.style.pointerEvents = "auto";
+      function maybeDisable() {
+        // To find out whether the scrollbar is still visible, we
+        // check whether the element under the pixel in the bottom
+        // left corner of the scrollbar box is the scrollbar box
+        // itself (when the bar is still visible) or its filler child
+        // (when the bar is hidden). If it is still visible, we keep
+        // it enabled, if it's hidden, we disable pointer events.
+        var box = bar.getBoundingClientRect();
+        var elt = document.elementFromPoint(box.left + 1, box.bottom - 1);
+        if (elt != bar) bar.style.pointerEvents = "none";
+        else delay.set(1000, maybeDisable);
+      }
+      delay.set(1000, maybeDisable);
     },
     clear: function() {
       var parent = this.horiz.parentNode;
@@ -678,6 +804,7 @@ $("#scriptselect").change(function() {
 
     d.sizer.style.paddingRight = (d.barWidth = sizes.right) + "px";
     d.sizer.style.paddingBottom = (d.barHeight = sizes.bottom) + "px";
+    d.heightForcer.style.borderBottom = sizes.bottom + "px solid transparent"
 
     if (sizes.right && sizes.bottom) {
       d.scrollbarFiller.style.display = "block";
@@ -866,7 +993,7 @@ $("#scriptselect").change(function() {
     // width and height.
     removeChildren(display.cursorDiv);
     removeChildren(display.selectionDiv);
-    display.gutters.style.height = 0;
+    display.gutters.style.height = display.sizer.style.minHeight = 0;
 
     if (different) {
       display.lastWrapHeight = update.wrapperHeight;
@@ -880,12 +1007,10 @@ $("#scriptselect").change(function() {
   }
 
   function postUpdateDisplay(cm, update) {
-    var force = update.force, viewport = update.viewport;
+    var viewport = update.viewport;
+
     for (var first = true;; first = false) {
-      if (first && cm.options.lineWrapping && update.oldDisplayWidth != displayWidth(cm)) {
-        force = true;
-      } else {
-        force = false;
+      if (!first || !cm.options.lineWrapping || update.oldDisplayWidth == displayWidth(cm)) {
         // Clip forced viewport to actual scrollable area.
         if (viewport && viewport.top != null)
           viewport = {top: Math.min(cm.doc.height + paddingVert(cm.display) - displayHeight(cm), viewport.top)};
@@ -899,8 +1024,8 @@ $("#scriptselect").change(function() {
       updateHeightsInViewport(cm);
       var barMeasure = measureForScrollbars(cm);
       updateSelection(cm);
-      setDocumentHeight(cm, barMeasure);
       updateScrollbars(cm, barMeasure);
+      setDocumentHeight(cm, barMeasure);
     }
 
     update.signal(cm, "update", cm);
@@ -917,17 +1042,16 @@ $("#scriptselect").change(function() {
       postUpdateDisplay(cm, update);
       var barMeasure = measureForScrollbars(cm);
       updateSelection(cm);
-      setDocumentHeight(cm, barMeasure);
       updateScrollbars(cm, barMeasure);
+      setDocumentHeight(cm, barMeasure);
       update.finish();
     }
   }
 
   function setDocumentHeight(cm, measure) {
     cm.display.sizer.style.minHeight = measure.docHeight + "px";
-    var total = measure.docHeight + cm.display.barHeight;
-    cm.display.heightForcer.style.top = total + "px";
-    cm.display.gutters.style.height = Math.max(total + scrollGap(cm), measure.clientHeight) + "px";
+    cm.display.heightForcer.style.top = measure.docHeight + "px";
+    cm.display.gutters.style.height = (measure.docHeight + cm.display.barHeight + scrollGap(cm)) + "px";
   }
 
   // Read the actual heights of the rendered lines, and update their
@@ -961,7 +1085,7 @@ $("#scriptselect").change(function() {
   // given line.
   function updateWidgetHeight(line) {
     if (line.widgets) for (var i = 0; i < line.widgets.length; ++i)
-      line.widgets[i].height = line.widgets[i].node.offsetHeight;
+      line.widgets[i].height = line.widgets[i].node.parentNode.offsetHeight;
   }
 
   // Do a bulk-read of the DOM positions and sizes needed to draw the
@@ -1110,12 +1234,22 @@ $("#scriptselect").change(function() {
       lineView.node.removeChild(lineView.gutter);
       lineView.gutter = null;
     }
+    if (lineView.gutterBackground) {
+      lineView.node.removeChild(lineView.gutterBackground);
+      lineView.gutterBackground = null;
+    }
+    if (lineView.line.gutterClass) {
+      var wrap = ensureLineWrapped(lineView);
+      lineView.gutterBackground = elt("div", null, "CodeMirror-gutter-background " + lineView.line.gutterClass,
+                                      "left: " + (cm.options.fixedGutter ? dims.fixedPos : -dims.gutterTotalWidth) +
+                                      "px; width: " + dims.gutterTotalWidth + "px");
+      wrap.insertBefore(lineView.gutterBackground, lineView.text);
+    }
     var markers = lineView.line.gutterMarkers;
     if (cm.options.lineNumbers || markers) {
       var wrap = ensureLineWrapped(lineView);
       var gutterWrap = lineView.gutter = elt("div", null, "CodeMirror-gutter-wrapper", "left: " +
-                                             (cm.options.fixedGutter ? dims.fixedPos : -dims.gutterTotalWidth) +
-                                             "px; width: " + dims.gutterTotalWidth + "px");
+                                             (cm.options.fixedGutter ? dims.fixedPos : -dims.gutterTotalWidth) + "px");
       cm.display.input.setUneditable(gutterWrap);
       wrap.insertBefore(gutterWrap, lineView.text);
       if (lineView.line.gutterClass)
@@ -1222,27 +1356,29 @@ $("#scriptselect").change(function() {
     if (!cm.state.focused) { cm.display.input.focus(); onFocus(cm); }
   }
 
-  function isReadOnly(cm) {
-    return cm.options.readOnly || cm.doc.cantEdit;
-  }
-
   // This will be set to an array of strings when copying, so that,
   // when pasting, we know what kind of selections the copied text
   // was made out of.
   var lastCopied = null;
 
-  function applyTextInput(cm, inserted, deleted, sel) {
+  function applyTextInput(cm, inserted, deleted, sel, origin) {
     var doc = cm.doc;
     cm.display.shift = false;
     if (!sel) sel = doc.sel;
 
-    var textLines = splitLines(inserted), multiPaste = null;
+    var paste = cm.state.pasteIncoming || origin == "paste";
+    var textLines = doc.splitLines(inserted), multiPaste = null;
     // When pasing N lines into N selections, insert one line per selection
-    if (cm.state.pasteIncoming && sel.ranges.length > 1) {
-      if (lastCopied && lastCopied.join("\n") == inserted)
-        multiPaste = sel.ranges.length % lastCopied.length == 0 && map(lastCopied, splitLines);
-      else if (textLines.length == sel.ranges.length)
+    if (paste && sel.ranges.length > 1) {
+      if (lastCopied && lastCopied.join("\n") == inserted) {
+        if (sel.ranges.length % lastCopied.length == 0) {
+          multiPaste = [];
+          for (var i = 0; i < lastCopied.length; i++)
+            multiPaste.push(doc.splitLines(lastCopied[i]));
+        }
+      } else if (textLines.length == sel.ranges.length) {
         multiPaste = map(textLines, function(l) { return [l]; });
+      }
     }
 
     // Normal behavior is to insert the new text into every selection
@@ -1252,36 +1388,56 @@ $("#scriptselect").change(function() {
       if (range.empty()) {
         if (deleted && deleted > 0) // Handle deletion
           from = Pos(from.line, from.ch - deleted);
-        else if (cm.state.overwrite && !cm.state.pasteIncoming) // Handle overwrite
+        else if (cm.state.overwrite && !paste) // Handle overwrite
           to = Pos(to.line, Math.min(getLine(doc, to.line).text.length, to.ch + lst(textLines).length));
       }
       var updateInput = cm.curOp.updateInput;
       var changeEvent = {from: from, to: to, text: multiPaste ? multiPaste[i % multiPaste.length] : textLines,
-                         origin: cm.state.pasteIncoming ? "paste" : cm.state.cutIncoming ? "cut" : "+input"};
+                         origin: origin || (paste ? "paste" : cm.state.cutIncoming ? "cut" : "+input")};
       makeChange(cm.doc, changeEvent);
       signalLater(cm, "inputRead", cm, changeEvent);
-      // When an 'electric' character is inserted, immediately trigger a reindent
-      if (inserted && !cm.state.pasteIncoming && cm.options.electricChars &&
-          cm.options.smartIndent && range.head.ch < 100 &&
-          (!i || sel.ranges[i - 1].head.line != range.head.line)) {
-        var mode = cm.getModeAt(range.head);
-        var end = changeEnd(changeEvent);
-        if (mode.electricChars) {
-          for (var j = 0; j < mode.electricChars.length; j++)
-            if (inserted.indexOf(mode.electricChars.charAt(j)) > -1) {
-              indentLine(cm, end.line, "smart");
-              break;
-            }
-        } else if (mode.electricInput) {
-          if (mode.electricInput.test(getLine(doc, end.line).text.slice(0, end.ch)))
-            indentLine(cm, end.line, "smart");
-        }
-      }
     }
+    if (inserted && !paste)
+      triggerElectric(cm, inserted);
+
     ensureCursorVisible(cm);
     cm.curOp.updateInput = updateInput;
     cm.curOp.typing = true;
     cm.state.pasteIncoming = cm.state.cutIncoming = false;
+  }
+
+  function handlePaste(e, cm) {
+    var pasted = e.clipboardData && e.clipboardData.getData("text/plain");
+    if (pasted) {
+      e.preventDefault();
+      if (!cm.isReadOnly() && !cm.options.disableInput)
+        runInOp(cm, function() { applyTextInput(cm, pasted, 0, null, "paste"); });
+      return true;
+    }
+  }
+
+  function triggerElectric(cm, inserted) {
+    // When an 'electric' character is inserted, immediately trigger a reindent
+    if (!cm.options.electricChars || !cm.options.smartIndent) return;
+    var sel = cm.doc.sel;
+
+    for (var i = sel.ranges.length - 1; i >= 0; i--) {
+      var range = sel.ranges[i];
+      if (range.head.ch > 100 || (i && sel.ranges[i - 1].head.line == range.head.line)) continue;
+      var mode = cm.getModeAt(range.head);
+      var indented = false;
+      if (mode.electricChars) {
+        for (var j = 0; j < mode.electricChars.length; j++)
+          if (inserted.indexOf(mode.electricChars.charAt(j)) > -1) {
+            indented = indentLine(cm, range.head.line, "smart");
+            break;
+          }
+      } else if (mode.electricInput) {
+        if (mode.electricInput.test(getLine(cm.doc, range.head.line).text.slice(0, range.head.ch)))
+          indented = indentLine(cm, range.head.line, "smart");
+      }
+      if (indented) signalLater(cm, "electricInput", cm, range.head.line);
+    }
   }
 
   function copyableRanges(cm) {
@@ -1319,6 +1475,7 @@ $("#scriptselect").change(function() {
     this.inaccurateSelection = false;
     // Used to work around IE issue with selection being forgotten when focus moves away from textarea
     this.hasSelection = false;
+    this.composing = null;
   };
 
   function hiddenTextarea() {
@@ -1355,26 +1512,15 @@ $("#scriptselect").change(function() {
         input.poll();
       });
 
-      on(te, "paste", function() {
-        // Workaround for webkit bug https://bugs.webkit.org/show_bug.cgi?id=90206
-        // Add a char to the end of textarea before paste occur so that
-        // selection doesn't span to the end of textarea.
-        if (webkit && !cm.state.fakedLastChar && !(new Date - cm.state.lastMiddleDown < 200)) {
-          var start = te.selectionStart, end = te.selectionEnd;
-          te.value += "$";
-          // The selection end needs to be set before the start, otherwise there
-          // can be an intermediate non-empty selection between the two, which
-          // can override the middle-click paste buffer on linux and cause the
-          // wrong thing to get pasted.
-          te.selectionEnd = end;
-          te.selectionStart = start;
-          cm.state.fakedLastChar = true;
-        }
+      on(te, "paste", function(e) {
+        if (signalDOMEvent(cm, e) || handlePaste(e, cm)) return
+
         cm.state.pasteIncoming = true;
         input.fastPoll();
       });
 
       function prepareCopyCut(e) {
+        if (signalDOMEvent(cm, e)) return
         if (cm.somethingSelected()) {
           lastCopied = cm.getSelections();
           if (input.inaccurateSelection) {
@@ -1383,6 +1529,8 @@ $("#scriptselect").change(function() {
             te.value = lastCopied.join("\n");
             selectInput(te);
           }
+        } else if (!cm.options.lineWiseCopyCut) {
+          return;
         } else {
           var ranges = copyableRanges(cm);
           lastCopied = ranges.text;
@@ -1400,7 +1548,7 @@ $("#scriptselect").change(function() {
       on(te, "copy", prepareCopyCut);
 
       on(display.scroller, "paste", function(e) {
-        if (eventInWidget(display, e)) return;
+        if (eventInWidget(display, e) || signalDOMEvent(cm, e)) return;
         cm.state.pasteIncoming = true;
         input.focus();
       });
@@ -1408,6 +1556,22 @@ $("#scriptselect").change(function() {
       // Prevent normal selection in the editor (we handle our own)
       on(display.lineSpace, "selectstart", function(e) {
         if (!eventInWidget(display, e)) e_preventDefault(e);
+      });
+
+      on(te, "compositionstart", function() {
+        var start = cm.getCursor("from");
+        if (input.composing) input.composing.range.clear()
+        input.composing = {
+          start: start,
+          range: cm.markText(start, cm.getCursor("to"), {className: "CodeMirror-composing"})
+        };
+      });
+      on(te, "compositionend", function() {
+        if (input.composing) {
+          input.poll();
+          input.composing.range.clear();
+          input.composing = null;
+        }
       });
     },
 
@@ -1516,14 +1680,11 @@ $("#scriptselect").change(function() {
       // possible when it is clear that nothing happened. hasSelection
       // will be the case when there is a lot of text in the textarea,
       // in which case reading its value would be expensive.
-      if (!cm.state.focused || (hasSelection(input) && !prevInput) ||
-          isReadOnly(cm) || cm.options.disableInput || cm.state.keySeq)
+      if (this.contextMenuPending || !cm.state.focused ||
+          (hasSelection(input) && !prevInput && !this.composing) ||
+          cm.isReadOnly() || cm.options.disableInput || cm.state.keySeq)
         return false;
-      // See paste handler for more on the fakedLastChar kludge
-      if (cm.state.pasteIncoming && cm.state.fakedLastChar) {
-        input.value = input.value.substring(0, input.value.length - 1);
-        cm.state.fakedLastChar = false;
-      }
+
       var text = input.value;
       // If nothing changed, bail.
       if (text == prevInput && !cm.somethingSelected()) return false;
@@ -1537,12 +1698,9 @@ $("#scriptselect").change(function() {
       }
 
       if (cm.doc.sel == cm.display.selForContextMenu) {
-        if (text.charCodeAt(0) == 0x200b) {
-          if (!prevInput) prevInput = "\u200b";
-        } else if (prevInput == "\u200b") {
-          text = text.slice(1);
-          prevInput = "";
-        }
+        var first = text.charCodeAt(0);
+        if (first == 0x200b && !prevInput) prevInput = "\u200b";
+        if (first == 0x21da) { this.reset(); return this.cm.execCommand("undo"); }
       }
       // Find the part of the input that is actually new
       var same = 0, l = Math.min(prevInput.length, text.length);
@@ -1550,11 +1708,18 @@ $("#scriptselect").change(function() {
 
       var self = this;
       runInOp(cm, function() {
-        applyTextInput(cm, text.slice(same), prevInput.length - same);
+        applyTextInput(cm, text.slice(same), prevInput.length - same,
+                       null, self.composing ? "*compose" : null);
 
         // Don't leave long text in the textarea, since it makes further polling slow
         if (text.length > 1000 || text.indexOf("\n") > -1) input.value = self.prevInput = "";
         else self.prevInput = text;
+
+        if (self.composing) {
+          self.composing.range.clear();
+          self.composing.range = cm.markText(self.composing.start, cm.getCursor("to"),
+                                             {className: "CodeMirror-composing"});
+        }
       });
       return true;
     },
@@ -1579,10 +1744,11 @@ $("#scriptselect").change(function() {
       if (reset && cm.doc.sel.contains(pos) == -1)
         operation(cm, setSelection)(cm.doc, simpleSelection(pos), sel_dontScroll);
 
-      var oldCSS = te.style.cssText;
-      input.wrapper.style.position = "absolute";
-      te.style.cssText = "position: fixed; width: 30px; height: 30px; top: " + (e.clientY - 5) +
-        "px; left: " + (e.clientX - 5) + "px; z-index: 1000; background: " +
+      var oldCSS = te.style.cssText, oldWrapperCSS = input.wrapper.style.cssText;
+      input.wrapper.style.cssText = "position: absolute"
+      var wrapperBox = input.wrapper.getBoundingClientRect()
+      te.style.cssText = "position: absolute; width: 30px; height: 30px; top: " + (e.clientY - wrapperBox.top - 5) +
+        "px; left: " + (e.clientX - wrapperBox.left - 5) + "px; z-index: 1000; background: " +
         (ie ? "rgba(255, 255, 255, .05)" : "transparent") +
         "; outline: none; border-width: 0; outline: none; overflow: hidden; opacity: .05; filter: alpha(opacity=5);";
       if (webkit) var oldScrollY = window.scrollY; // Work around Chrome issue (#2712)
@@ -1601,7 +1767,9 @@ $("#scriptselect").change(function() {
       function prepareSelectAllHack() {
         if (te.selectionStart != null) {
           var selected = cm.somethingSelected();
-          var extval = te.value = "\u200b" + (selected ? te.value : "");
+          var extval = "\u200b" + (selected ? te.value : "");
+          te.value = "\u21da"; // Used to catch context-menu undo
+          te.value = extval;
           input.prevInput = selected ? "" : "\u200b";
           te.selectionStart = 1; te.selectionEnd = extval.length;
           // Re-set this, in case some other handler touched the
@@ -1611,7 +1779,7 @@ $("#scriptselect").change(function() {
       }
       function rehide() {
         input.contextMenuPending = false;
-        input.wrapper.style.position = "relative";
+        input.wrapper.style.cssText = oldWrapperCSS
         te.style.cssText = oldCSS;
         if (ie && ie_version < 9) display.scrollbars.setScrollTop(display.scroller.scrollTop = scrollPos);
 
@@ -1619,7 +1787,8 @@ $("#scriptselect").change(function() {
         if (te.selectionStart != null) {
           if (!ie || (ie && ie_version < 9)) prepareSelectAllHack();
           var i = 0, poll = function() {
-            if (display.selForContextMenu == cm.doc.sel && te.selectionStart == 0 && input.prevInput == "\u200b")
+            if (display.selForContextMenu == cm.doc.sel && te.selectionStart == 0 &&
+                te.selectionEnd > 0 && input.prevInput == "\u200b")
               operation(cm, commands.selectAll)(cm);
             else if (i++ < 10) display.detectingSelectAll = setTimeout(poll, 500);
             else display.input.reset();
@@ -1641,6 +1810,10 @@ $("#scriptselect").change(function() {
       }
     },
 
+    readOnlyChanged: function(val) {
+      if (!val) this.reset();
+    },
+
     setUneditable: nothing,
 
     needsContentAttribute: false
@@ -1659,16 +1832,11 @@ $("#scriptselect").change(function() {
     init: function(display) {
       var input = this, cm = input.cm;
       var div = input.div = display.lineDiv;
-      div.contentEditable = "true";
       disableBrowserMagic(div);
 
       on(div, "paste", function(e) {
-        var pasted = e.clipboardData && e.clipboardData.getData("text/plain");
-        if (pasted) {
-          e.preventDefault();
-          cm.replaceSelection(pasted, null, "paste");
-        }
-      });
+        if (!signalDOMEvent(cm, e)) handlePaste(e, cm);
+      })
 
       on(div, "compositionstart", function(e) {
         var data = e.data;
@@ -1706,14 +1874,17 @@ $("#scriptselect").change(function() {
 
       on(div, "input", function() {
         if (input.composing) return;
-        if (!input.pollContent())
+        if (cm.isReadOnly() || !input.pollContent())
           runInOp(input.cm, function() {regChange(cm);});
       });
 
       function onCopyCut(e) {
+        if (signalDOMEvent(cm, e)) return
         if (cm.somethingSelected()) {
           lastCopied = cm.getSelections();
           if (e.type == "cut") cm.replaceSelection("", null, "cut");
+        } else if (!cm.options.lineWiseCopyCut) {
+          return;
         } else {
           var ranges = copyableRanges(cm);
           lastCopied = ranges.text;
@@ -1784,8 +1955,13 @@ $("#scriptselect").change(function() {
       try { var rng = range(start.node, start.offset, end.offset, end.node); }
       catch(e) {} // Our model of the DOM might be outdated, in which case the range we try to set can be impossible
       if (rng) {
-        sel.removeAllRanges();
-        sel.addRange(rng);
+        if (!gecko && this.cm.state.focused) {
+          sel.collapse(start.node, start.offset);
+          if (!rng.collapsed) sel.addRange(rng);
+        } else {
+          sel.removeAllRanges();
+          sel.addRange(rng);
+        }
         if (old && sel.anchorNode == null) sel.addRange(old);
         else if (gecko) this.startGracePeriod();
       }
@@ -1879,13 +2055,13 @@ $("#scriptselect").change(function() {
       var toIndex = findViewIndex(cm, to.line);
       if (toIndex == display.view.length - 1) {
         var toLine = display.viewTo - 1;
-        var toNode = display.view[toIndex].node;
+        var toNode = display.lineDiv.lastChild;
       } else {
         var toLine = lineNo(display.view[toIndex + 1].line) - 1;
         var toNode = display.view[toIndex + 1].node.previousSibling;
       }
 
-      var newText = splitLines(domTextBetween(cm, fromNode, toNode, fromLine, toLine));
+      var newText = cm.doc.splitLines(domTextBetween(cm, fromNode, toNode, fromLine, toLine));
       var oldText = getBetween(cm.doc, Pos(fromLine, 0), Pos(toLine, getLine(cm.doc, toLine).text.length));
       while (newText.length > 1 && oldText.length > 1) {
         if (lst(newText) == lst(oldText)) { newText.pop(); oldText.pop(); toLine--; }
@@ -1929,17 +2105,24 @@ $("#scriptselect").change(function() {
       this.div.focus();
     },
     applyComposition: function(composing) {
-      if (composing.data && composing.data != composing.startData)
+      if (this.cm.isReadOnly())
+        operation(this.cm, regChange)(this.cm)
+      else if (composing.data && composing.data != composing.startData)
         operation(this.cm, applyTextInput)(this.cm, composing.data, 0, composing.sel);
     },
 
     setUneditable: function(node) {
-      node.setAttribute("contenteditable", "false");
+      node.contentEditable = "false"
     },
 
     onKeyPress: function(e) {
       e.preventDefault();
-      operation(this.cm, applyTextInput)(this.cm, String.fromCharCode(e.charCode == null ? e.keyCode : e.charCode), 0);
+      if (!this.cm.isReadOnly())
+        operation(this.cm, applyTextInput)(this.cm, String.fromCharCode(e.charCode == null ? e.keyCode : e.charCode), 0);
+    },
+
+    readOnlyChanged: function(val) {
+      this.div.contentEditable = String(val != "nocursor")
     },
 
     onContextMenu: nothing,
@@ -1959,7 +2142,7 @@ $("#scriptselect").change(function() {
       var partPos = getBidiPartAt(order, pos.ch);
       side = partPos % 2 ? "right" : "left";
     }
-    var result = nodeAndOffsetInLineMap(info.map, pos.ch, "left");
+    var result = nodeAndOffsetInLineMap(info.map, pos.ch, side);
     result.offset = result.collapse == "right" ? result.end : result.start;
     return result;
   }
@@ -2041,7 +2224,7 @@ $("#scriptselect").change(function() {
   }
 
   function domTextBetween(cm, from, to, fromLine, toLine) {
-    var text = "", closing = false;
+    var text = "", closing = false, lineSep = cm.doc.lineSeparator();
     function recognizeMarker(id) { return function(marker) { return marker.id == id; }; }
     function walk(node) {
       if (node.nodeType == 1) {
@@ -2055,7 +2238,7 @@ $("#scriptselect").change(function() {
         if (markerID) {
           var found = cm.findMarks(Pos(fromLine, 0), Pos(toLine + 1, 0), recognizeMarker(+markerID));
           if (found.length && (range = found[0].find()))
-            text += getBetween(cm.doc, range.from, range.to).join("\n");
+            text += getBetween(cm.doc, range.from, range.to).join(lineSep);
           return;
         }
         if (node.getAttribute("contenteditable") == "false") return;
@@ -2067,7 +2250,7 @@ $("#scriptselect").change(function() {
         var val = node.nodeValue;
         if (!val) return;
         if (closing) {
-          text += "\n";
+          text += lineSep;
           closing = false;
         }
         text += val;
@@ -2239,7 +2422,7 @@ $("#scriptselect").change(function() {
 
   // Give beforeSelectionChange handlers a change to influence a
   // selection update.
-  function filterSelectionChange(doc, sel) {
+  function filterSelectionChange(doc, sel, options) {
     var obj = {
       ranges: sel.ranges,
       update: function(ranges) {
@@ -2247,7 +2430,8 @@ $("#scriptselect").change(function() {
         for (var i = 0; i < ranges.length; i++)
           this.ranges[i] = new Range(clipPos(doc, ranges[i].anchor),
                                      clipPos(doc, ranges[i].head));
-      }
+      },
+      origin: options && options.origin
     };
     signal(doc, "beforeSelectionChange", doc, obj);
     if (doc.cm) signal(doc.cm, "beforeSelectionChange", doc.cm, obj);
@@ -2273,7 +2457,7 @@ $("#scriptselect").change(function() {
 
   function setSelectionNoUndo(doc, sel, options) {
     if (hasHandler(doc, "beforeSelectionChange") || doc.cm && hasHandler(doc.cm, "beforeSelectionChange"))
-      sel = filterSelectionChange(doc, sel);
+      sel = filterSelectionChange(doc, sel, options);
 
     var bias = options && options.bias ||
       (cmp(sel.primary().head, doc.sel.primary().head) < 0 ? -1 : 1);
@@ -2307,8 +2491,9 @@ $("#scriptselect").change(function() {
     var out;
     for (var i = 0; i < sel.ranges.length; i++) {
       var range = sel.ranges[i];
-      var newAnchor = skipAtomic(doc, range.anchor, bias, mayClear);
-      var newHead = skipAtomic(doc, range.head, bias, mayClear);
+      var old = sel.ranges.length == doc.sel.ranges.length && doc.sel.ranges[i];
+      var newAnchor = skipAtomic(doc, range.anchor, old && old.anchor, bias, mayClear);
+      var newHead = skipAtomic(doc, range.head, old && old.head, bias, mayClear);
       if (out || newAnchor != range.anchor || newHead != range.head) {
         if (!out) out = sel.ranges.slice(0, i);
         out[i] = new Range(newAnchor, newHead);
@@ -2317,54 +2502,61 @@ $("#scriptselect").change(function() {
     return out ? normalizeSelection(out, sel.primIndex) : sel;
   }
 
-  // Ensure a given position is not inside an atomic range.
-  function skipAtomic(doc, pos, bias, mayClear) {
-    var flipped = false, curPos = pos;
-    var dir = bias || 1;
-    doc.cantEdit = false;
-    search: for (;;) {
-      var line = getLine(doc, curPos.line);
-      if (line.markedSpans) {
-        for (var i = 0; i < line.markedSpans.length; ++i) {
-          var sp = line.markedSpans[i], m = sp.marker;
-          if ((sp.from == null || (m.inclusiveLeft ? sp.from <= curPos.ch : sp.from < curPos.ch)) &&
-              (sp.to == null || (m.inclusiveRight ? sp.to >= curPos.ch : sp.to > curPos.ch))) {
-            if (mayClear) {
-              signal(m, "beforeCursorEnter");
-              if (m.explicitlyCleared) {
-                if (!line.markedSpans) break;
-                else {--i; continue;}
-              }
-            }
-            if (!m.atomic) continue;
-            var newPos = m.find(dir < 0 ? -1 : 1);
-            if (cmp(newPos, curPos) == 0) {
-              newPos.ch += dir;
-              if (newPos.ch < 0) {
-                if (newPos.line > doc.first) newPos = clipPos(doc, Pos(newPos.line - 1));
-                else newPos = null;
-              } else if (newPos.ch > line.text.length) {
-                if (newPos.line < doc.first + doc.size - 1) newPos = Pos(newPos.line + 1, 0);
-                else newPos = null;
-              }
-              if (!newPos) {
-                if (flipped) {
-                  // Driven in a corner -- no valid cursor position found at all
-                  // -- try again *with* clearing, if we didn't already
-                  if (!mayClear) return skipAtomic(doc, pos, bias, true);
-                  // Otherwise, turn off editing until further notice, and return the start of the doc
-                  doc.cantEdit = true;
-                  return Pos(doc.first, 0);
-                }
-                flipped = true; newPos = pos; dir = -dir;
-              }
-            }
-            curPos = newPos;
-            continue search;
+  function skipAtomicInner(doc, pos, oldPos, dir, mayClear) {
+    var line = getLine(doc, pos.line);
+    if (line.markedSpans) for (var i = 0; i < line.markedSpans.length; ++i) {
+      var sp = line.markedSpans[i], m = sp.marker;
+      if ((sp.from == null || (m.inclusiveLeft ? sp.from <= pos.ch : sp.from < pos.ch)) &&
+          (sp.to == null || (m.inclusiveRight ? sp.to >= pos.ch : sp.to > pos.ch))) {
+        if (mayClear) {
+          signal(m, "beforeCursorEnter");
+          if (m.explicitlyCleared) {
+            if (!line.markedSpans) break;
+            else {--i; continue;}
           }
         }
+        if (!m.atomic) continue;
+
+        if (oldPos) {
+          var near = m.find(dir < 0 ? 1 : -1), diff;
+          if (dir < 0 ? m.inclusiveRight : m.inclusiveLeft)
+            near = movePos(doc, near, -dir, near && near.line == pos.line ? line : null);
+          if (near && near.line == pos.line && (diff = cmp(near, oldPos)) && (dir < 0 ? diff < 0 : diff > 0))
+            return skipAtomicInner(doc, near, pos, dir, mayClear);
+        }
+
+        var far = m.find(dir < 0 ? -1 : 1);
+        if (dir < 0 ? m.inclusiveLeft : m.inclusiveRight)
+          far = movePos(doc, far, dir, far.line == pos.line ? line : null);
+        return far ? skipAtomicInner(doc, far, pos, dir, mayClear) : null;
       }
-      return curPos;
+    }
+    return pos;
+  }
+
+  // Ensure a given position is not inside an atomic range.
+  function skipAtomic(doc, pos, oldPos, bias, mayClear) {
+    var dir = bias || 1;
+    var found = skipAtomicInner(doc, pos, oldPos, dir, mayClear) ||
+        (!mayClear && skipAtomicInner(doc, pos, oldPos, dir, true)) ||
+        skipAtomicInner(doc, pos, oldPos, -dir, mayClear) ||
+        (!mayClear && skipAtomicInner(doc, pos, oldPos, -dir, true));
+    if (!found) {
+      doc.cantEdit = true;
+      return Pos(doc.first, 0);
+    }
+    return found;
+  }
+
+  function movePos(doc, pos, dir, line) {
+    if (dir < 0 && pos.ch == 0) {
+      if (pos.line > doc.first) return clipPos(doc, Pos(pos.line - 1));
+      else return null;
+    } else if (dir > 0 && pos.ch == (line || getLine(doc, pos.line)).text.length) {
+      if (pos.line < doc.first + doc.size - 1) return Pos(pos.line + 1, 0);
+      else return null;
+    } else {
+      return new Pos(pos.line, pos.ch + dir);
     }
   }
 
@@ -2382,9 +2574,10 @@ $("#scriptselect").change(function() {
     for (var i = 0; i < doc.sel.ranges.length; i++) {
       if (primary === false && i == doc.sel.primIndex) continue;
       var range = doc.sel.ranges[i];
+      if (range.from().line >= cm.display.viewTo || range.to().line < cm.display.viewFrom) continue;
       var collapsed = range.empty();
       if (collapsed || cm.options.showCursorWhenSelecting)
-        drawSelectionCursor(cm, range, curFragment);
+        drawSelectionCursor(cm, range.head, curFragment);
       if (!collapsed)
         drawSelectionRange(cm, range, selFragment);
     }
@@ -2392,8 +2585,8 @@ $("#scriptselect").change(function() {
   }
 
   // Draws a cursor for the given range
-  function drawSelectionCursor(cm, range, output) {
-    var pos = cursorCoords(cm, range.head, "div", null, null, !cm.options.singleCursorHeightPerLine);
+  function drawSelectionCursor(cm, head, output) {
+    var pos = cursorCoords(cm, head, "div", null, null, !cm.options.singleCursorHeightPerLine);
 
     var cursor = output.appendChild(elt("div", "\u00a0", "CodeMirror-cursor"));
     cursor.style.left = pos.left + "px";
@@ -2517,8 +2710,8 @@ $("#scriptselect").change(function() {
 
     doc.iter(doc.frontier, Math.min(doc.first + doc.size, cm.display.viewTo + 500), function(line) {
       if (doc.frontier >= cm.display.viewFrom) { // Visible
-        var oldStyles = line.styles;
-        var highlighted = highlightLine(cm, line, state, true);
+        var oldStyles = line.styles, tooLong = line.text.length > cm.options.maxHighlightLength;
+        var highlighted = highlightLine(cm, line, tooLong ? copyState(doc.mode, state) : state, true);
         line.styles = highlighted.styles;
         var oldCls = line.styleClasses, newCls = highlighted.classes;
         if (newCls) line.styleClasses = newCls;
@@ -2527,9 +2720,10 @@ $("#scriptselect").change(function() {
           oldCls != newCls && (!oldCls || !newCls || oldCls.bgClass != newCls.bgClass || oldCls.textClass != newCls.textClass);
         for (var i = 0; !ischange && i < oldStyles.length; ++i) ischange = oldStyles[i] != line.styles[i];
         if (ischange) changedLines.push(doc.frontier);
-        line.stateAfter = copyState(doc.mode, state);
+        line.stateAfter = tooLong ? state : copyState(doc.mode, state);
       } else {
-        processLine(cm, line.text, state);
+        if (line.text.length <= cm.options.maxHighlightLength)
+          processLine(cm, line.text, state);
         line.stateAfter = doc.frontier % 5 == 0 ? copyState(doc.mode, state) : null;
       }
       ++doc.frontier;
@@ -2674,10 +2868,12 @@ $("#scriptselect").change(function() {
   function prepareMeasureForLine(cm, line) {
     var lineN = lineNo(line);
     var view = findViewForLine(cm, lineN);
-    if (view && !view.text)
+    if (view && !view.text) {
       view = null;
-    else if (view && view.changes)
+    } else if (view && view.changes) {
       updateLineForChanges(cm, view, lineN, getDimensions(cm));
+      cm.curOp.forceUpdate = true;
+    }
     if (!view)
       view = updateExternalMeasurement(cm, line);
 
@@ -3071,6 +3267,7 @@ $("#scriptselect").change(function() {
       updateMaxLine: false,    // Set when the widest line needs to be determined anew
       scrollLeft: null, scrollTop: null, // Intermediate scroll position, not pushed to DOM yet
       scrollToPos: null,       // Used to scroll to a specific position
+      focus: false,
       id: ++nextOpId           // Unique ID
     };
     if (operationGroup) {
@@ -3089,12 +3286,12 @@ $("#scriptselect").change(function() {
     var callbacks = group.delayedCallbacks, i = 0;
     do {
       for (; i < callbacks.length; i++)
-        callbacks[i]();
+        callbacks[i].call(null);
       for (var j = 0; j < group.ops.length; j++) {
         var op = group.ops[j];
         if (op.cursorActivityHandlers)
           while (op.cursorActivityCalled < op.cursorActivityHandlers.length)
-            op.cursorActivityHandlers[op.cursorActivityCalled++](op.cm);
+            op.cursorActivityHandlers[op.cursorActivityCalled++].call(null, op.cm);
       }
     } while (i < callbacks.length);
   }
@@ -3179,15 +3376,17 @@ $("#scriptselect").change(function() {
 
     if (op.preparedSelection)
       cm.display.input.showSelection(op.preparedSelection);
-    if (op.updatedDisplay)
-      setDocumentHeight(cm, op.barMeasure);
     if (op.updatedDisplay || op.startHeight != cm.doc.height)
       updateScrollbars(cm, op.barMeasure);
+    if (op.updatedDisplay)
+      setDocumentHeight(cm, op.barMeasure);
 
     if (op.selectionChanged) restartBlink(cm);
 
     if (cm.state.focused && op.updateInput)
       cm.display.input.reset(op.typing);
+    if (op.focus && op.focus == activeElt() && (!document.hasFocus || document.hasFocus()))
+      ensureFocus(op.cm);
   }
 
   function endOperation_finish(op) {
@@ -3206,7 +3405,7 @@ $("#scriptselect").change(function() {
       display.scroller.scrollTop = doc.scrollTop;
     }
     if (op.scrollLeft != null && (display.scroller.scrollLeft != op.scrollLeft || op.forceScroll)) {
-      doc.scrollLeft = Math.max(0, Math.min(display.scroller.scrollWidth - displayWidth(cm), op.scrollLeft));
+      doc.scrollLeft = Math.max(0, Math.min(display.scroller.scrollWidth - display.scroller.clientWidth, op.scrollLeft));
       display.scrollbars.setScrollLeft(doc.scrollLeft);
       display.scroller.scrollLeft = doc.scrollLeft;
       alignHorizontally(cm);
@@ -3502,7 +3701,7 @@ $("#scriptselect").change(function() {
       return dx * dx + dy * dy > 20 * 20;
     }
     on(d.scroller, "touchstart", function(e) {
-      if (!isMouseLikeTouchEvent(e)) {
+      if (!signalDOMEvent(cm, e) && !isMouseLikeTouchEvent(e)) {
         clearTimeout(touchFinished);
         var now = +new Date;
         d.activeTouch = {start: now, moved: false,
@@ -3552,15 +3751,13 @@ $("#scriptselect").change(function() {
     // Prevent wrapper from ever scrolling
     on(d.wrapper, "scroll", function() { d.wrapper.scrollTop = d.wrapper.scrollLeft = 0; });
 
-    function drag_(e) {
-      if (!signalDOMEvent(cm, e)) e_stop(e);
-    }
-    if (cm.options.dragDrop) {
-      on(d.scroller, "dragstart", function(e){onDragStart(cm, e);});
-      on(d.scroller, "dragenter", drag_);
-      on(d.scroller, "dragover", drag_);
-      on(d.scroller, "drop", operation(cm, onDrop));
-    }
+    d.dragFunctions = {
+      enter: function(e) {if (!signalDOMEvent(cm, e)) e_stop(e);},
+      over: function(e) {if (!signalDOMEvent(cm, e)) { onDragOver(cm, e); e_stop(e); }},
+      start: function(e){onDragStart(cm, e);},
+      drop: operation(cm, onDrop),
+      leave: function(e) {if (!signalDOMEvent(cm, e)) { clearDragCursor(cm); }}
+    };
 
     var inp = d.input.getField();
     on(inp, "keyup", function(e) { onKeyUp.call(cm, e); });
@@ -3568,6 +3765,19 @@ $("#scriptselect").change(function() {
     on(inp, "keypress", operation(cm, onKeyPress));
     on(inp, "focus", bind(onFocus, cm));
     on(inp, "blur", bind(onBlur, cm));
+  }
+
+  function dragDropChanged(cm, value, old) {
+    var wasOn = old && old != CodeMirror.Init;
+    if (!value != !wasOn) {
+      var funcs = cm.display.dragFunctions;
+      var toggle = value ? on : off;
+      toggle(cm.display.scroller, "dragstart", funcs.start);
+      toggle(cm.display.scroller, "dragenter", funcs.enter);
+      toggle(cm.display.scroller, "dragover", funcs.over);
+      toggle(cm.display.scroller, "dragleave", funcs.leave);
+      toggle(cm.display.scroller, "drop", funcs.drop);
+    }
   }
 
   // Called when the window resizes
@@ -3620,7 +3830,7 @@ $("#scriptselect").change(function() {
   // not interfere with, such as a scrollbar or widget.
   function onMouseDown(e) {
     var cm = this, display = cm.display;
-    if (display.activeTouch && display.input.supportsTouch() || signalDOMEvent(cm, e)) return;
+    if (signalDOMEvent(cm, e) || display.activeTouch && display.input.supportsTouch()) return;
     display.shift = e.shiftKey;
 
     if (eventInWidget(display, e)) {
@@ -3638,7 +3848,10 @@ $("#scriptselect").change(function() {
 
     switch (e_button(e)) {
     case 1:
-      if (start)
+      // #3261: make sure, that we're not starting a second selection
+      if (cm.state.selectingText)
+        cm.state.selectingText(e);
+      else if (start)
         leftButtonDown(cm, e, start);
       else if (e_target(e) == display.scroller)
         e_preventDefault(e);
@@ -3659,7 +3872,7 @@ $("#scriptselect").change(function() {
   var lastClick, lastDoubleClick;
   function leftButtonDown(cm, e, start) {
     if (ie) setTimeout(bind(ensureFocus, cm), 0);
-    else ensureFocus(cm);
+    else cm.curOp.focus = activeElt();
 
     var now = +new Date, type;
     if (lastDoubleClick && lastDoubleClick.time > now - 400 && cmp(lastDoubleClick.pos, start) == 0) {
@@ -3673,9 +3886,10 @@ $("#scriptselect").change(function() {
     }
 
     var sel = cm.doc.sel, modifier = mac ? e.metaKey : e.ctrlKey, contained;
-    if (cm.options.dragDrop && dragAndDrop && !isReadOnly(cm) &&
+    if (cm.options.dragDrop && dragAndDrop && !cm.isReadOnly() &&
         type == "single" && (contained = sel.contains(start)) > -1 &&
-        !sel.ranges[contained].empty())
+        (cmp((contained = sel.ranges[contained]).from(), start) < 0 || start.xRel > 0) &&
+        (cmp(contained.to(), start) > 0 || start.xRel < 0))
       leftButtonStartDrag(cm, e, start, modifier);
     else
       leftButtonSelect(cm, e, start, type, modifier);
@@ -3684,7 +3898,7 @@ $("#scriptselect").change(function() {
   // Start a text drag. When it ends, see if any dragging actually
   // happen, and treat as a click if it didn't.
   function leftButtonStartDrag(cm, e, start, modifier) {
-    var display = cm.display;
+    var display = cm.display, startTime = +new Date;
     var dragEnd = operation(cm, function(e2) {
       if (webkit) display.scroller.draggable = false;
       cm.state.draggingText = false;
@@ -3692,7 +3906,7 @@ $("#scriptselect").change(function() {
       off(display.scroller, "drop", dragEnd);
       if (Math.abs(e.clientX - e2.clientX) + Math.abs(e.clientY - e2.clientY) < 10) {
         e_preventDefault(e2);
-        if (!modifier)
+        if (!modifier && +new Date - 200 < startTime)
           extendSelection(cm.doc, start);
         // Work around unexplainable focus problem in IE9 (#2127) and Chrome (#3081)
         if (webkit || ie && ie_version == 9)
@@ -3757,7 +3971,8 @@ $("#scriptselect").change(function() {
       setSelection(doc, normalizeSelection(ranges.concat([ourRange]), ourIndex),
                    {scroll: false, origin: "*mouse"});
     } else if (ranges.length > 1 && ranges[ourIndex].empty() && type == "single" && !e.shiftKey) {
-      setSelection(doc, normalizeSelection(ranges.slice(0, ourIndex).concat(ranges.slice(ourIndex + 1)), 0));
+      setSelection(doc, normalizeSelection(ranges.slice(0, ourIndex).concat(ranges.slice(ourIndex + 1)), 0),
+                   {scroll: false, origin: "*mouse"});
       startSel = doc.sel;
     } else {
       replaceOneSelection(doc, ourIndex, ourRange, sel_mouse);
@@ -3819,7 +4034,7 @@ $("#scriptselect").change(function() {
       var cur = posFromMouse(cm, e, true, type == "rect");
       if (!cur) return;
       if (cmp(cur, lastPos) != 0) {
-        ensureFocus(cm);
+        cm.curOp.focus = activeElt();
         extendTo(cur);
         var visible = visibleLines(display, doc);
         if (cur.line >= visible.to || cur.line < visible.from)
@@ -3835,6 +4050,7 @@ $("#scriptselect").change(function() {
     }
 
     function done(e) {
+      cm.state.selectingText = false;
       counter = Infinity;
       e_preventDefault(e);
       display.input.focus();
@@ -3848,13 +4064,14 @@ $("#scriptselect").change(function() {
       else extend(e);
     });
     var up = operation(cm, done);
+    cm.state.selectingText = up;
     on(document, "mousemove", move);
     on(document, "mouseup", up);
   }
 
   // Determines whether an event happened in the gutter, and fires the
   // handlers for the corresponding event.
-  function gutterEvent(cm, e, type, prevent, signalfn) {
+  function gutterEvent(cm, e, type, prevent) {
     try { var mX = e.clientX, mY = e.clientY; }
     catch(e) { return false; }
     if (mX >= Math.floor(cm.display.gutters.getBoundingClientRect().right)) return false;
@@ -3871,14 +4088,14 @@ $("#scriptselect").change(function() {
       if (g && g.getBoundingClientRect().right >= mX) {
         var line = lineAtHeight(cm.doc, mY);
         var gutter = cm.options.gutters[i];
-        signalfn(cm, type, cm, line, gutter, e);
+        signal(cm, type, cm, line, gutter, e);
         return e_defaultPrevented(e);
       }
     }
   }
 
   function clickInGutter(cm, e) {
-    return gutterEvent(cm, e, "gutterClick", true, signalLater);
+    return gutterEvent(cm, e, "gutterClick", true);
   }
 
   // Kludge to work around strange IE behavior where it'll sometimes
@@ -3887,23 +4104,32 @@ $("#scriptselect").change(function() {
 
   function onDrop(e) {
     var cm = this;
+    clearDragCursor(cm);
     if (signalDOMEvent(cm, e) || eventInWidget(cm.display, e))
       return;
     e_preventDefault(e);
     if (ie) lastDrop = +new Date;
     var pos = posFromMouse(cm, e, true), files = e.dataTransfer.files;
-    if (!pos || isReadOnly(cm)) return;
+    if (!pos || cm.isReadOnly()) return;
     // Might be a file drop, in which case we simply extract the text
     // and insert it.
     if (files && files.length && window.FileReader && window.File) {
       var n = files.length, text = Array(n), read = 0;
       var loadFile = function(file, i) {
+        if (cm.options.allowDropFileTypes &&
+            indexOf(cm.options.allowDropFileTypes, file.type) == -1)
+          return;
+
         var reader = new FileReader;
         reader.onload = operation(cm, function() {
-          text[i] = reader.result;
+          var content = reader.result;
+          if (/[\x00-\x08\x0e-\x1f]{2}/.test(content)) content = "";
+          text[i] = content;
           if (++read == n) {
             pos = clipPos(cm.doc, pos);
-            var change = {from: pos, to: pos, text: splitLines(text.join("\n")), origin: "paste"};
+            var change = {from: pos, to: pos,
+                          text: cm.doc.splitLines(text.join(cm.doc.lineSeparator())),
+                          origin: "paste"};
             makeChange(cm.doc, change);
             setSelectionReplaceHistory(cm.doc, simpleSelection(pos, changeEnd(change)));
           }
@@ -3922,7 +4148,7 @@ $("#scriptselect").change(function() {
       try {
         var text = e.dataTransfer.getData("Text");
         if (text) {
-          if (cm.state.draggingText && !(mac ? e.metaKey : e.ctrlKey))
+          if (cm.state.draggingText && !(mac ? e.altKey : e.ctrlKey))
             var selected = cm.listSelections();
           setSelectionNoUndo(cm.doc, simpleSelection(pos, pos));
           if (selected) for (var i = 0; i < selected.length; ++i)
@@ -3954,6 +4180,25 @@ $("#scriptselect").change(function() {
       }
       e.dataTransfer.setDragImage(img, 0, 0);
       if (presto) img.parentNode.removeChild(img);
+    }
+  }
+
+  function onDragOver(cm, e) {
+    var pos = posFromMouse(cm, e);
+    if (!pos) return;
+    var frag = document.createDocumentFragment();
+    drawSelectionCursor(cm, pos, frag);
+    if (!cm.display.dragCursor) {
+      cm.display.dragCursor = elt("div", null, "CodeMirror-cursors CodeMirror-dragcursors");
+      cm.display.lineSpace.insertBefore(cm.display.dragCursor, cm.display.cursorDiv);
+    }
+    removeChildrenAndAdd(cm.display.dragCursor, frag);
+  }
+
+  function clearDragCursor(cm) {
+    if (cm.display.dragCursor) {
+      cm.display.lineSpace.removeChild(cm.display.dragCursor);
+      cm.display.dragCursor = null;
     }
   }
 
@@ -4021,8 +4266,9 @@ $("#scriptselect").change(function() {
 
     var display = cm.display, scroll = display.scroller;
     // Quit if there's nothing to scroll here
-    if (!(dx && scroll.scrollWidth > scroll.clientWidth ||
-          dy && scroll.scrollHeight > scroll.clientHeight)) return;
+    var canScrollX = scroll.scrollWidth > scroll.clientWidth;
+    var canScrollY = scroll.scrollHeight > scroll.clientHeight;
+    if (!(dx && canScrollX || dy && canScrollY)) return;
 
     // Webkit browsers on OS X abort momentum scrolls when the target
     // of the scroll event is removed from the scrollable element.
@@ -4046,10 +4292,15 @@ $("#scriptselect").change(function() {
     // scrolling entirely here. It'll be slightly off from native, but
     // better than glitching out.
     if (dx && !gecko && !presto && wheelPixelsPerUnit != null) {
-      if (dy)
+      if (dy && canScrollY)
         setScrollTop(cm, Math.max(0, Math.min(scroll.scrollTop + dy * wheelPixelsPerUnit, scroll.scrollHeight - scroll.clientHeight)));
       setScrollLeft(cm, Math.max(0, Math.min(scroll.scrollLeft + dx * wheelPixelsPerUnit, scroll.scrollWidth - scroll.clientWidth)));
-      e_preventDefault(e);
+      // Only prevent default scrolling if vertical scrolling is
+      // actually possible. Otherwise, it causes vertical scroll
+      // jitter on OSX trackpads when deltaX is small and deltaY
+      // is large (issue #3579)
+      if (!dy || (dy && canScrollY))
+        e_preventDefault(e);
       display.wheelStartX = null; // Abort measurement, if in progress
       return;
     }
@@ -4098,7 +4349,7 @@ $("#scriptselect").change(function() {
     cm.display.input.ensurePolled();
     var prevShift = cm.display.shift, done = false;
     try {
-      if (isReadOnly(cm)) cm.state.suppressEdits = true;
+      if (cm.isReadOnly()) cm.state.suppressEdits = true;
       if (dropShift) cm.display.shift = false;
       done = bound(cm) != Pass;
     } finally {
@@ -4177,7 +4428,7 @@ $("#scriptselect").change(function() {
   var lastStoppedKey = null;
   function onKeyDown(e) {
     var cm = this;
-    ensureFocus(cm);
+    cm.curOp.focus = activeElt();
     if (signalDOMEvent(cm, e)) return;
     // IE does strange things with escape.
     if (ie && ie_version < 11 && e.keyCode == 27) e.returnValue = false;
@@ -4277,12 +4528,13 @@ $("#scriptselect").change(function() {
   // right-click take effect on it.
   function onContextMenu(cm, e) {
     if (eventInWidget(cm.display, e) || contextMenuInGutter(cm, e)) return;
+    if (signalDOMEvent(cm, e, "contextmenu")) return;
     cm.display.input.onContextMenu(e);
   }
 
   function contextMenuInGutter(cm, e) {
     if (!hasHandler(cm, "gutterContextMenu")) return false;
-    return gutterEvent(cm, e, "gutterContextMenu", false, signal);
+    return gutterEvent(cm, e, "gutterContextMenu", false);
   }
 
   // UPDATING
@@ -4586,7 +4838,7 @@ $("#scriptselect").change(function() {
   function replaceRange(doc, code, from, to, origin) {
     if (!to) to = from;
     if (cmp(to, from) < 0) { var tmp = to; to = from; from = tmp; }
-    if (typeof code == "string") code = splitLines(code);
+    if (typeof code == "string") code = doc.splitLines(code);
     makeChange(doc, {from: from, to: to, text: code, origin: origin});
   }
 
@@ -4765,6 +5017,8 @@ $("#scriptselect").change(function() {
 
     if (indentString != curSpaceString) {
       replaceRange(doc, indentString, Pos(n, 0), Pos(n, curSpaceString.length), "+input");
+      line.stateAfter = null;
+      return true;
     } else {
       // Ensure that, if the cursor was in the whitespace at the start
       // of the line, it is moved to the end of that space.
@@ -4777,7 +5031,6 @@ $("#scriptselect").change(function() {
         }
       }
     }
-    line.stateAfter = null;
   }
 
   // Utility for applying a change to a line by handle or number,
@@ -4829,10 +5082,9 @@ $("#scriptselect").change(function() {
   function findPosH(doc, pos, dir, unit, visually) {
     var line = pos.line, ch = pos.ch, origDir = dir;
     var lineObj = getLine(doc, line);
-    var possible = true;
     function findNextLine() {
       var l = line + dir;
-      if (l < doc.first || l >= doc.first + doc.size) return (possible = false);
+      if (l < doc.first || l >= doc.first + doc.size) return false
       line = l;
       return lineObj = getLine(doc, l);
     }
@@ -4842,14 +5094,16 @@ $("#scriptselect").change(function() {
         if (!boundToLine && findNextLine()) {
           if (visually) ch = (dir < 0 ? lineRight : lineLeft)(lineObj);
           else ch = dir < 0 ? lineObj.text.length : 0;
-        } else return (possible = false);
+        } else return false
       } else ch = next;
       return true;
     }
 
-    if (unit == "char") moveOnce();
-    else if (unit == "column") moveOnce(true);
-    else if (unit == "word" || unit == "group") {
+    if (unit == "char") {
+      moveOnce()
+    } else if (unit == "column") {
+      moveOnce(true)
+    } else if (unit == "word" || unit == "group") {
       var sawType = null, group = unit == "group";
       var helper = doc.cm && doc.cm.getHelper(pos, "wordChars");
       for (var first = true;; first = false) {
@@ -4869,8 +5123,8 @@ $("#scriptselect").change(function() {
         if (dir > 0 && !moveOnce(!first)) break;
       }
     }
-    var result = skipAtomic(doc, Pos(line, ch), origDir, true);
-    if (!possible) result.hitSide = true;
+    var result = skipAtomic(doc, Pos(line, ch), pos, origDir, true);
+    if (!cmp(pos, result)) result.hitSide = true;
     return result;
   }
 
@@ -5067,10 +5321,15 @@ $("#scriptselect").change(function() {
       return lineAtHeight(this.doc, height + this.display.viewOffset);
     },
     heightAtLine: function(line, mode) {
-      var end = false, last = this.doc.first + this.doc.size - 1;
-      if (line < this.doc.first) line = this.doc.first;
-      else if (line > last) { line = last; end = true; }
-      var lineObj = getLine(this.doc, line);
+      var end = false, lineObj;
+      if (typeof line == "number") {
+        var last = this.doc.first + this.doc.size - 1;
+        if (line < this.doc.first) line = this.doc.first;
+        else if (line > last) { line = last; end = true; }
+        lineObj = getLine(this.doc, line);
+      } else {
+        lineObj = line;
+      }
       return intoCoordSystem(this, lineObj, {top: 0, left: 0}, mode || "page").top +
         (end ? this.doc.height - heightAtLine(lineObj) : 0);
     },
@@ -5157,8 +5416,10 @@ $("#scriptselect").change(function() {
 
     execCommand: function(cmd) {
       if (commands.hasOwnProperty(cmd))
-        return commands[cmd](this);
+        return commands[cmd].call(null, this);
     },
+
+    triggerElectric: methodOp(function(text) { triggerElectric(this, text); }),
 
     findPosH: function(from, amount, unit, visually) {
       var dir = 1;
@@ -5250,6 +5511,7 @@ $("#scriptselect").change(function() {
       signal(this, "overwriteToggle", this, this.state.overwrite);
     },
     hasFocus: function() { return this.display.input.getField() == activeElt(); },
+    isReadOnly: function() { return !!(this.options.readOnly || this.doc.cantEdit); },
 
     scrollTo: methodOp(function(x, y) {
       if (x != null || y != null) resolveScrollToPos(this);
@@ -5373,6 +5635,22 @@ $("#scriptselect").change(function() {
     clearCaches(cm);
     regChange(cm);
   }, true);
+  option("lineSeparator", null, function(cm, val) {
+    cm.doc.lineSep = val;
+    if (!val) return;
+    var newBreaks = [], lineNo = cm.doc.first;
+    cm.doc.iter(function(line) {
+      for (var pos = 0;;) {
+        var found = line.text.indexOf(val, pos);
+        if (found == -1) break;
+        pos = found + val.length;
+        newBreaks.push(Pos(lineNo, found));
+      }
+      lineNo++;
+    });
+    for (var i = newBreaks.length - 1; i >= 0; i--)
+      replaceRange(cm.doc, val, newBreaks[i], Pos(newBreaks[i].line, newBreaks[i].ch + val.length))
+  });
   option("specialChars", /[\t\u0000-\u0019\u00ad\u200b-\u200f\u2028\u2029\ufeff]/g, function(cm, val, old) {
     cm.state.specialChars = new RegExp(val.source + (val.test("\t") ? "" : "|\t"), "g");
     if (old != CodeMirror.Init) cm.refresh();
@@ -5422,6 +5700,7 @@ $("#scriptselect").change(function() {
   option("showCursorWhenSelecting", false, updateSelection, true);
 
   option("resetSelectionOnContextMenu", true);
+  option("lineWiseCopyCut", true);
 
   option("readOnly", false, function(cm, val) {
     if (val == "nocursor") {
@@ -5430,11 +5709,12 @@ $("#scriptselect").change(function() {
       cm.display.disabled = true;
     } else {
       cm.display.disabled = false;
-      if (!val) cm.display.input.reset();
     }
+    cm.display.input.readOnlyChanged(val)
   });
   option("disableInput", false, function(cm, val) {if (!val) cm.display.input.reset();}, true);
-  option("dragDrop", true);
+  option("dragDrop", true, dragDropChanged);
+  option("allowDropFileTypes", null);
 
   option("cursorBlinkRate", 530);
   option("cursorScrollMargin", 0);
@@ -5722,7 +6002,8 @@ $("#scriptselect").change(function() {
             } else if (cur.line > cm.doc.first) {
               var prev = getLine(cm.doc, cur.line - 1).text;
               if (prev)
-                cm.replaceRange(line.charAt(0) + "\n" + prev.charAt(prev.length - 1),
+                cm.replaceRange(line.charAt(0) + cm.doc.lineSeparator() +
+                                prev.charAt(prev.length - 1),
                                 Pos(cur.line - 1, prev.length - 1), Pos(cur.line, 1), "+transpose");
             }
           }
@@ -5736,10 +6017,10 @@ $("#scriptselect").change(function() {
         var len = cm.listSelections().length;
         for (var i = 0; i < len; i++) {
           var range = cm.listSelections()[i];
-          cm.replaceRange("\n", range.anchor, range.head, "+input");
+          cm.replaceRange(cm.doc.lineSeparator(), range.anchor, range.head, "+input");
           cm.indentLine(range.from().line + 1, null, true);
-          ensureCursorVisible(cm);
         }
+        ensureCursorVisible(cm);
       });
     },
     toggleOverwrite: function(cm) {cm.toggleOverwrite();}
@@ -5826,7 +6107,7 @@ $("#scriptselect").change(function() {
       for (var i = 0; i < keys.length; i++) {
         var val, name;
         if (i == keys.length - 1) {
-          name = keyname;
+          name = keys.join(" ");
           val = value;
         } else {
           name = keys.slice(0, i + 1).join(" ");
@@ -6667,7 +6948,7 @@ $("#scriptselect").change(function() {
         parentStyle += "width: " + cm.display.wrapper.clientWidth + "px;";
       removeChildrenAndAdd(cm.display.measure, elt("div", [widget.node], null, parentStyle));
     }
-    return widget.height = widget.node.offsetHeight;
+    return widget.height = widget.node.parentNode.offsetHeight;
   }
 
   function addLineWidget(doc, handle, node, options) {
@@ -6856,7 +7137,9 @@ $("#scriptselect").change(function() {
 
   function getLineStyles(cm, line, updateFrontier) {
     if (!line.styles || line.styles[0] != cm.state.modeGen) {
-      var result = highlightLine(cm, line, line.stateAfter = getStateBefore(cm, lineNo(line)));
+      var state = getStateBefore(cm, lineNo(line));
+      var result = highlightLine(cm, line, line.text.length > cm.options.maxHighlightLength ? copyState(cm.doc.mode, state) : state);
+      line.stateAfter = state;
       line.styles = result.styles;
       if (result.classes) line.styleClasses = result.classes;
       else if (line.styleClasses) line.styleClasses = null;
@@ -6873,7 +7156,7 @@ $("#scriptselect").change(function() {
     var stream = new StringStream(text, cm.options.tabSize);
     stream.start = stream.pos = startAt || 0;
     if (text == "") callBlankLine(mode, state);
-    while (!stream.eol() && stream.pos <= cm.options.maxHighlightLength) {
+    while (!stream.eol()) {
       readToken(mode, stream, state);
       stream.start = stream.pos;
     }
@@ -6900,7 +7183,7 @@ $("#scriptselect").change(function() {
     // is needed on Webkit to be able to get line-level bounding
     // rectangles for it (in measureChar).
     var content = elt("span", null, null, webkit ? "padding-right: .1px" : null);
-    var builder = {pre: elt("pre", [content]), content: content,
+    var builder = {pre: elt("pre", [content], "CodeMirror-line"), content: content,
                    col: 0, pos: 0, cm: cm,
                    splitSpaces: (ie || webkit) && cm.getOption("lineWrapping")};
     lineView.measure = {};
@@ -6990,6 +7273,10 @@ $("#scriptselect").change(function() {
           txt.setAttribute("role", "presentation");
           txt.setAttribute("cm-text", "\t");
           builder.col += tabWidth;
+        } else if (m[0] == "\r" || m[0] == "\n") {
+          var txt = content.appendChild(elt("span", m[0] == "\r" ? "\u240d" : "\u2424", "cm-invalidchar"));
+          txt.setAttribute("cm-text", m[0]);
+          builder.col += 1;
         } else {
           var txt = builder.cm.options.specialCharPlaceholder(m[0]);
           txt.setAttribute("cm-text", m[0]);
@@ -7071,30 +7358,38 @@ $("#scriptselect").change(function() {
       if (nextChange == pos) { // Update current marker set
         spanStyle = spanEndStyle = spanStartStyle = title = css = "";
         collapsed = null; nextChange = Infinity;
-        var foundBookmarks = [];
+        var foundBookmarks = [], endStyles
         for (var j = 0; j < spans.length; ++j) {
           var sp = spans[j], m = sp.marker;
-          if (sp.from <= pos && (sp.to == null || sp.to > pos)) {
-            if (sp.to != null && nextChange > sp.to) { nextChange = sp.to; spanEndStyle = ""; }
+          if (m.type == "bookmark" && sp.from == pos && m.widgetNode) {
+            foundBookmarks.push(m);
+          } else if (sp.from <= pos && (sp.to == null || sp.to > pos || m.collapsed && sp.to == pos && sp.from == pos)) {
+            if (sp.to != null && sp.to != pos && nextChange > sp.to) {
+              nextChange = sp.to;
+              spanEndStyle = "";
+            }
             if (m.className) spanStyle += " " + m.className;
-            if (m.css) css = m.css;
+            if (m.css) css = (css ? css + ";" : "") + m.css;
             if (m.startStyle && sp.from == pos) spanStartStyle += " " + m.startStyle;
-            if (m.endStyle && sp.to == nextChange) spanEndStyle += " " + m.endStyle;
+            if (m.endStyle && sp.to == nextChange) (endStyles || (endStyles = [])).push(m.endStyle, sp.to)
             if (m.title && !title) title = m.title;
             if (m.collapsed && (!collapsed || compareCollapsedMarkers(collapsed.marker, m) < 0))
               collapsed = sp;
           } else if (sp.from > pos && nextChange > sp.from) {
             nextChange = sp.from;
           }
-          if (m.type == "bookmark" && sp.from == pos && m.widgetNode) foundBookmarks.push(m);
         }
+        if (endStyles) for (var j = 0; j < endStyles.length; j += 2)
+          if (endStyles[j + 1] == nextChange) spanEndStyle += " " + endStyles[j]
+
+        if (!collapsed || collapsed.from == pos) for (var j = 0; j < foundBookmarks.length; ++j)
+          buildCollapsedSpan(builder, 0, foundBookmarks[j]);
         if (collapsed && (collapsed.from || 0) == pos) {
           buildCollapsedSpan(builder, (collapsed.to == null ? len + 1 : collapsed.to) - pos,
                              collapsed.marker, collapsed.from == null);
           if (collapsed.to == null) return;
+          if (collapsed.to == pos) collapsed = false;
         }
-        if (!collapsed && foundBookmarks.length) for (var j = 0; j < foundBookmarks.length; ++j)
-          buildCollapsedSpan(builder, 0, foundBookmarks[j]);
       }
       if (pos >= len) break;
 
@@ -7330,8 +7625,8 @@ $("#scriptselect").change(function() {
   };
 
   var nextDocId = 0;
-  var Doc = CodeMirror.Doc = function(text, mode, firstLine) {
-    if (!(this instanceof Doc)) return new Doc(text, mode, firstLine);
+  var Doc = CodeMirror.Doc = function(text, mode, firstLine, lineSep) {
+    if (!(this instanceof Doc)) return new Doc(text, mode, firstLine, lineSep);
     if (firstLine == null) firstLine = 0;
 
     BranchChunk.call(this, [new LeafChunk([new Line("", null)])]);
@@ -7345,8 +7640,10 @@ $("#scriptselect").change(function() {
     this.history = new History(null);
     this.id = ++nextDocId;
     this.modeOption = mode;
+    this.lineSep = lineSep;
+    this.extend = false;
 
-    if (typeof text == "string") text = splitLines(text);
+    if (typeof text == "string") text = this.splitLines(text);
     updateDoc(this, {from: start, to: start, text: text});
     setSelection(this, simpleSelection(start), sel_dontScroll);
   };
@@ -7376,12 +7673,12 @@ $("#scriptselect").change(function() {
     getValue: function(lineSep) {
       var lines = getLines(this, this.first, this.first + this.size);
       if (lineSep === false) return lines;
-      return lines.join(lineSep || "\n");
+      return lines.join(lineSep || this.lineSeparator());
     },
     setValue: docMethodOp(function(code) {
       var top = Pos(this.first, 0), last = this.first + this.size - 1;
       makeChange(this, {from: top, to: Pos(last, getLine(this, last).text.length),
-                        text: splitLines(code), origin: "setValue", full: true}, true);
+                        text: this.splitLines(code), origin: "setValue", full: true}, true);
       setSelection(this, simpleSelection(top));
     }),
     replaceRange: function(code, from, to, origin) {
@@ -7392,7 +7689,7 @@ $("#scriptselect").change(function() {
     getRange: function(from, to, lineSep) {
       var lines = getBetween(this, clipPos(this, from), clipPos(this, to));
       if (lineSep === false) return lines;
-      return lines.join(lineSep || "\n");
+      return lines.join(lineSep || this.lineSeparator());
     },
 
     getLine: function(line) {var l = this.getLineHandle(line); return l && l.text;},
@@ -7432,10 +7729,11 @@ $("#scriptselect").change(function() {
       extendSelection(this, clipPos(this, head), other && clipPos(this, other), options);
     }),
     extendSelections: docMethodOp(function(heads, options) {
-      extendSelections(this, clipPosArray(this, heads, options));
+      extendSelections(this, clipPosArray(this, heads), options);
     }),
     extendSelectionsBy: docMethodOp(function(f, options) {
-      extendSelections(this, map(this.sel.ranges, f), options);
+      var heads = map(this.sel.ranges, f);
+      extendSelections(this, clipPosArray(this, heads), options);
     }),
     setSelections: docMethodOp(function(ranges, primary, options) {
       if (!ranges.length) return;
@@ -7458,13 +7756,13 @@ $("#scriptselect").change(function() {
         lines = lines ? lines.concat(sel) : sel;
       }
       if (lineSep === false) return lines;
-      else return lines.join(lineSep || "\n");
+      else return lines.join(lineSep || this.lineSeparator());
     },
     getSelections: function(lineSep) {
       var parts = [], ranges = this.sel.ranges;
       for (var i = 0; i < ranges.length; i++) {
         var sel = getBetween(this, ranges[i].from(), ranges[i].to());
-        if (lineSep !== false) sel = sel.join(lineSep || "\n");
+        if (lineSep !== false) sel = sel.join(lineSep || this.lineSeparator());
         parts[i] = sel;
       }
       return parts;
@@ -7479,7 +7777,7 @@ $("#scriptselect").change(function() {
       var changes = [], sel = this.sel;
       for (var i = 0; i < sel.ranges.length; i++) {
         var range = sel.ranges[i];
-        changes[i] = {from: range.from(), to: range.to(), text: splitLines(code[i]), origin: origin};
+        changes[i] = {from: range.from(), to: range.to(), text: this.splitLines(code[i]), origin: origin};
       }
       var newSel = collapse && collapse != "end" && computeReplacedSel(this, changes, collapse);
       for (var i = changes.length - 1; i >= 0; i--)
@@ -7560,7 +7858,7 @@ $("#scriptselect").change(function() {
     removeLineWidget: function(widget) { widget.clear(); },
 
     markText: function(from, to, options) {
-      return markText(this, clipPos(this, from), clipPos(this, to), options, "range");
+      return markText(this, clipPos(this, from), clipPos(this, to), options, options && options.type || "range");
     },
     setBookmark: function(pos, options) {
       var realOpts = {replacedWith: options && (options.nodeType == null ? options.widget : options),
@@ -7588,9 +7886,9 @@ $("#scriptselect").change(function() {
         var spans = line.markedSpans;
         if (spans) for (var i = 0; i < spans.length; i++) {
           var span = spans[i];
-          if (!(lineNo == from.line && from.ch > span.to ||
-                span.from == null && lineNo != from.line||
-                lineNo == to.line && span.from > to.ch) &&
+          if (!(span.to != null && lineNo == from.line && from.ch > span.to ||
+                span.from == null && lineNo != from.line ||
+                span.from != null && lineNo == to.line && span.from > to.ch) &&
               (!filter || filter(span.marker)))
             found.push(span.marker.parent || span.marker);
         }
@@ -7609,9 +7907,9 @@ $("#scriptselect").change(function() {
     },
 
     posFromIndex: function(off) {
-      var ch, lineNo = this.first;
+      var ch, lineNo = this.first, sepSize = this.lineSeparator().length;
       this.iter(function(line) {
-        var sz = line.text.length + 1;
+        var sz = line.text.length + sepSize;
         if (sz > off) { ch = off; return true; }
         off -= sz;
         ++lineNo;
@@ -7622,14 +7920,16 @@ $("#scriptselect").change(function() {
       coords = clipPos(this, coords);
       var index = coords.ch;
       if (coords.line < this.first || coords.ch < 0) return 0;
+      var sepSize = this.lineSeparator().length;
       this.iter(this.first, coords.line, function (line) {
-        index += line.text.length + 1;
+        index += line.text.length + sepSize;
       });
       return index;
     },
 
     copy: function(copyHistory) {
-      var doc = new Doc(getLines(this, this.first, this.first + this.size), this.modeOption, this.first);
+      var doc = new Doc(getLines(this, this.first, this.first + this.size),
+                        this.modeOption, this.first, this.lineSep);
       doc.scrollTop = this.scrollTop; doc.scrollLeft = this.scrollLeft;
       doc.sel = this.sel;
       doc.extend = false;
@@ -7645,7 +7945,7 @@ $("#scriptselect").change(function() {
       var from = this.first, to = this.first + this.size;
       if (options.from != null && options.from > from) from = options.from;
       if (options.to != null && options.to < to) to = options.to;
-      var copy = new Doc(getLines(this, from, to), options.mode || this.modeOption, from);
+      var copy = new Doc(getLines(this, from, to), options.mode || this.modeOption, from, this.lineSep);
       if (options.sharedHist) copy.history = this.history;
       (this.linked || (this.linked = [])).push({doc: copy, sharedHist: options.sharedHist});
       copy.linked = [{doc: this, isParent: true, sharedHist: options.sharedHist}];
@@ -7674,14 +7974,20 @@ $("#scriptselect").change(function() {
     iterLinkedDocs: function(f) {linkedDocs(this, f);},
 
     getMode: function() {return this.mode;},
-    getEditor: function() {return this.cm;}
+    getEditor: function() {return this.cm;},
+
+    splitLines: function(str) {
+      if (this.lineSep) return str.split(this.lineSep);
+      return splitLinesAuto(str);
+    },
+    lineSeparator: function() { return this.lineSep || "\n"; }
   });
 
   // Public alias.
   Doc.prototype.eachLine = Doc.prototype.iter;
 
   // Set up methods on CodeMirror's prototype to redirect to the editor's document.
-  var dontDelegate = "iter insert remove copy getEditor".split(" ");
+  var dontDelegate = "iter insert remove copy getEditor constructor".split(" ");
   for (var prop in Doc.prototype) if (Doc.prototype.hasOwnProperty(prop) && indexOf(dontDelegate, prop) < 0)
     CodeMirror.prototype[prop] = (function(method) {
       return function() {return method.apply(this.doc, arguments);};
@@ -8114,24 +8420,30 @@ $("#scriptselect").change(function() {
     }
   };
 
+  var noHandlers = []
+  function getHandlers(emitter, type, copy) {
+    var arr = emitter._handlers && emitter._handlers[type]
+    if (copy) return arr && arr.length > 0 ? arr.slice() : noHandlers
+    else return arr || noHandlers
+  }
+
   var off = CodeMirror.off = function(emitter, type, f) {
     if (emitter.removeEventListener)
       emitter.removeEventListener(type, f, false);
     else if (emitter.detachEvent)
       emitter.detachEvent("on" + type, f);
     else {
-      var arr = emitter._handlers && emitter._handlers[type];
-      if (!arr) return;
-      for (var i = 0; i < arr.length; ++i)
-        if (arr[i] == f) { arr.splice(i, 1); break; }
+      var handlers = getHandlers(emitter, type, false)
+      for (var i = 0; i < handlers.length; ++i)
+        if (handlers[i] == f) { handlers.splice(i, 1); break; }
     }
   };
 
   var signal = CodeMirror.signal = function(emitter, type /*, values...*/) {
-    var arr = emitter._handlers && emitter._handlers[type];
-    if (!arr) return;
+    var handlers = getHandlers(emitter, type, true)
+    if (!handlers.length) return;
     var args = Array.prototype.slice.call(arguments, 2);
-    for (var i = 0; i < arr.length; ++i) arr[i].apply(null, args);
+    for (var i = 0; i < handlers.length; ++i) handlers[i].apply(null, args);
   };
 
   var orphanDelayedCallbacks = null;
@@ -8144,8 +8456,8 @@ $("#scriptselect").change(function() {
   // them to be executed when the last operation ends, or, if no
   // operation is active, when a timeout fires.
   function signalLater(emitter, type /*, values...*/) {
-    var arr = emitter._handlers && emitter._handlers[type];
-    if (!arr) return;
+    var arr = getHandlers(emitter, type, false)
+    if (!arr.length) return;
     var args = Array.prototype.slice.call(arguments, 2), list;
     if (operationGroup) {
       list = operationGroup.delayedCallbacks;
@@ -8185,8 +8497,7 @@ $("#scriptselect").change(function() {
   }
 
   function hasHandler(emitter, type) {
-    var arr = emitter._handlers && emitter._handlers[type];
-    return arr && arr.length > 0;
+    return getHandlers(emitter, type).length > 0
   }
 
   // Add on and off methods to a constructor's prototype, to make
@@ -8233,7 +8544,7 @@ $("#scriptselect").change(function() {
 
   // The inverse of countColumn -- find the offset that corresponds to
   // a particular column.
-  function findColumn(string, goal, tabSize) {
+  var findColumn = CodeMirror.findColumn = function(string, goal, tabSize) {
     for (var pos = 0, col = 0;;) {
       var nextTab = string.indexOf("\t", pos);
       if (nextTab == -1) nextTab = string.length;
@@ -8300,7 +8611,7 @@ $("#scriptselect").change(function() {
     return function(){return f.apply(null, args);};
   }
 
-  var nonASCIISingleCaseWordChar = /[\u00df\u0590-\u05f4\u0600-\u06ff\u3040-\u309f\u30a0-\u30ff\u3400-\u4db5\u4e00-\u9fcc\uac00-\ud7af]/;
+  var nonASCIISingleCaseWordChar = /[\u00df\u0587\u0590-\u05f4\u0600-\u06ff\u3040-\u309f\u30a0-\u30ff\u3400-\u4db5\u4e00-\u9fcc\uac00-\ud7af]/;
   var isWordCharBasic = CodeMirror.isWordChar = function(ch) {
     return /\w/.test(ch) || ch > "\x80" &&
       (ch.toUpperCase() != ch.toLowerCase() || nonASCIISingleCaseWordChar.test(ch));
@@ -8373,7 +8684,12 @@ $("#scriptselect").change(function() {
     } while (child = child.parentNode);
   };
 
-  function activeElt() { return document.activeElement; }
+  function activeElt() {
+    var activeElement = document.activeElement;
+    while (activeElement && activeElement.root && activeElement.root.activeElement)
+      activeElement = activeElement.root.activeElement;
+    return activeElement;
+  }
   // Older versions of IE throws unspecified error when touching
   // document.activeElement in some cases (during loading, in iframe)
   if (ie && ie_version < 11) activeElt = function() {
@@ -8475,7 +8791,7 @@ $("#scriptselect").change(function() {
 
   // See if "".split is the broken IE version, if so, provide an
   // alternative way to split lines.
-  var splitLines = CodeMirror.splitLines = "\n\nb".split(/\n/).length != 3 ? function(string) {
+  var splitLinesAuto = CodeMirror.splitLines = "\n\nb".split(/\n/).length != 3 ? function(string) {
     var pos = 0, result = [], l = string.length;
     while (pos <= l) {
       var nl = string.indexOf("\n", pos);
@@ -8521,14 +8837,16 @@ $("#scriptselect").change(function() {
 
   // KEY NAMES
 
-  var keyNames = {3: "Enter", 8: "Backspace", 9: "Tab", 13: "Enter", 16: "Shift", 17: "Ctrl", 18: "Alt",
-                  19: "Pause", 20: "CapsLock", 27: "Esc", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End",
-                  36: "Home", 37: "Left", 38: "Up", 39: "Right", 40: "Down", 44: "PrintScrn", 45: "Insert",
-                  46: "Delete", 59: ";", 61: "=", 91: "Mod", 92: "Mod", 93: "Mod", 107: "=", 109: "-", 127: "Delete",
-                  173: "-", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 192: "`", 219: "[", 220: "\\",
-                  221: "]", 222: "'", 63232: "Up", 63233: "Down", 63234: "Left", 63235: "Right", 63272: "Delete",
-                  63273: "Home", 63275: "End", 63276: "PageUp", 63277: "PageDown", 63302: "Insert"};
-  CodeMirror.keyNames = keyNames;
+  var keyNames = CodeMirror.keyNames = {
+    3: "Enter", 8: "Backspace", 9: "Tab", 13: "Enter", 16: "Shift", 17: "Ctrl", 18: "Alt",
+    19: "Pause", 20: "CapsLock", 27: "Esc", 32: "Space", 33: "PageUp", 34: "PageDown", 35: "End",
+    36: "Home", 37: "Left", 38: "Up", 39: "Right", 40: "Down", 44: "PrintScrn", 45: "Insert",
+    46: "Delete", 59: ";", 61: "=", 91: "Mod", 92: "Mod", 93: "Mod",
+    106: "*", 107: "=", 109: "-", 110: ".", 111: "/", 127: "Delete",
+    173: "-", 186: ";", 187: "=", 188: ",", 189: "-", 190: ".", 191: "/", 192: "`", 219: "[", 220: "\\",
+    221: "]", 222: "'", 63232: "Up", 63233: "Down", 63234: "Left", 63235: "Right", 63272: "Delete",
+    63273: "Home", 63275: "End", 63276: "PageUp", 63277: "PageDown", 63302: "Insert"
+  };
   (function() {
     // Number keys
     for (var i = 0; i < 10; i++) keyNames[i + 48] = keyNames[i + 96] = String(i);
@@ -8822,6 +9140,8 @@ $("#scriptselect").change(function() {
         lst(order).to -= m[0].length;
         order.push(new BidiSpan(0, len - m[0].length, len));
       }
+      if (order[0].level == 2)
+        order.unshift(new BidiSpan(1, order[0].to, order[0].to));
       if (order[0].level != lst(order).level)
         order.push(new BidiSpan(order[0].level, len, len));
 
@@ -8831,11 +9151,10 @@ $("#scriptselect").change(function() {
 
   // THE END
 
-  CodeMirror.version = "5.1.0";
+  CodeMirror.version = "5.13.5";
 
   return CodeMirror;
-});
-</script><script id="script-codemirror-mode-css" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+});</script><script id="script-codemirror-mode-css" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
 // Distributed under an MIT license: http://codemirror.net/LICENSE
 
 (function(mod) {
@@ -10236,7 +10555,630 @@ CodeMirror.defineMIME("application/typescript", { name: "javascript", typescript
 
 });
 
-    </script><style id="style-codemirror">/* BASICS */
+    </script><script id="script-cm-search" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
+
+// Define search commands. Depends on dialog.js or another
+// implementation of the openDialog method.
+
+// Replace works a little oddly -- it will do the replace on the next
+// Ctrl-G (or whatever is bound to findNext) press. You prevent a
+// replace by making sure the match is no longer selected when hitting
+// Ctrl-G.
+
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"), require("./searchcursor"), require("../dialog/dialog"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror", "./searchcursor", "../dialog/dialog"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+  "use strict";
+
+  function searchOverlay(query, caseInsensitive) {
+    if (typeof query == "string")
+      query = new RegExp(query.replace(/[\-\[\]\/\{\}\(\)\*\+\?\.\\\^\$\|]/g, "\\$&"), caseInsensitive ? "gi" : "g");
+    else if (!query.global)
+      query = new RegExp(query.source, query.ignoreCase ? "gi" : "g");
+
+    return {token: function(stream) {
+      query.lastIndex = stream.pos;
+      var match = query.exec(stream.string);
+      if (match && match.index == stream.pos) {
+        stream.pos += match[0].length || 1;
+        return "searching";
+      } else if (match) {
+        stream.pos = match.index;
+      } else {
+        stream.skipToEnd();
+      }
+    }};
+  }
+
+  function SearchState() {
+    this.posFrom = this.posTo = this.lastQuery = this.query = null;
+    this.overlay = null;
+  }
+
+  function getSearchState(cm) {
+    return cm.state.search || (cm.state.search = new SearchState());
+  }
+
+  function queryCaseInsensitive(query) {
+    return typeof query == "string" && query == query.toLowerCase();
+  }
+
+  function getSearchCursor(cm, query, pos) {
+    // Heuristic: if the query string is all lowercase, do a case insensitive search.
+    return cm.getSearchCursor(query, pos, queryCaseInsensitive(query));
+  }
+
+  function persistentDialog(cm, text, deflt, f) {
+    cm.openDialog(text, f, {
+      value: deflt,
+      selectValueOnOpen: true,
+      closeOnEnter: false,
+      onClose: function() { clearSearch(cm); }
+    });
+  }
+
+  function dialog(cm, text, shortText, deflt, f) {
+    if (cm.openDialog) cm.openDialog(text, f, {value: deflt, selectValueOnOpen: true});
+    else f(prompt(shortText, deflt));
+  }
+
+  function confirmDialog(cm, text, shortText, fs) {
+    if (cm.openConfirm) cm.openConfirm(text, fs);
+    else if (confirm(shortText)) fs[0]();
+  }
+
+  function parseString(string) {
+    return string.replace(/\\(.)/g, function(_, ch) {
+      if (ch == "n") return "\n"
+      if (ch == "r") return "\r"
+      return ch
+    })
+  }
+
+  function parseQuery(query) {
+    var isRE = query.match(/^\/(.*)\/([a-z]*)$/);
+    if (isRE) {
+      try { query = new RegExp(isRE[1], isRE[2].indexOf("i") == -1 ? "" : "i"); }
+      catch(e) {} // Not a regular expression after all, do a string search
+    } else {
+      query = parseString(query)
+    }
+    if (typeof query == "string" ? query == "" : query.test(""))
+      query = /x^/;
+    return query;
+  }
+
+  var queryDialog =
+    'Search: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
+
+  function startSearch(cm, state, query) {
+    state.queryText = query;
+    state.query = parseQuery(query);
+    cm.removeOverlay(state.overlay, queryCaseInsensitive(state.query));
+    state.overlay = searchOverlay(state.query, queryCaseInsensitive(state.query));
+    cm.addOverlay(state.overlay);
+    if (cm.showMatchesOnScrollbar) {
+      if (state.annotate) { state.annotate.clear(); state.annotate = null; }
+      state.annotate = cm.showMatchesOnScrollbar(state.query, queryCaseInsensitive(state.query));
+    }
+  }
+
+  function doSearch(cm, rev, persistent) {
+    var state = getSearchState(cm);
+    if (state.query) return findNext(cm, rev);
+    var q = cm.getSelection() || state.lastQuery;
+    if (persistent && cm.openDialog) {
+      var hiding = null
+      persistentDialog(cm, queryDialog, q, function(query, event) {
+        CodeMirror.e_stop(event);
+        if (!query) return;
+        if (query != state.queryText) {
+          startSearch(cm, state, query);
+          state.posFrom = state.posTo = cm.getCursor();
+        }
+        if (hiding) hiding.style.opacity = 1
+        findNext(cm, event.shiftKey, function(_, to) {
+          var dialog
+          if (to.line < 3 && document.querySelector &&
+              (dialog = cm.display.wrapper.querySelector(".CodeMirror-dialog")) &&
+              dialog.getBoundingClientRect().bottom - 4 > cm.cursorCoords(to, "window").top)
+            (hiding = dialog).style.opacity = .4
+        })
+      });
+    } else {
+      dialog(cm, queryDialog, "Search for:", q, function(query) {
+        if (query && !state.query) cm.operation(function() {
+          startSearch(cm, state, query);
+          state.posFrom = state.posTo = cm.getCursor();
+          findNext(cm, rev);
+        });
+      });
+    }
+  }
+
+  function findNext(cm, rev, callback) {cm.operation(function() {
+    var state = getSearchState(cm);
+    var cursor = getSearchCursor(cm, state.query, rev ? state.posFrom : state.posTo);
+    if (!cursor.find(rev)) {
+      cursor = getSearchCursor(cm, state.query, rev ? CodeMirror.Pos(cm.lastLine()) : CodeMirror.Pos(cm.firstLine(), 0));
+      if (!cursor.find(rev)) return;
+    }
+    cm.setSelection(cursor.from(), cursor.to());
+    cm.scrollIntoView({from: cursor.from(), to: cursor.to()}, 20);
+    state.posFrom = cursor.from(); state.posTo = cursor.to();
+    if (callback) callback(cursor.from(), cursor.to())
+  });}
+
+  function clearSearch(cm) {cm.operation(function() {
+    var state = getSearchState(cm);
+    state.lastQuery = state.query;
+    if (!state.query) return;
+    state.query = state.queryText = null;
+    cm.removeOverlay(state.overlay);
+    if (state.annotate) { state.annotate.clear(); state.annotate = null; }
+  });}
+
+  var replaceQueryDialog =
+    ' <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use /re/ syntax for regexp search)</span>';
+  var replacementQueryDialog = 'With: <input type="text" style="width: 10em" class="CodeMirror-search-field"/>';
+  var doReplaceConfirm = "Replace? <button>Yes</button> <button>No</button> <button>All</button> <button>Stop</button>";
+
+  function replaceAll(cm, query, text) {
+    cm.operation(function() {
+      for (var cursor = getSearchCursor(cm, query); cursor.findNext();) {
+        if (typeof query != "string") {
+          var match = cm.getRange(cursor.from(), cursor.to()).match(query);
+          cursor.replace(text.replace(/\$(\d)/g, function(_, i) {return match[i];}));
+        } else cursor.replace(text);
+      }
+    });
+  }
+
+  function replace(cm, all) {
+    if (cm.getOption("readOnly")) return;
+    var query = cm.getSelection() || getSearchState(cm).lastQuery;
+    var dialogText = all ? "Replace all:" : "Replace:"
+    dialog(cm, dialogText + replaceQueryDialog, dialogText, query, function(query) {
+      if (!query) return;
+      query = parseQuery(query);
+      dialog(cm, replacementQueryDialog, "Replace with:", "", function(text) {
+        text = parseString(text)
+        if (all) {
+          replaceAll(cm, query, text)
+        } else {
+          clearSearch(cm);
+          var cursor = getSearchCursor(cm, query, cm.getCursor("from"));
+          var advance = function() {
+            var start = cursor.from(), match;
+            if (!(match = cursor.findNext())) {
+              cursor = getSearchCursor(cm, query);
+              if (!(match = cursor.findNext()) ||
+                  (start && cursor.from().line == start.line && cursor.from().ch == start.ch)) return;
+            }
+            cm.setSelection(cursor.from(), cursor.to());
+            cm.scrollIntoView({from: cursor.from(), to: cursor.to()});
+            confirmDialog(cm, doReplaceConfirm, "Replace?",
+                          [function() {doReplace(match);}, advance,
+                           function() {replaceAll(cm, query, text)}]);
+          };
+          var doReplace = function(match) {
+            cursor.replace(typeof query == "string" ? text :
+                           text.replace(/\$(\d)/g, function(_, i) {return match[i];}));
+            advance();
+          };
+          advance();
+        }
+      });
+    });
+  }
+
+  CodeMirror.commands.find = function(cm) {clearSearch(cm); doSearch(cm);};
+  CodeMirror.commands.findPersistent = function(cm) {clearSearch(cm); doSearch(cm, false, true);};
+  CodeMirror.commands.findNext = doSearch;
+  CodeMirror.commands.findPrev = function(cm) {doSearch(cm, true);};
+  CodeMirror.commands.clearSearch = clearSearch;
+  CodeMirror.commands.replace = replace;
+  CodeMirror.commands.replaceAll = function(cm) {replace(cm, true);};
+});</script><script id="script-cm-searchcursor" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
+
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+  "use strict";
+  var Pos = CodeMirror.Pos;
+
+  function SearchCursor(doc, query, pos, caseFold) {
+    this.atOccurrence = false; this.doc = doc;
+    if (caseFold == null && typeof query == "string") caseFold = false;
+
+    pos = pos ? doc.clipPos(pos) : Pos(0, 0);
+    this.pos = {from: pos, to: pos};
+
+    // The matches method is filled in based on the type of query.
+    // It takes a position and a direction, and returns an object
+    // describing the next occurrence of the query, or null if no
+    // more matches were found.
+    if (typeof query != "string") { // Regexp match
+      if (!query.global) query = new RegExp(query.source, query.ignoreCase ? "ig" : "g");
+      this.matches = function(reverse, pos) {
+        if (reverse) {
+          query.lastIndex = 0;
+          var line = doc.getLine(pos.line).slice(0, pos.ch), cutOff = 0, match, start;
+          for (;;) {
+            query.lastIndex = cutOff;
+            var newMatch = query.exec(line);
+            if (!newMatch) break;
+            match = newMatch;
+            start = match.index;
+            cutOff = match.index + (match[0].length || 1);
+            if (cutOff == line.length) break;
+          }
+          var matchLen = (match && match[0].length) || 0;
+          if (!matchLen) {
+            if (start == 0 && line.length == 0) {match = undefined;}
+            else if (start != doc.getLine(pos.line).length) {
+              matchLen++;
+            }
+          }
+        } else {
+          query.lastIndex = pos.ch;
+          var line = doc.getLine(pos.line), match = query.exec(line);
+          var matchLen = (match && match[0].length) || 0;
+          var start = match && match.index;
+          if (start + matchLen != line.length && !matchLen) matchLen = 1;
+        }
+        if (match && matchLen)
+          return {from: Pos(pos.line, start),
+                  to: Pos(pos.line, start + matchLen),
+                  match: match};
+      };
+    } else { // String query
+      var origQuery = query;
+      if (caseFold) query = query.toLowerCase();
+      var fold = caseFold ? function(str){return str.toLowerCase();} : function(str){return str;};
+      var target = query.split("\n");
+      // Different methods for single-line and multi-line queries
+      if (target.length == 1) {
+        if (!query.length) {
+          // Empty string would match anything and never progress, so
+          // we define it to match nothing instead.
+          this.matches = function() {};
+        } else {
+          this.matches = function(reverse, pos) {
+            if (reverse) {
+              var orig = doc.getLine(pos.line).slice(0, pos.ch), line = fold(orig);
+              var match = line.lastIndexOf(query);
+              if (match > -1) {
+                match = adjustPos(orig, line, match);
+                return {from: Pos(pos.line, match), to: Pos(pos.line, match + origQuery.length)};
+              }
+             } else {
+               var orig = doc.getLine(pos.line).slice(pos.ch), line = fold(orig);
+               var match = line.indexOf(query);
+               if (match > -1) {
+                 match = adjustPos(orig, line, match) + pos.ch;
+                 return {from: Pos(pos.line, match), to: Pos(pos.line, match + origQuery.length)};
+               }
+            }
+          };
+        }
+      } else {
+        var origTarget = origQuery.split("\n");
+        this.matches = function(reverse, pos) {
+          var last = target.length - 1;
+          if (reverse) {
+            if (pos.line - (target.length - 1) < doc.firstLine()) return;
+            if (fold(doc.getLine(pos.line).slice(0, origTarget[last].length)) != target[target.length - 1]) return;
+            var to = Pos(pos.line, origTarget[last].length);
+            for (var ln = pos.line - 1, i = last - 1; i >= 1; --i, --ln)
+              if (target[i] != fold(doc.getLine(ln))) return;
+            var line = doc.getLine(ln), cut = line.length - origTarget[0].length;
+            if (fold(line.slice(cut)) != target[0]) return;
+            return {from: Pos(ln, cut), to: to};
+          } else {
+            if (pos.line + (target.length - 1) > doc.lastLine()) return;
+            var line = doc.getLine(pos.line), cut = line.length - origTarget[0].length;
+            if (fold(line.slice(cut)) != target[0]) return;
+            var from = Pos(pos.line, cut);
+            for (var ln = pos.line + 1, i = 1; i < last; ++i, ++ln)
+              if (target[i] != fold(doc.getLine(ln))) return;
+            if (fold(doc.getLine(ln).slice(0, origTarget[last].length)) != target[last]) return;
+            return {from: from, to: Pos(ln, origTarget[last].length)};
+          }
+        };
+      }
+    }
+  }
+
+  SearchCursor.prototype = {
+    findNext: function() {return this.find(false);},
+    findPrevious: function() {return this.find(true);},
+
+    find: function(reverse) {
+      var self = this, pos = this.doc.clipPos(reverse ? this.pos.from : this.pos.to);
+      function savePosAndFail(line) {
+        var pos = Pos(line, 0);
+        self.pos = {from: pos, to: pos};
+        self.atOccurrence = false;
+        return false;
+      }
+
+      for (;;) {
+        if (this.pos = this.matches(reverse, pos)) {
+          this.atOccurrence = true;
+          return this.pos.match || true;
+        }
+        if (reverse) {
+          if (!pos.line) return savePosAndFail(0);
+          pos = Pos(pos.line-1, this.doc.getLine(pos.line-1).length);
+        }
+        else {
+          var maxLine = this.doc.lineCount();
+          if (pos.line == maxLine - 1) return savePosAndFail(maxLine);
+          pos = Pos(pos.line + 1, 0);
+        }
+      }
+    },
+
+    from: function() {if (this.atOccurrence) return this.pos.from;},
+    to: function() {if (this.atOccurrence) return this.pos.to;},
+
+    replace: function(newText, origin) {
+      if (!this.atOccurrence) return;
+      var lines = CodeMirror.splitLines(newText);
+      this.doc.replaceRange(lines, this.pos.from, this.pos.to, origin);
+      this.pos.to = Pos(this.pos.from.line + lines.length - 1,
+                        lines[lines.length - 1].length + (lines.length == 1 ? this.pos.from.ch : 0));
+    }
+  };
+
+  // Maps a position in a case-folded line back to a position in the original line
+  // (compensating for codepoints increasing in number during folding)
+  function adjustPos(orig, folded, pos) {
+    if (orig.length == folded.length) return pos;
+    for (var pos1 = Math.min(pos, orig.length);;) {
+      var len1 = orig.slice(0, pos1).toLowerCase().length;
+      if (len1 < pos) ++pos1;
+      else if (len1 > pos) --pos1;
+      else return pos1;
+    }
+  }
+
+  CodeMirror.defineExtension("getSearchCursor", function(query, pos, caseFold) {
+    return new SearchCursor(this.doc, query, pos, caseFold);
+  });
+  CodeMirror.defineDocExtension("getSearchCursor", function(query, pos, caseFold) {
+    return new SearchCursor(this, query, pos, caseFold);
+  });
+
+  CodeMirror.defineExtension("selectMatches", function(query, caseFold) {
+    var ranges = [];
+    var cur = this.getSearchCursor(query, this.getCursor("from"), caseFold);
+    while (cur.findNext()) {
+      if (CodeMirror.cmpPos(cur.to(), this.getCursor("to")) > 0) break;
+      ranges.push({anchor: cur.from(), head: cur.to()});
+    }
+    if (ranges.length)
+      this.setSelections(ranges, 0);
+  });
+});</script><script id="script-cm-jumptoline" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
+
+// Defines jumpToLine command. Uses dialog.js if present.
+
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"), require("../dialog/dialog"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror", "../dialog/dialog"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+  "use strict";
+
+  function dialog(cm, text, shortText, deflt, f) {
+    if (cm.openDialog) cm.openDialog(text, f, {value: deflt, selectValueOnOpen: true});
+    else f(prompt(shortText, deflt));
+  }
+
+  var jumpDialog =
+      'Jump to line: <input type="text" style="width: 10em" class="CodeMirror-search-field"/> <span style="color: #888" class="CodeMirror-search-hint">(Use line:column or scroll% syntax)</span>';
+
+  function interpretLine(cm, string) {
+    var num = Number(string)
+    if (/^[-+]/.test(string)) return cm.getCursor().line + num
+    else return num - 1
+  }
+
+  CodeMirror.commands.jumpToLine = function(cm) {
+    var cur = cm.getCursor();
+    dialog(cm, jumpDialog, "Jump to line:", (cur.line + 1) + ":" + cur.ch, function(posStr) {
+      if (!posStr) return;
+
+      var match;
+      if (match = /^\s*([\+\-]?\d+)\s*\:\s*(\d+)\s*$/.exec(posStr)) {
+        cm.setCursor(interpretLine(cm, match[1]), Number(match[2]))
+      } else if (match = /^\s*([\+\-]?\d+(\.\d+)?)\%\s*/.exec(posStr)) {
+        var line = Math.round(cm.lineCount() * Number(match[1]) / 100);
+        if (/^[-+]/.test(match[1])) line = cur.line + line + 1;
+        cm.setCursor(line - 1, cur.ch);
+      } else if (match = /^\s*\:?\s*([\+\-]?\d+)\s*/.exec(posStr)) {
+        cm.setCursor(interpretLine(cm, match[1]), cur.ch);
+      }
+    });
+  };
+
+  CodeMirror.keyMap["default"]["Alt-G"] = "jumpToLine";
+});</script><script id="script-cm-dialog" class="inject">// CodeMirror, copyright (c) by Marijn Haverbeke and others
+// Distributed under an MIT license: http://codemirror.net/LICENSE
+
+// Open simple dialogs on top of an editor. Relies on dialog.css.
+
+(function(mod) {
+  if (typeof exports == "object" && typeof module == "object") // CommonJS
+    mod(require("../../lib/codemirror"));
+  else if (typeof define == "function" && define.amd) // AMD
+    define(["../../lib/codemirror"], mod);
+  else // Plain browser env
+    mod(CodeMirror);
+})(function(CodeMirror) {
+  function dialogDiv(cm, template, bottom) {
+    var wrap = cm.getWrapperElement();
+    var dialog;
+    dialog = wrap.appendChild(document.createElement("div"));
+    if (bottom)
+      dialog.className = "CodeMirror-dialog CodeMirror-dialog-bottom";
+    else
+      dialog.className = "CodeMirror-dialog CodeMirror-dialog-top";
+
+    if (typeof template == "string") {
+      dialog.innerHTML = template;
+    } else { // Assuming it's a detached DOM element.
+      dialog.appendChild(template);
+    }
+    return dialog;
+  }
+
+  function closeNotification(cm, newVal) {
+    if (cm.state.currentNotificationClose)
+      cm.state.currentNotificationClose();
+    cm.state.currentNotificationClose = newVal;
+  }
+
+  CodeMirror.defineExtension("openDialog", function(template, callback, options) {
+    if (!options) options = {};
+
+    closeNotification(this, null);
+
+    var dialog = dialogDiv(this, template, options.bottom);
+    var closed = false, me = this;
+    function close(newVal) {
+      if (typeof newVal == 'string') {
+        inp.value = newVal;
+      } else {
+        if (closed) return;
+        closed = true;
+        dialog.parentNode.removeChild(dialog);
+        me.focus();
+
+        if (options.onClose) options.onClose(dialog);
+      }
+    }
+
+    var inp = dialog.getElementsByTagName("input")[0], button;
+    if (inp) {
+      inp.focus();
+
+      if (options.value) {
+        inp.value = options.value;
+        if (options.selectValueOnOpen !== false) {
+          inp.select();
+        }
+      }
+
+      if (options.onInput)
+        CodeMirror.on(inp, "input", function(e) { options.onInput(e, inp.value, close);});
+      if (options.onKeyUp)
+        CodeMirror.on(inp, "keyup", function(e) {options.onKeyUp(e, inp.value, close);});
+
+      CodeMirror.on(inp, "keydown", function(e) {
+        if (options && options.onKeyDown && options.onKeyDown(e, inp.value, close)) { return; }
+        if (e.keyCode == 27 || (options.closeOnEnter !== false && e.keyCode == 13)) {
+          inp.blur();
+          CodeMirror.e_stop(e);
+          close();
+        }
+        if (e.keyCode == 13) callback(inp.value, e);
+      });
+
+      if (options.closeOnBlur !== false) CodeMirror.on(inp, "blur", close);
+    } else if (button = dialog.getElementsByTagName("button")[0]) {
+      CodeMirror.on(button, "click", function() {
+        close();
+        me.focus();
+      });
+
+      if (options.closeOnBlur !== false) CodeMirror.on(button, "blur", close);
+
+      button.focus();
+    }
+    return close;
+  });
+
+  CodeMirror.defineExtension("openConfirm", function(template, callbacks, options) {
+    closeNotification(this, null);
+    var dialog = dialogDiv(this, template, options && options.bottom);
+    var buttons = dialog.getElementsByTagName("button");
+    var closed = false, me = this, blurring = 1;
+    function close() {
+      if (closed) return;
+      closed = true;
+      dialog.parentNode.removeChild(dialog);
+      me.focus();
+    }
+    buttons[0].focus();
+    for (var i = 0; i < buttons.length; ++i) {
+      var b = buttons[i];
+      (function(callback) {
+        CodeMirror.on(b, "click", function(e) {
+          CodeMirror.e_preventDefault(e);
+          close();
+          if (callback) callback(me);
+        });
+      })(callbacks[i]);
+      CodeMirror.on(b, "blur", function() {
+        --blurring;
+        setTimeout(function() { if (blurring <= 0) close(); }, 200);
+      });
+      CodeMirror.on(b, "focus", function() { ++blurring; });
+    }
+  });
+
+  /*
+   * openNotification
+   * Opens a notification, that can be closed with an optional timer
+   * (default 5000ms timer) and always closes on click.
+   *
+   * If a notification is opened while another is opened, it will close the
+   * currently opened one and open the new one immediately.
+   */
+  CodeMirror.defineExtension("openNotification", function(template, options) {
+    closeNotification(this, close);
+    var dialog = dialogDiv(this, template, options && options.bottom);
+    var closed = false, doneTimer;
+    var duration = options && typeof options.duration !== "undefined" ? options.duration : 5000;
+
+    function close() {
+      if (closed) return;
+      closed = true;
+      clearTimeout(doneTimer);
+      dialog.parentNode.removeChild(dialog);
+    }
+
+    CodeMirror.on(dialog, 'click', function(e) {
+      CodeMirror.e_preventDefault(e);
+      close();
+    });
+
+    if (duration)
+      doneTimer = setTimeout(close, duration);
+
+    return close;
+  });
+});</script>
+  <style id="style-codemirror">/* BASICS */
 
 body {
 	margin: 0px;  
@@ -10244,16 +11186,18 @@ body {
 
 .CodeMirror {
   /* Set height, width, borders, and global font properties here */
-  font-family: monospace;
+  font-family: "Menlo", "consolas",  monospace;
+  font-size: 11pt;
   height: auto;
   color: black;
+  -webkit-font-smoothing: antialiased;
 }
 
 /* PADDING */
 
 .CodeMirror-lines {
   padding: 4px 0; /* Vertical padding around content */
-}
+}editor-philip
 .CodeMirror pre {
   padding: 0 4px; /* Horizontal padding of content */
 }
@@ -10266,7 +11210,7 @@ body {
 
 .CodeMirror-gutters {
   border-right: 1px solid #ddd;
-  background-color: #f7f7f7;
+  background-color: rgb(48, 48, 48);
   white-space: nowrap;
 }
 .CodeMirror-linenumbers {}
@@ -10283,19 +11227,21 @@ body {
 
 /* CURSOR */
 
-.CodeMirror div.CodeMirror-cursor {
+.CodeMirror-cursor {
   border-left: 1px solid black;
+  border-right: none;
+  width: 0;
 }
 /* Shown when moving in bi-directional text */
 .CodeMirror div.CodeMirror-secondarycursor {
   border-left: 1px solid silver;
 }
-.CodeMirror.cm-fat-cursor div.CodeMirror-cursor {
+.cm-fat-cursor .CodeMirror-cursor {
   width: auto;
   border: 0;
   background: #7e7;
 }
-.CodeMirror.cm-fat-cursor div.CodeMirror-cursors {
+.cm-fat-cursor div.CodeMirror-cursors {
   z-index: 1;
 }
 
@@ -10305,25 +11251,26 @@ body {
   -webkit-animation: blink 1.06s steps(1) infinite;
   -moz-animation: blink 1.06s steps(1) infinite;
   animation: blink 1.06s steps(1) infinite;
+  background-color: #7e7;
 }
 @-moz-keyframes blink {
-  0% { background: #7e7; }
-  50% { background: none; }
-  100% { background: #7e7; }
+  0% {}
+  50% { background-color: transparent; }
+  100% {}
 }
 @-webkit-keyframes blink {
-  0% { background: #7e7; }
-  50% { background: none; }
-  100% { background: #7e7; }
+  0% {}
+  50% { background-color: transparent; }
+  100% {}
 }
 @keyframes blink {
-  0% { background: #7e7; }
-  50% { background: none; }
-  100% { background: #7e7; }
+  0% {}
+  50% { background-color: transparent; }
+  100% {}
 }
 
 /* Can style cursor different in overwrite (non-insert) mode */
-div.CodeMirror-overwrite div.CodeMirror-cursor {}
+.CodeMirror-overwrite .CodeMirror-cursor {}
 
 .cm-tab { display: inline-block; text-decoration: inherit; }
 
@@ -10333,6 +11280,15 @@ div.CodeMirror-overwrite div.CodeMirror-cursor {}
 }
 
 /* DEFAULT THEME */
+
+.cm-s-default .cm-header {color: blue;}
+.cm-s-default .cm-quote {color: #090;}
+.cm-negative {color: #d44;}
+.cm-positive {color: #292;}
+.cm-header, .cm-strong {font-weight: bold;}
+.cm-em {font-style: italic;}
+.cm-link {text-decoration: underline;}
+.cm-strikethrough {text-decoration: line-through;}
 
 .cm-s-default .cm-keyword {color: #708;}
 .cm-s-default .cm-atom {color: #219;}
@@ -10353,20 +11309,13 @@ div.CodeMirror-overwrite div.CodeMirror-cursor {}
 .cm-s-default .cm-bracket {color: #997;}
 .cm-s-default .cm-tag {color: #170;}
 .cm-s-default .cm-attribute {color: #00c;}
-.cm-s-default .cm-header {color: blue;}
-.cm-s-default .cm-quote {color: #090;}
 .cm-s-default .cm-hr {color: #999;}
 .cm-s-default .cm-link {color: #00c;}
 
-.cm-negative {color: #d44;}
-.cm-positive {color: #292;}
-.cm-header, .cm-strong {font-weight: bold;}
-.cm-em {font-style: italic;}
-.cm-link {text-decoration: underline;}
-.cm-strikethrough {text-decoration: line-through;}
-
 .cm-s-default .cm-error {color: #f00;}
 .cm-invalidchar {color: #f00;}
+
+.CodeMirror-composing { border-bottom: 2px solid; }
 
 /* Default styles for common addons */
 
@@ -10402,7 +11351,7 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
 }
 
 /* The fake, visible scrollbars. Used to force redraw during scrolling
-   before actuall scrolling happens, thus preventing shaking and
+   before actual scrolling happens, thus preventing shaking and
    flickering artifacts. */
 .CodeMirror-vscrollbar, .CodeMirror-hscrollbar, .CodeMirror-scrollbar-filler, .CodeMirror-gutter-filler {
   position: absolute;
@@ -10428,12 +11377,14 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
 
 .CodeMirror-gutters {
   position: absolute; left: 0; top: 0;
+  min-height: 100%;
   z-index: 3;
 }
 .CodeMirror-gutter {
   white-space: normal;
   height: 100%;
   display: inline-block;
+  vertical-align: top;
   margin-bottom: -30px;
   /* Hack to make IE7 behave */
   *zoom:1;
@@ -10442,7 +11393,13 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
 .CodeMirror-gutter-wrapper {
   position: absolute;
   z-index: 4;
-  height: 100%;
+  background: none !important;
+  border: none !important;
+}
+.CodeMirror-gutter-background {
+  position: absolute;
+  top: 0; bottom: 0;
+  z-index: 4;
 }
 .CodeMirror-gutter-elt {
   position: absolute;
@@ -10475,6 +11432,8 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
   position: relative;
   overflow: visible;
   -webkit-tap-highlight-color: transparent;
+  -webkit-font-variant-ligatures: none;
+  font-variant-ligatures: none;
 }
 .CodeMirror-wrap pre {
   word-wrap: break-word;
@@ -10517,19 +11476,19 @@ div.CodeMirror span.CodeMirror-nonmatchingbracket {color: #f22;}
   overflow: hidden;
   visibility: hidden;
 }
-.CodeMirror-measure pre { position: static; }
 
-.CodeMirror div.CodeMirror-cursor {
-  position: absolute;
-  border-right: none;
-  width: 0;
-}
+.CodeMirror-cursor { position: absolute; }
+.CodeMirror-measure pre { position: static; }
 
 div.CodeMirror-cursors {
   visibility: hidden;
   position: relative;
   z-index: 3;
 }
+div.CodeMirror-dragcursors {
+  visibility: visible;
+}
+
 .CodeMirror-focused div.CodeMirror-cursors {
   visibility: visible;
 }
@@ -10537,8 +11496,8 @@ div.CodeMirror-cursors {
 .CodeMirror-selected { background: #d9d9d9; }
 .CodeMirror-focused .CodeMirror-selected { background: #d7d4f0; }
 .CodeMirror-crosshair { cursor: crosshair; }
-.CodeMirror ::selection { background: #d7d4f0; }
-.CodeMirror ::-moz-selection { background: #d7d4f0; }
+.CodeMirror-line::selection, .CodeMirror-line > span::selection, .CodeMirror-line > span > span::selection { background: #d7d4f0; }
+.CodeMirror-line::-moz-selection, .CodeMirror-line > span::-moz-selection, .CodeMirror-line > span > span::-moz-selection { background: #d7d4f0; }
 
 .cm-searching {
   background: #ffa;
@@ -10563,200 +11522,85 @@ div.CodeMirror-cursors {
 
 /* Help users use markselection to safely style text background */
 span.CodeMirror-selectedtext { background: none; }
-</style><style id="style-codemirror-theme">/* ambiance theme for codemirror */
 
-/* Color scheme */
 
-.cm-s-ambiance .cm-keyword {
-    color: #cda869;
+.CodeMirror-dialog {
+  position: absolute;
+  left: 0; right: 0;
+  background: inherit;
+  z-index: 15;
+  padding: .1em .8em;
+  overflow: hidden;
+  color: inherit;
 }
 
-.cm-s-ambiance .cm-atom {
-    color: #CF7EA9;
+.CodeMirror-dialog-top {
+  border-bottom: 1px solid #eee;
+  top: 0;
 }
 
-.cm-s-ambiance .cm-number {
-    color: #78CF8A;
+.CodeMirror-dialog-bottom {
+  border-top: 1px solid #eee;
+  bottom: 0;
 }
 
-.cm-s-ambiance .cm-def {
-    color: #aac6e3;
+.CodeMirror-dialog input {
+  border: none;
+  outline: none;
+  background: transparent;
+  width: 20em;
+  color: inherit;
+  font-family: monospace;
 }
 
-.cm-s-ambiance .cm-variable {
-    color: #ffb795;
+.CodeMirror-dialog button {
+  font-size: 70%;
 }
 
-.cm-s-ambiance .cm-variable-2 {
-    color: #eed1b3;
+
+
+</style><style id="style-codemirror-theme">/* Based on Sublime Text's Monokai theme */
+
+body {
+	margin: 0px;
+  	overflow: hidden;
+  	background-color: rgb(48, 48, 48)
 }
 
-.cm-s-ambiance .cm-variable-3 {
-    color: #faded3;
-}
-
-.cm-s-ambiance .cm-property {
-    color: #eed1b3;
-}
-
-.cm-s-ambiance .cm-operator {
-    color: #fa8d6a;
-}
-
-.cm-s-ambiance .cm-comment {
-    color: #555;
-    font-style: italic;
-}
-
-.cm-s-ambiance .cm-string {
-    color: #8f9d6a;
-}
-
-.cm-s-ambiance .cm-string-2 {
-    color: #9d937c;
-}
-
-.cm-s-ambiance .cm-meta {
-    color: #D2A8A1;
-}
-
-.cm-s-ambiance .cm-qualifier {
-    color: yellow;
-}
-
-.cm-s-ambiance .cm-builtin {
-    color: #9999cc;
-}
-
-.cm-s-ambiance .cm-bracket {
-    color: #24C2C7;
-}
-
-.cm-s-ambiance .cm-tag {
-    color: #fee4ff 
-}
-
-.cm-s-ambiance .cm-attribute {
-    color: #9B859D;
-}
-
-.cm-s-ambiance .cm-header {
-    color: blue;
-}
-
-.cm-s-ambiance .cm-quote {
-    color: #24C2C7;
-}
-
-.cm-s-ambiance .cm-hr {
-    color: pink;
-}
-
-.cm-s-ambiance .cm-link {
-    color: #F4C20B;
-}
-
-.cm-s-ambiance .cm-special {
-    color: #FF9D00;
-}
-
-.cm-s-ambiance .cm-error {
-    color: #AF2018;
-}
-
-.cm-s-ambiance .CodeMirror-matchingbracket {
-    color: #0f0;
-}
-
-.cm-s-ambiance .CodeMirror-nonmatchingbracket {
-    color: #f22;
-}
-
-.cm-s-ambiance .CodeMirror-selected {
-    background: rgba(255, 255, 255, 0.15);
-}
-
-.cm-s-ambiance.CodeMirror-focused .CodeMirror-selected {
-    background: rgba(255, 255, 255, 0.10);
-}
-
-/* Editor styling */
-
-.cm-s-ambiance.CodeMirror {
-    line-height: 1.40em;
-    color: #E6E1DC;
-    background-color: #202020;
-    -webkit-box-shadow: inset 0 0 10px black;
-    -moz-box-shadow: inset 0 0 10px black;
-    box-shadow: inset 0 0 10px black;
-}
-
-.cm-s-ambiance .CodeMirror-gutters {
-    background: #3D3D3D;
-    border-right: 1px solid #4D4D4D;
-    box-shadow: 0 10px 20px black;
-}
-
-.cm-s-ambiance .CodeMirror-linenumber {
-    text-shadow: 0px 1px 1px #4d4d4d;
-    color: #111;
-    padding: 0 5px;
-}
-
-.cm-s-ambiance .CodeMirror-guttermarker {
-    color: #aaa;
-}
-
-.cm-s-ambiance .CodeMirror-guttermarker-subtle {
-    color: #111;
-}
-
-.cm-s-ambiance .CodeMirror-lines .CodeMirror-cursor {
-    border-left: 1px solid #7991E8;
-}
-
-.cm-s-ambiance .CodeMirror-activeline-background {
-    background: none repeat scroll 0% 0% rgba(255, 255, 255, 0.031);
-}
-
-.cm-s-ambiance.CodeMirror,
-.cm-s-ambiance .CodeMirror-gutters {
-    background-image: url("data:image/png;base64,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");
-}
-
-/* Based on Sublime Text's Monokai theme */
-
-.cm-s-monokai.CodeMirror {background: #272822; color: #f8f8f2;}
-.cm-s-monokai div.CodeMirror-selected {background: #49483E !important;}
-.cm-s-monokai .CodeMirror-gutters {background: #272822; border-right: 0px;}
+.cm-s-monokai.CodeMirror { background: rgb(48, 48, 48); color: #f8f8f2; }
+.cm-s-monokai div.CodeMirror-selected { background: #49483E; }
+.cm-s-monokai .CodeMirror-line::selection, .cm-s-monokai .CodeMirror-line > span::selection, .cm-s-monokai .CodeMirror-line > span > span::selection { background: rgba(73, 72, 62, .99); }
+.cm-s-monokai .CodeMirror-line::-moz-selection, .cm-s-monokai .CodeMirror-line > span::-moz-selection, .cm-s-monokai .CodeMirror-line > span > span::-moz-selection { background: rgba(73, 72, 62, .99); }
+.cm-s-monokai .CodeMirror-gutters { background: rgb(48, 48, 48); border-right: 0px; }
 .cm-s-monokai .CodeMirror-guttermarker { color: white; }
 .cm-s-monokai .CodeMirror-guttermarker-subtle { color: #d0d0d0; }
-.cm-s-monokai .CodeMirror-linenumber {color: #d0d0d0;}
-.cm-s-monokai .CodeMirror-cursor {border-left: 1px solid #f8f8f0 !important;}
+.cm-s-monokai .CodeMirror-linenumber { color:rgb(135, 135, 129); }
+.cm-s-monokai .CodeMirror-cursor { border-left: 1px solid #f8f8f0; }
 
-.cm-s-monokai span.cm-comment {color: #75715e;}
-.cm-s-monokai span.cm-atom {color: #ae81ff;}
-.cm-s-monokai span.cm-number {color: #ae81ff;}
+.cm-s-monokai span.cm-comment { color: rgb(135, 135, 129); }
+.cm-s-monokai span.cm-atom { color: #ae81ff; }
+.cm-s-monokai span.cm-number { color: #ae81ff; }
 
-.cm-s-monokai span.cm-property, .cm-s-monokai span.cm-attribute {color: #a6e22e;}
-.cm-s-monokai span.cm-keyword {color: #f92672;}
-.cm-s-monokai span.cm-string {color: #e6db74;}
+.cm-s-monokai span.cm-property, .cm-s-monokai span.cm-attribute { color: #a6e22e; }
+.cm-s-monokai span.cm-keyword { color: rgb(234, 53, 134); }
+.cm-s-monokai span.cm-builtin { color: #66d9ef; }
+.cm-s-monokai span.cm-string { color: #e6db74; }
 
-.cm-s-monokai span.cm-variable {color: #a6e22e;}
-.cm-s-monokai span.cm-variable-2 {color: #9effff;}
-.cm-s-monokai span.cm-def {color: #fd971f;}
-.cm-s-monokai span.cm-bracket {color: #f8f8f2;}
-.cm-s-monokai span.cm-tag {color: #f92672;}
-.cm-s-monokai span.cm-link {color: #ae81ff;}
-.cm-s-monokai span.cm-error {background: #f92672; color: #f8f8f0;}
+.cm-s-monokai span.cm-variable { color: #f8f8f2; }
+.cm-s-monokai span.cm-variable-2 { color: #9effff; }
+.cm-s-monokai span.cm-variable-3 { color: #66d9ef; }
+.cm-s-monokai span.cm-def { color: #fd971f; }
+.cm-s-monokai span.cm-bracket { color: #f8f8f2; }
+.cm-s-monokai span.cm-tag { color: rgb(234, 53, 134); }
+.cm-s-monokai span.cm-header { color: #ae81ff; }
+.cm-s-monokai span.cm-link { color: #ae81ff; }
+.cm-s-monokai span.cm-error { background: rgb(234, 53, 134); color: #f8f8f0; }
 
-.cm-s-monokai .CodeMirror-activeline-background {background: #373831 !important;}
+.cm-s-monokai .CodeMirror-activeline-background { background: #373831; }
 .cm-s-monokai .CodeMirror-matchingbracket {
   text-decoration: underline;
   color: white !important;
-}
-
-  </style><script id="script-editor">window.editing = false;
+}</style><script id="script-editor">window.editing = false;
 window.suppress = false;
 var editedId = false;
 
@@ -10799,10 +11643,17 @@ function onDelete(e) {
 
 function loadTextInEditor() {
   	var id = $("#editorframe").attr("data-editedId");
+  	if (editor.tagName) return; //CodeMirror not loaded yet
   	if(!id) {
+      	if (window.currentlyEdited !== null && window.currentlyEdited !== undefined && window.currentlyEdited.childNodes[0].length > 0) {
+  			window.currentlyEdited.childNodes[0].removeEventListener("insertText", onInsert);
+	      	window.currentlyEdited.childNodes[0].removeEventListener("deleteText", onDelete);
+    	}
     	window.currentlyEdited = null;
+      	$("#editorframe").hide();
       	return;
   	}
+  	$("#editorframe").show();
   	var type = $("#editorframe").attr("data-editedType");
   	var mode = $("#editorframe").attr("data-editedContentType");
   	window.editing = false;
@@ -10810,7 +11661,7 @@ function loadTextInEditor() {
   
   	if (!node) return;
   
-	if (window.currentlyEdited !== undefined && window.currentlyEdited.childNodes[0].length > 0) {
+	if (window.currentlyEdited !== null && window.currentlyEdited !== undefined && window.currentlyEdited.childNodes[0].length > 0) {
   		window.currentlyEdited.childNodes[0].removeEventListener("insertText", onInsert);
       	window.currentlyEdited.childNodes[0].removeEventListener("deleteText", onDelete);
     }
@@ -10820,7 +11671,6 @@ function loadTextInEditor() {
 	editor.setValue(node.innerHTML);
   	editor.setOption("mode", mode);
   	window.editing = true;
-  	$('#editor').show();
   
   	window.currentlyEdited.childNodes[0].addEventListener("insertText", onInsert);
 	window.currentlyEdited.childNodes[0].addEventListener("deleteText", onDelete);
@@ -10838,8 +11688,19 @@ function setupEditorFrame() {
 	textarea = editorFrame.contentDocument.body.childNodes[0];
 	window.editor = cm.fromTextArea(textarea, {mode: "text/javascript", lineNumbers: true,
         	matchBrackets: true,
-			theme: "ambiance",
-			lineWrapping: true});
+			theme: "monokai",
+			lineWrapping: true,
+            extraKeys: {
+	          "Ctrl-O": function(cm) {window.focus(); $("#urlbar").focus(); $("#urlbar")[0].select();},
+              "Ctrl-B": function(cm) {
+                var dropdown = document.getElementById('scriptselect');
+			    var event = document.createEvent('MouseEvents');
+    			event.initMouseEvent('mousedown', true, true, window);
+    			dropdown.dispatchEvent(event);
+              } 
+            }
+                                              
+    });
 
 	window.editor.on("change", function(cm, change) {
       if (window.editing && !suppress) {
@@ -10858,7 +11719,11 @@ function setupEditorFrame() {
   
   	var config = { attributes: true};
 	var observer = new MutationObserver(function(mutations) {
-      	if ($('#editorframe').attr("data-editedId") && editedId !== $('#editorframe').attr("data-editedId")) {
+      	var reload = false;
+      	for (var i = 0; i<mutations.length; i++) {
+          	if (mutations[i].attributeName === 'data-editedid') reload = true;
+        }
+      	if (reload) {
           	loadTextInEditor();
           	editedId = $('#editorframe').attr("data-editedId");
       	} 
@@ -10882,82 +11747,4 @@ function setupEditorFrame() {
 
 setTimeout(setupEditorFrame, 1000);
 </script></div></div>
-  <div id="content" style="">
-  
-  <div id="header" class="frontpage"><input type="url" id="urlbar" value="" placeholder="Type in the address of a webstrate (e.g. /foo)" onkeydown="if (event.keyCode == 13) reloadIframe();"><div id="loader" style="display: none;"></div><iframe id="target" src="" seamless="true" style="display: none;">
-  &amp;amp;amp;lt;/DIV&amp;amp;amp;gt;
-&amp;amp;amp;lt;SCRIPT id="script-main"&amp;amp;amp;gt;function reloadScriptSelector() {
-  	$('#editor').hide();
-	$('#editorlabel').empty();
-  	$('#editorlabel').append("Scripts and styles (with an ID) in " + $("#target").attr("src") + ":");
-  
-	scripts = $("#target").contents().find('script');
-  	styles = $("#target").contents().find('style');
-  	$("#scriptselect").empty();
-  	scriptGroup = $('&amp;amp;amp;lt;optgroup label="Scripts"/&amp;amp;amp;gt;');
-  	styleGroup = $('&amp;amp;amp;lt;optgroup label="Styles"/&amp;amp;amp;gt;');
-  	$("#scriptselect").append(scriptGroup);
-	$("#scriptselect").append(styleGroup);
-	scripts.each(function(index) {
-		if ($(this).attr("id") === undefined) return;
-      	option = "&amp;amp;amp;lt;option value='" + $(this).attr("id") + "'&amp;amp;amp;gt;" + $(this).attr("id") + "&amp;amp;amp;lt;/option&amp;amp;amp;gt;";
-		scriptGroup.append(option);
-	});
-  	styles.each(function(index) {
-		if ($(this).attr("id") === undefined) return;
-      	option = "&amp;amp;amp;lt;option value='" + $(this).attr("id") + "'&amp;amp;amp;gt;" + $(this).attr("id") + "&amp;amp;amp;lt;/option&amp;amp;amp;gt;";
-      	styleGroup.append(option);
-	});
-  	$("#scriptselect").change(function() {
-      var selected = $(':selected', this);
-      typeLabel = selected.closest('optgroup').attr('label');
-      if(typeLabel === "Scripts") {
-      	loadTextInEditor($(this).attr("value"), 'script', "text/javascript")  
-      } else if (typeLabel === "Styles") {
-      	loadTextInEditor($(this).attr("value"), 'style', "text/css")  
-      }
-    });
-	$("#scriptselect").prop("selectedIndex", -1);
-};
-
-function showEditor() {
-  	$("#content").hide();
-  	$("#editorpane").show();
-};
-
-function closeEditor() {
-  	window.editing = false;
-  	editor.setValue("");
-	$("#editorpane").hide();
-  	$("#target").attr("src", "");
-  	$("#urlbar").val("");
-	$("#content").show();
-};
-
-window.onmessage = function(e) {
-  if (e.data == "loaded" &amp;amp;amp;amp;&amp;amp;amp;amp; $("#target").attr("src").length &amp;amp;amp;gt; 0) {
-  	reloadScriptSelector();
-    showEditor();
-    $("#loader").hide();
-  }
-}
-
-function reloadIframe() {
-  	window.editing = false;
-  	editor.setValue("");
-  	url = $("#urlbar").val();
-  	if (url.length === 0) {
-    	$('#editorlabel').empty();
-	    $("#scriptselect").empty();
-    }
-  	$("#target").attr("src", url);
-  	$("#loader").show();
-};
-
-$("#scriptselect").empty();
-$("#urlbar").val($("#target").attr("src"));
-
-$("#loader").hide();
-
-$("#editorpane").hide();
-$("#content").show();&amp;amp;amp;lt;/SCRIPT&amp;amp;amp;gt;&amp;amp;amp;lt;/body&amp;amp;amp;gt;&amp;amp;amp;lt;/html&amp;amp;amp;gt;</iframe></div></div></body></html>
+  </body></html>
