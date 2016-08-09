@@ -90,14 +90,9 @@ root.webstrates = (function(webstrates) {
 		var newElement = typeof value === 'string' ?
 			document.createTextNode(value) : jqml(value, namespace);
 
-		// If parentElement.content exists, parentElement contains a documentFragment, and we should be
-		// adding the content to this documentFragment instead. This happens when parentElement is a
-		// <template>.
-		if (childElement) {
-			(parentElement.content || parentElement).insertBefore(newElement, childElement);
-		} else {
-			webstrates.util.appendChildWithoutScriptExecution((parentElement.content || parentElement), newElement);
-		}
+		// childElement may be undefined, and if so we insert newElement at the end of the list. If
+		// chidElement is defined, however, we insert the element before childElement.
+		webstrates.util.appendChildWithoutScriptExecution(parentElement, newElement, childElement);
 
 		var parentPathNode = webstrates.PathTree.getPathNode(parentElement);
 		var childPathNode = new webstrates.PathTree(newElement, parentPathNode);
@@ -114,7 +109,7 @@ root.webstrates = (function(webstrates) {
 	var deleteNode = function(parentElement, path) {
 		var [head, ...tail] = path;
 		var key = head - jsonml.ELEMENT_LIST_OFFSET;
-		var childElement = (parentElement.content || parentElement).childNodes[key];
+		var childElement = webstrates.util.getChildNodes(parentElement)[key];
 
 		if (tail.length > 0) {
 			return deleteNode(childElement, tail);
@@ -172,7 +167,7 @@ root.webstrates = (function(webstrates) {
 
 			// Overwrite old node with new node.
 			parentPathNode.children.splice(key, 1, newElementPathNode);
-			parentElement.insertBefore(newElement, oldElement);
+			appendChildWithoutScriptExecution(parentElement, newElement, oldElement);
 			oldElement.remove();
 			return;
 		}
