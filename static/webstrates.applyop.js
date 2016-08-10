@@ -167,7 +167,7 @@ root.webstrates = (function(webstrates) {
 
 			// Overwrite old node with new node.
 			parentPathNode.children.splice(key, 1, newElementPathNode);
-			appendChildWithoutScriptExecution(parentElement, newElement, oldElement);
+			webstrates.util.appendChildWithoutScriptExecution(parentElement, newElement, oldElement);
 			oldElement.remove();
 			return;
 		}
