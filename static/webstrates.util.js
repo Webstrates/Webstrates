@@ -103,7 +103,7 @@ root.webstrates = (function(webstrates) {
 	 * @public
 	 */
 	util.escape = function(value) {
-		if (!value) return "";
+		if (!value) return value;
 		return value.replace(/&/g, '&amp;').replace(/\"/g, "&quot;");
 	}
 
@@ -115,7 +115,7 @@ root.webstrates = (function(webstrates) {
 	 * @public
 	 */
 	util.unescape = function(value) {
-		if (!value) return "";
+		if (!value) return value;
 		return value.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 	}
 
