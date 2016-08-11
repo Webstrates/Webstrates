@@ -48,8 +48,8 @@
 			i = 1;
 		}
 
-		if (elem[0] === "!") {
-			return document.createComment(elem[1]);
+		if (elem[0] === "!" || elem[0] === "#comment") {
+			return document.createComment(elem.slice(typeof elem[1] === "string" ? 1 : 2).join(""));
 		}
 
 		for (; i < elem.length; i++) {
