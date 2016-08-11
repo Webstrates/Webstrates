@@ -211,13 +211,17 @@ root.webstrates = (function(webstrates) {
 	var insertInText = function(parentElement, path, charIndex, value) {
 		var [head, ...tail] = path;
 
-		// If the head is at ATTRIBUTE_INDEX (1), we're changing an attribute, otherwise a text node.
-		if (head === jsonml.ATTRIBUTE_INDEX) {
+		// If the head is at ATTRIBUTE_INDEX (1), we're possibly changing an attribute, in which case
+		// the following element should be the attribute name. However, it may not always be an
+		// attribute, becuase the the attribute object is optional in JsonML and may not exist.
+		// Therefore, what should be at the ATTRIBUTE_INDEX may just be another object.
+		if (head === jsonml.ATTRIBUTE_INDEX && typeof tail[0] === "string") {
 			var key = tail[0];
 			var oldString = parentElement.getAttribute(key);
 			var newString = oldString.substring(0, charIndex) + value + oldString.substring(charIndex);
 			parentElement.setAttribute(key, newString);
 		}
+		// Otherwise, we're just changing a text node.
 		else {
 			var key = head - jsonml.ELEMENT_LIST_OFFSET;
 			var childElement = parentElement.childNodes[key];
