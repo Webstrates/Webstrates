@@ -23,7 +23,7 @@ limitations under the License.
 		}
 
 		// Establish a WebSocket connection to the server to be used by Webstrates.
-		var websocket = new ReconnectingWebSocket(`ws://${location.host}/ws/`);
+		var websocket = new ReconnectingWebSocket(`wss://${location.host}/ws/`);
 
 		// Set up a webstrate.
 		window.webstrate = new webstrates.Webstrate(websocket, webstrateId);
