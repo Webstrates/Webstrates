@@ -346,8 +346,14 @@ wss.on('connection', function(client) {
 	var socketId = clientManager.addClient(client);
 
 	client.on('message', function(data) {
-		// Adding socketId to every incoming message
 		data = JSON.parse(data);
+
+		// ignore alive messages
+		if (data.type && data.type === 'alive') {
+			return;
+		}
+
+		// Adding socketId to every incoming message
 		data.socketId = socketId;
 		return stream.push(JSON.stringify(data));
 	});
