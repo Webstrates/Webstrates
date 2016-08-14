@@ -62,10 +62,53 @@ root.webstrates = (function(webstrates) {
 		// Hand WebSocket connection to ShareDB.
 		var conn = new sharedb.Connection(websocket);
 
-		var sdbConnectHandler = websocket.onopen;
-		websocket.onopen = function(event) {
-			sdbConnectHandler(event);
+		//////////////////////////////////////////////////////////////
+		// BEGIN keepAlive Handling
+		//////////////////////////////////////////////////////////////
+
+		var keepAliveMessage = JSON.stringify({
+			type: 'alive'
+		});
+
+		var keepAliveInterval;
+
+		var enableKeepAlive = function() {
+			// Make sure to disable any previous keep alive interval.
+			disableKeepAlive();
+
+			keepAliveInterval = setInterval(function() {
+				websocket.send(keepAliveMessage);
+			}, 10000);
 		}
+
+		var disableKeepAlive = function() {
+			if (keepAliveInterval) {
+				clearInterval(keepAliveInterval);
+				keepAliveInterval = null;
+			}
+		}
+
+		var sdbOpenHandler = websocket.onopen;
+		websocket.onopen = function(event) {
+			sdbOpenHandler(event);
+			enableKeepAlive();
+		}
+
+		var sdbCloseHandler = websocket.onclose;
+		websocket.onclose = function(event) {
+			sdbCloseHandler(event);
+			disableKeepAlive();
+		}
+
+		var sdbErrorHandler = websocket.onerror;
+		websocket.onerror = function(event) {
+			sdbErrorHandler(event);
+			disableKeepAlive();
+		}
+
+		//////////////////////////////////////////////////////////////
+		// END keepAlive Handling
+		//////////////////////////////////////////////////////////////
 
 		// We want to use ShareDB's websocket connection for emitting our own events, specifically
 		// events for when clients join and leave the webstrate. ShareDB attaches itself as listener on
