@@ -22,8 +22,12 @@ limitations under the License.
 			throw "Error: No webstrate ID provided.";
 		}
 
+		// Determine websocket protocol based on http/https protocol.
+		var protocol = location.protocol;
+		var wsProtocol = protocol === 'http:' ? 'ws:' : 'wss:';
+
 		// Establish a WebSocket connection to the server to be used by Webstrates.
-		var websocket = new ReconnectingWebSocket(`ws://${location.host}/ws/`);
+		var websocket = new ReconnectingWebSocket(`${wsProtocol}//${location.host}/ws/`);
 
 		// Set up a webstrate.
 		window.webstrate = new webstrates.Webstrate(websocket, webstrateId);
