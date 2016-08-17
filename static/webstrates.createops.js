@@ -73,13 +73,8 @@ root.webstrates = (function(webstrates) {
 
 		var pathTreeNode = webstrates.util.elementAtPath(sjsDoc.data,
 			[...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
-		if (pathTreeNode[mutation.attributeName] !== oldValue) {
-			// This should not happen, but it will if a text node is inserted and then altered right
-			// after. If this happens, we can ignore it.
-			return;
-		}
 
-		var ops = patchesToOps(path, oldValue, newValue);
+		var ops = patchesToOps(path, pathTreeNode[mutation.attributeName], newValue);
 		return ops;
 	};
 
