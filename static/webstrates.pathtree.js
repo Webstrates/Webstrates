@@ -56,8 +56,19 @@ root.webstrates = (function(webstrates) {
 		var childNodes = DOMNode.hasChildNodes() ? DOMNode.childNodes :
 			(DOMNode.content && DOMNode.content.childNodes) || [];
 		Array.from(childNodes).forEach(function(childNode) {
-			this.children.push(new PathTree(childNode, this, overwrite));
+			var childPathNode = PathTree.create(childNode, this, overwrite);
+			if (childPathNode) {
+				this.children.push(childPathNode);
+			}
 		}.bind(this));
+	};
+
+	PathTree.create = function(DOMNode, parentPathTree, overwrite) {
+		if (DOMNode.tagName && DOMNode.tagName.toLowerCase() === "transient") {
+			return;
+		}
+
+		return new PathTree(DOMNode, parentPathTree, overwrite);
 	};
 
 	/**
@@ -145,9 +156,11 @@ root.webstrates = (function(webstrates) {
 			throw "Different amount of children";
 		}
 
-
 		var childNodes = this.DOMNode.hasChildNodes() ? this.DOMNode.childNodes
 				: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
+		var childNodes = Array.from(childNodes).filter(function(childNode) {
+			return !childNode.tagName || childNode.tagName.toLowerCase() !== "transient";
+		});
 		if (definedChildNodesInDom.length !== childNodes.length) {
 			console.log(definedChildNodesInDom, childNodes);
 			console.warn("Warning: Found zombie nodes in DOM.");
@@ -182,6 +195,44 @@ root.webstrates = (function(webstrates) {
 		});
 
 		return matchingElement;
+	}
+
+	var jsonml = {
+		TAG_NAME_INDEX: 0,
+		ATTRIBUTE_INDEX: 1,
+		ELEMENT_LIST_OFFSET: 2
+	};
+
+	/**
+	 * Returns the DOM element at the end of the path.
+	 * @param  {HTMLElement|PathTree} parentElement The element used to nagivate to the path from. May
+	 *                                              be either a DOM element or a PathTree.
+	 * @param  {JsonMLPath} path                    Path to fllow on parentElement.
+	 * @return {[DOMElement, int, DOMElement, int]} The DOM element found, including its index on its
+	 *                                              parent, the parent DOM element, as possibly a
+	 *                                              JsonML index in case the path doesn't at a DOM
+	 *                                              element (it may end at a tag name or attribute
+	 *                                              object).
+	 */
+	PathTree.elementAtPath = function(parentElement, path) {
+		var parentPathNode = parentElement instanceof PathTree ? parentElement
+			: PathTree.getPathNode(parentElement);
+
+		// Let's not create side effects -- clone path array.
+		path = path.slice(0);
+
+		var childIndex = path.shift() - jsonml.ELEMENT_LIST_OFFSET;
+		var childPathNode = parentPathNode && parentPathNode.children[childIndex];
+
+		var nextChildIndex = path[0];
+		if (path.length === 0 || nextChildIndex === jsonml.TAG_NAME_INDEX
+			|| nextChildIndex === jsonml.ATTRIBUTE_INDEX) {
+			var childElement = childPathNode && childPathNode.DOMNode;
+			var parentElement = parentPathNode.DOMNode;
+			return [childElement, childIndex, parentElement, nextChildIndex];
+		}
+
+		return PathTree.elementAtPath(childPathNode, path);
 	}
 
 	webstrates.PathTree = PathTree;

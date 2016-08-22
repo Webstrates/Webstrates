@@ -37,7 +37,9 @@ var JsonML = JsonML || {};
 	 * @return {array} JsonML
 	 */
 	var fromHTML = JsonML.fromHTML = function(elem, filter) {
-		if (!elem || !elem.nodeType) {
+		// If an element doesn't have a PathTree, we don't want it in the JsonML. This will be the case
+		// for <transient> elements.
+		if (!elem || !elem.nodeType || !elem.__pathNodes || elem.__pathNodes.length === 0) {
 			// free references
 			return (elem = null);
 		}

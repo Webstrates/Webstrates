@@ -14,7 +14,7 @@ root.webstrates = (function(webstrates) {
 	/**
 	 * Get the element at a given path in a JsonML document.
 	 * @param  {JsonML} snapshot ShareJS Context (a JsonML document).
-	 * @param  {DOMPath} path    Path to follow in snapshot.
+	 * @param  {JsonMLPath} path    Path to follow in snapshot.
 	 * @return {JsonML}          Element at path in snapshot.
 	 * @public
 	 */
