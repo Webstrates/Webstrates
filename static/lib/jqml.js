@@ -69,6 +69,9 @@
 					} else {
 						selector = document.createElement(name);
 					};
+					if (selector.tagName.toLowerCase() === "script") {
+						selector.async = false;
+					}
 					for (var index in elem[i]) {
 						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 						if (xmlNs !== undefined) {
