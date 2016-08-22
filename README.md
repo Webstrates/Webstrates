@@ -3,7 +3,7 @@ Webstrates
 
 Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareDB](https://github.com/share/sharedb). Webstrates observes changes to the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
 
-Webstrates itself is a webserver and transparent web client  that persists and synchronizes any changes done to the Document Object Model (DOM) of any page served between clients of the same page, including changes to inlined JavaScript or CSS. By using [transclusions](https://en.wikipedia.org/wiki/Transclusion) through iframes, we achieve an application-to-document-like relationship between two webstrates. With examples built upon Webstrates, we have demonstrated how transclusion combined with the use of CSS injection and the principles of [instrumental interaction](https://www.lri.fr/~mbl/INSTR/eintroduction.html) can allow multiple users to collaborate on the same webstrate through highly personalized and extensible editors. You can find the academic paper and videos of Webstrates in action at [webstrates.net](http://www.webstrates.net).
+Webstrates itself is a webserver and transparent web client that persists and synchronizes any changes done to the Document Object Model (DOM) of any page served between clients of the same page, including changes to inlined JavaScript or CSS. By using [transclusions](https://en.wikipedia.org/wiki/Transclusion) through iframes, we achieve an application-to-document-like relationship between two webstrates. With examples built upon Webstrates, we have demonstrated how transclusion combined with the use of CSS injection and the principles of [instrumental interaction](https://www.lri.fr/~mbl/INSTR/eintroduction.html) can allow multiple users to collaborate on the same webstrate through highly personalized and extensible editors. You can find the academic paper and videos of Webstrates in action at [webstrates.net](http://www.webstrates.net).
 
 Installation
 ============
@@ -31,13 +31,13 @@ Now, any changes you apply to the DOM, either through JavaScript or the develope
 
 See the [tutorial](docs/tutorial) for an introduction to developing with Webstrates.
 
-### Compatibility table*
+### Compatibility table
 
 |   Google Chrome   |       Opera       |          Apple Safari (OS X)           | Apple Safari (iOS)  |   Mozilla Firefox   |    Microsoft Edge   |
 |:-----------------:|:-----------------:|:--------------------------------------:|:-------------------:|:-------------------:|:-------------------:|
 | Compatible (51.0) | Compatible (38.0) | Compatible (9.1.2, Technology Preview) |  Compatible (9.0)   | Incompatible (46.0) | Incompatible (15.1) |
 
-Safari is only compatible when using [Babel](https://babeljs.io/). It is therefore important to do `npm run build-babel` before starting the server.
+\* Safari is only compatible when using [Babel](https://babeljs.io/). It is therefore important to do `npm run build-babel` before starting the server.
 
 ### jQuery
 
@@ -120,7 +120,6 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 All the events can also be unregistered using `off`, e.g.:
 
 ```javascript
-
 webstrate.on("loaded", function loadedFunction() {
 	// Work here...
 	webstrate.off("loaded", loadedFunction);
@@ -128,6 +127,20 @@ webstrate.on("loaded", function loadedFunction() {
 ```
 
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
+
+Transient data
+--------------
+Webstrates comes with a custom HTML element `<transient>`. This lets users create DOM trees that are not being synced by Webstrates. That is to say, any changes made to the children of a `<transient>` element (or to the element itself) will not be persisted or shared among the other clients:
+
+```html
+<html>
+<body>
+  This content will be saved on the server and synchronized on to all connected users as per usual.
+  <transient>This tag and its contents will only be visible to the user who created the tag.</transient>
+</body>
+</html>
+```
+Disclaimer: If a user reloads a webstrate in which they had transient data, the data will be unrecoverable.
 
 Authentication
 --------------
@@ -155,12 +168,12 @@ Add the following to your `config.json`:
 	"cookieDuration": 31536000000,
 	"providers": {
 		"github": {
-            "node_module": "passport-github",
-            "config": {
-                "clientID": "<github client id>",
-                "clientSecret": "<github Secret>",
-                "callbackURL": "http://<server host>/auth/github/callback"
-            }
+			"node_module": "passport-github",
+			"config": {
+				"clientID": "<github client id>",
+				"clientSecret": "<github Secret>",
+				"callbackURL": "http://<server host>/auth/github/callback"
+			}
 		}
 	}
 }
@@ -169,12 +182,13 @@ Add the following to your `config.json`:
 Access rights are added to a webstrate as a `data-auth` attribute on the `<html>` tag:
 
 ```html
-<html data-auth="[{"username": "cklokmose", "provider": "github", "permissions": "rw"}, {"username": "anonymous", "provider": "", "permissions": "r"}]">
+<html data-auth="[{"username": "cklokmose", "provider": "github", "permissions": "rw"},
+  {"username": "anonymous", "provider": "", "permissions": "r"}]">
 ...
 </html>
 ```
 
-The above example provides the user with GitHub username *cklokmose*  permissions to read and write (modify the webstrate), while anonymous users only have read access.
+The above example provides the user with GitHub username *cklokmose* permissions to read and write (modify the webstrate), while anonymous users only have read access.
 
 Users can log in by accessing `http://<server host>/auth/github`.
 
