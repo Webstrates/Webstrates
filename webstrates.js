@@ -104,7 +104,11 @@ if (config.auth) {
 	auth = true;
 }
 
-share.use('connect', function(req, next) {
+/**
+	Middleware for logging userIds of connected clients. Makes it possible to map sessionIds to
+	userIds. Used when getting ops list.
+ */
+var sessionLoggingMiddleware = function(req, next) {
 	var insertFn = function() {
 		if (!sessionLog.coll) {
 			return process.nextTick(insertFn);
@@ -112,7 +116,7 @@ share.use('connect', function(req, next) {
 
 		sessionLog.coll.insert({
 			sessionId: req.agent.clientId,
-			userId: req.userId,
+			userId: req.user.userId,
 			connectTime: req.agent.connectTime,
 			remoteAddress: req.stream.remoteAddress
 		}, function(err, db) {
@@ -124,7 +128,7 @@ share.use('connect', function(req, next) {
 
 	insertFn();
 	next();
-});
+};
 
 /**
 	Middleware for extracting user data from cookies used for both regular HTTP requests (Express)
@@ -151,16 +155,21 @@ var sessionMiddleware = function(req, next) {
 	req.user.userId = username + ":" + provider;
 	req.webstrateId = req.id || req.data && req.data.d;
 
+	console.log(req.user);
 	next();
 };
 
-share.use(['receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'submit', 'delete'],
+share.use(['connect', 'receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'submit', 'delete'],
 	function(req, next) {
 	sessionMiddleware(req, next);
 });
 
 app.use(function(req, res, next) {
 	sessionMiddleware(req, next);
+});
+
+share.use('connect', function(req, next) {
+	sessionLoggingMiddleware(req, next)
 });
 
 share.use(['receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'submit', 'delete'],
