@@ -17,8 +17,9 @@
   "license": "Apache-2.0",
   "author": "Clemens N. Klokmose <clemens@cavi.au.dk>",
   "contributors": [
-    { "name" : "Kristian Borup Antonsen",
-      "email" : "kba@cs.au.dk"
+    {
+      "name": "Kristian Borup Antonsen",
+      "email": "kba@cs.au.dk"
     }
   ],
   "dependencies": {
@@ -31,6 +32,7 @@
     "express": "^4.8.0",
     "fs-sync": "^1.0.2",
     "http-auth": "^2.2.0",
+    "json0-ot-diff": "^1.0.1",
     "jsonml-tools": "git+http://github.com/cklokmose/jsonml-tools.git#master",
     "mongodb": "^2.1.19",
     "optimist": "^0.6.1",

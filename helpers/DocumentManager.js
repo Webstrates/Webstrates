@@ -3,6 +3,7 @@
 var shortId = require('shortid');
 var ot = require('sharedb/lib/ot');
 var sharedb = require('sharedb');
+var jsondiff = require("json0-ot-diff");
 
 /**
  * DocumentManager constructor.
@@ -76,10 +77,56 @@ module.exports = function(share, agent, sessionLog) {
 		transformDocumentToVersion({ webstrateId, version }, next);
 	};
 
-	module.submitOp = function(webstrateId, op, next) {
-		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, {op: [op]});
+	/**
+	 * Submit op to a document.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @param  {Op}     op          Op to be applied.
+	 * @param  {Function} next      Callback.
+	 * @public
+	 */
+	module.submitOp = function(webstrateId, op, source, next) {
+		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, {
+			op: [op],
+			src: source
+		});
 		request.submit(next);
+	};
+
+	/**
+	 * Recursively submits ops to a document.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @param  {Ops}     ops        Ops to be applied.
+	 * @param  {Function} next      Callback.
+	 */
+	module.submitOps = function(webstrateId, ops, source, next) {
+		var op = ops.shift();
+
+		if (!op) {
+			return next();
+		}
+
+		module.submitOp(webstrateId, op, source, function() {
+			module.submitOps(webstrateId, ops, source, next);
+		});
 	}
+
+	/**
+	 * Reverts a document to a specific version.
+	 * @param  {string} options.webstrateId WebstrateId.
+	 * @param  {string} options.version     Document version.
+	 * @param  {Function} next)             Callback.
+	 * @public
+	 */
+	module.revertDocument = function({webstrateId, version}, source, next) {
+		module.getDocument({ webstrateId, version }, function(err, oldVersion) {
+			if (err) return next(err);
+			module.getDocument({ webstrateId, version: "head" }, function(err, currentVersion) {
+				if (err) return next(err);
+				var ops = jsondiff(currentVersion.data, oldVersion.data);
+				module.submitOps(webstrateId, ops, source, next);
+			});
+		});
+	};
 
 	/**
 	 * Get operations for a document.
@@ -92,9 +139,7 @@ module.exports = function(share, agent, sessionLog) {
 	module.getOps = function({ webstrateId, version }, next) {
 		// If no version is defined, all operations will be retrieved.
 		share.getOps(agent, 'webstrates', webstrateId, 0, version, function(err, ops) {
-			if (err) {
-				return next(err);
-			}
+			if (err) return next(err);
 
 			// TODO: Remove. This is probably not necessary.
 			// Sort operations to make sure we apply them in the right order.

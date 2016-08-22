@@ -155,7 +155,6 @@ var sessionMiddleware = function(req, next) {
 	req.user.userId = username + ":" + provider;
 	req.webstrateId = req.id || req.data && req.data.d;
 
-	console.log(req.user);
 	next();
 };
 
@@ -263,8 +262,9 @@ app.get('/new', function(req, res) {
 			return res.redirect('/' + webstrateId);
 		}
 
+		var source = req.user.userId;
 		permissionManager.addPermissions(req.user.username, req.user.provider, permissions,
-			webstrateId, function(err, ops) {
+			webstrateId, source, function(err, ops) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(err);
@@ -277,18 +277,14 @@ app.get('/new', function(req, res) {
 app.get('/:id', function(req, res) {
 	var webstrateId = req.params.id;
 	var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
-
 	if (!webstrateId) {
 		return res.redirect('/frontpage');
 	}
 
-	documentManager.getDocument({
-		webstrateId,
-		version
-	}, function(err, snapshot) {
+	documentManager.getDocument({ webstrateId, version }, function(err, snapshot) {
 		if (err) {
 			console.error(err);
-			return res.status(409).send(err);
+			return res.status(409).send(String(err));
 		}
 
 		// TODO: We could use getPermissionsFromSnapshot and save a database call here.
@@ -296,7 +292,7 @@ app.get('/:id', function(req, res) {
 			function(err, permissions) {
 			if (err) {
 				console.error(err);
-				return res.status(409).send(err);
+				return res.status(409).send(String(err));
 			}
 
 			// If the webstrate doesn't exist, write permissions are required to create it.
@@ -324,6 +320,7 @@ app.get('/:id', function(req, res) {
 					"wbr"]));
 			}
 
+			// If the user is requesting a list of operations by calling: /<id>?ops.
 			if (typeof req.query.ops !== "undefined") {
 				return documentManager.getOps({
 					webstrateId,
@@ -331,13 +328,41 @@ app.get('/:id', function(req, res) {
 				}, function(err, ops) {
 					if (err) {
 						console.error(err);
-						return res.status(409).send(err);
+						return res.status(409).send(String(err));
 					}
 					res.send(ops);
 				});
 			}
 
-			res.setHeader("Location", '/' + webstrateId);
+			// If the user is requesting to revert the document to an old version by calling:
+			// /<id>?revert=<version>.
+			if (typeof req.query.revert !== "undefined") {
+				var revertVersion = Number(req.query.revert);
+				var err;
+
+				if (!revertVersion) {
+					err = new Error("Version to revert to required.");
+				}
+
+				if (revertVersion >= snapshot.v) {
+					err = new Error("Version to revert to must be older than document's current version.");
+				}
+
+				if (err) {
+					console.error(err);
+					return res.status(409).send(String(err));
+				};
+
+				// Ops always have a source (src) set by the client when the op comes in. This source is
+				// usually the websocket clientId. We don't have that here, so let's just use the userId.
+				var source = req.user.userId;
+				return documentManager.revertDocument({ webstrateId, version: revertVersion }, source,
+					function() {
+					res.redirect('/' + webstrateId);
+				});
+			}
+
+			res.setHeader("Location", "/" + webstrateId);
 			return res.sendFile(__dirname + "/static/client.html");
 		});
 	});

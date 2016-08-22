@@ -57,10 +57,13 @@ module.exports = function(documentManager, authConfig) {
 	 * @param {string}   provider    Login provider (Github, Facebook, OAuth, ...).
 	 * @param {string}   permissions Permissions (r, rw).
 	 * @param {string}   webstrateId WebstrateId.
+	 * @param {string}   source      An identifier for who made the op (added the permissions). source
+	 *                               is usually the client's websocket connection id, but since we
+	 *                               don't have a one here, it should just be a userId.
 	 * @param {Function} next        Callback.
 	 * @public
 	 */
-	module.addPermissions = function(username, provider, permissions, webstrateId, next) {
+	module.addPermissions = function(username, provider, permissions, webstrateId, source, next) {
 		documentManager.getDocument({ webstrateId }, function(err, snapshot) {
 			if (err) {
 				return next(err);
@@ -100,7 +103,8 @@ module.exports = function(documentManager, authConfig) {
 				od: snapshot.data[1]['data-auth'],
 				oi: JSON.stringify(permissionsList)
 			};
-			documentManager.submitOp(webstrateId, op, next);
+
+			documentManager.submitOp(webstrateId, op, source, next);
 		});
 	};
 
