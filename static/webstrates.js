@@ -19,7 +19,7 @@ root.webstrates = (function(webstrates) {
 
 		var fragmentObservers = {};
 		var fragmentParentMap = {};
-		var observer, sdbDoc, rootElement, pathTree;
+		var observer, doc, rootElement, pathTree;
 		var observerOptions = {
 			childList: true,
 			subtree: true,
@@ -150,20 +150,20 @@ root.webstrates = (function(webstrates) {
 		};
 
 		// Get ShareDB document for ID webstrateId.
-		sdbDoc = conn.get(COLLECTION_NAME, webstrateId);
+		doc = conn.get(COLLECTION_NAME, webstrateId);
 
 		// Subscribe to remote operations (changes to the ShareDB document).
-		sdbDoc.subscribe(function(error) {
+		doc.subscribe(function(error) {
 			if (error) {
 				throw error;
 			}
-			populateElementWithDocument(webstrateId, sdbDoc, targetElement);
+			populateElementWithDocument(webstrateId, doc, targetElement);
 			rootElement = targetElement.children[0];
 			pathTree = new webstrates.PathTree(rootElement, null, true);
-			setupMutationObservers(sdbDoc, rootElement, function afterMutationCallback() {
+			setupMutationObservers(doc, rootElement, function afterMutationCallback() {
 				pathTree.check();
 			});
-			setupOpListener(sdbDoc, rootElement);
+			setupOpListener(doc, rootElement, pathTree);
 			notifyListeners(webstrateId);
 		});
 
@@ -355,7 +355,7 @@ root.webstrates = (function(webstrates) {
 						doc.submitOp(ops);
 					} catch (error) {
 						// window.alert("Webstrates has encountered an error. Please reload the page.");
-						console.error(ops, error);
+						console.error(ops, error, error.stack);
 					}
 				});
 				afterMutationCallback();
@@ -419,7 +419,7 @@ root.webstrates = (function(webstrates) {
 		 * @param  {DOMElement} rootElement    Element to listen for mutations on.
 		 * @private
 		 */
-		var setupOpListener = function(doc, rootElement) {
+		var setupOpListener = function(doc, rootElement, pathTree) {
 			doc.on('op', function onOp(ops, source) {
 				// If source is truthy, it is our own op, which should not be applied (again).
 				if (source) {
@@ -439,6 +439,7 @@ root.webstrates = (function(webstrates) {
 				ops.forEach(function forEachOp(op) {
 					webstrates.applyOp(op, rootElement);
 				});
+				pathTree.check();
 
 				// And reenable MuationObservers.
 				Object.keys(fragmentObservers).forEach(function(fragmentId) {
@@ -544,9 +545,9 @@ root.webstrates = (function(webstrates) {
 			if (observer) {
 				observer.disconnect();
 			}
-			sdbDoc.unsubscribe(function() {
-				sdbDoc.destroy();
-				sdbDoc.connection.close();
+			doc.unsubscribe(function() {
+				doc.destroy();
+				doc.connection.close();
 			});
 		};
 
@@ -571,7 +572,7 @@ root.webstrates = (function(webstrates) {
 		 * @public
 		 */
 		module.debug = function() {
-			return { observer, sdbDoc, rootElement, pathTree }
+			return { observer, doc, rootElement, pathTree }
 		};
 
 		return module;

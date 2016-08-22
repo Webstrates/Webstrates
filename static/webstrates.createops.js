@@ -34,7 +34,7 @@ root.webstrates = (function(webstrates) {
 					case DIFF_DELETE: ops.push({ sd: value, p: [...path, offset] }); break;
 					case DIFF_INSERT: ops.push({ si: value, p: [...path, offset] }); // fall-through.
 					case DIFF_EQUAL: offset += value.length; break;
-					default: throw `Unsupported operation type: ${type}`;
+					default: throw Error(`Unsupported operation type: ${type}`);
 				}
 			});
 		});
@@ -152,7 +152,12 @@ root.webstrates = (function(webstrates) {
 				}
 			}
 
-			var newPathNode = new webstrates.PathTree(addedNode, targetPathNode);
+			var newPathNode = webstrates.PathTree.create(addedNode, targetPathNode);
+
+			if (!newPathNode) {
+				return;
+			}
+
 			if (previousSibling) {
 				var previousSiblingPathNode = webstrates.PathTree.getPathNode(previousSibling,
 					target);
@@ -166,7 +171,10 @@ root.webstrates = (function(webstrates) {
 			}
 
 			var path = webstrates.PathTree.getPathNode(addedNode, target).toPath();
-			var op = { li: JsonML.fromHTML(addedNode), p: path };
+			var op = { li: JsonML.fromHTML(addedNode, function(...parameters) {
+				console.log("filter", parameters);
+				return parameters[0];
+			}), p: path };
 			ops.push(op);
 		});
 
@@ -194,7 +202,6 @@ root.webstrates = (function(webstrates) {
 
 		return ops;
 	};
-
 
 	/**
 	 * Creates operations from a mutation.
