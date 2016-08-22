@@ -346,15 +346,21 @@ wss.on('connection', function(client) {
 	var socketId = clientManager.addClient(client);
 
 	client.on('message', function(data) {
-		data = JSON.parse(data);
+		try {
+			data = JSON.parse(data);
+		} catch (err)  {
+			console.error("Received invalid websocket data from", socketId + ":", data);
+			return;
+		}
 
-		// ignore alive messages
+		// Ignore keep alive messages.
 		if (data.type && data.type === 'alive') {
 			return;
 		}
 
 		// Adding socketId to every incoming message
 		data.socketId = socketId;
+
 		return stream.push(JSON.stringify(data));
 	});
 
