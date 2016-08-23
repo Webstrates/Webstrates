@@ -1,9 +1,9 @@
 "use strict";
 
-var shortId = require('shortid');
+var jsondiff = require("json0-ot-diff");
 var ot = require('sharedb/lib/ot');
 var sharedb = require('sharedb');
-var jsondiff = require("json0-ot-diff");
+var shortId = require('shortid');
 
 /**
  * DocumentManager constructor.
@@ -19,7 +19,7 @@ module.exports = function(share, agent, sessionLog) {
 	 * Creates a new document and returns the id. Note that if the document to be created is not to be
 	 * prototyped off of another document, we don't actually create the document, we just return a new
 	 * id. The document will instead be created when it is first visited.
-	 * @param {string}   options.webstrateId WebstrateId.
+	 * @param {string}   options.webstrateId WebstrateId (name of new document).
 	 * @param {string}   options.prototypeId Name of the webstrate document to base the prototype on.
 	 * @param {string}   options.version     Version of the prototype to base the new document on.
 	 * @param {Function} next                Callback.
