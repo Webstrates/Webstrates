@@ -60,6 +60,10 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?v=head` will return the raw HTML of the current version of `<some_name>`.
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>`. (beware: can be a huge list)
 
+Deletion of a webstrate
+-----------------------
+* GET on `http://<server host>/<some name>?delete` will delete the document and redirect all connected users to the server root. The document data will be deleted, but a record of the document (containing name, version number, creation and modification timestamps) will remain in the database.
+
 DOM events
 ----------
 The user may subscribe to certain events triggered by Webstrates using `webstrates.on(event, function)`. When an event occurs, the attached function will be triggered with potential arguments.
