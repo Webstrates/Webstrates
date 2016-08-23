@@ -171,10 +171,7 @@ root.webstrates = (function(webstrates) {
 			}
 
 			var path = webstrates.PathTree.getPathNode(addedNode, target).toPath();
-			var op = { li: JsonML.fromHTML(addedNode, function(...parameters) {
-				console.log("filter", parameters);
-				return parameters[0];
-			}), p: path };
+			var op = { li: JsonML.fromHTML(addedNode), p: path };
 			ops.push(op);
 		});
 
