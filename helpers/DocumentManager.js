@@ -89,7 +89,12 @@ module.exports = function(share, agent, sessionLog) {
 			op: [op],
 			src: source
 		});
-		request.submit(next);
+		request.submit(function(err) {
+			if (err) {
+				return next(new Error(err.message));
+				next();
+			}
+		});
 	};
 
 	/**
@@ -125,6 +130,25 @@ module.exports = function(share, agent, sessionLog) {
 				var ops = jsondiff(currentVersion.data, oldVersion.data);
 				module.submitOps(webstrateId, ops, source, next);
 			});
+		});
+	};
+
+	/**
+	 * Delete a diocument.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {Function} next        Callback.
+	 * @public
+	 */
+	module.deleteDocument = function(webstrateId, source, next) {
+		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, {
+			del: true,
+			src: source
+		});
+		request.submit(function(err) {
+			if (err) {
+				return next(new Error(err.message));
+			}
+			next();
 		});
 	};
 

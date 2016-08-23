@@ -362,6 +362,17 @@ app.get('/:id', function(req, res) {
 				});
 			}
 
+			if (typeof req.query.delete !== "undefined") {
+				var source = req.user.userId;
+				return documentManager.deleteDocument(webstrateId, source, function(err) {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					res.redirect('/');
+				});
+			}
+
 			res.setHeader("Location", "/" + webstrateId);
 			return res.sendFile(__dirname + "/static/client.html");
 		});

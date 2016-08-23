@@ -450,6 +450,12 @@ root.webstrates = (function(webstrates) {
 			});
 		};
 
+		doc.on('del', function onDelete(data) {
+			module.destroy();
+			alert("Document has been deleted.");
+			window.location = "/";
+		});
+
 		/**
 		 * Runs all callbacks in a list.
 		 * @param {CallbackList} callbackList List of callbacks to be run.
@@ -541,6 +547,10 @@ root.webstrates = (function(webstrates) {
 		 * @public
 		 */
 		module.destroy = function() {
+			Object.keys(fragmentObservers).forEach(function(fragmentId) {
+				var [fragment, fragmentObserver] = fragmentObservers[fragmentId];
+				fragmentObserver.disconnect();
+			});
 			// We may be destroying our document before the observer has even been created.
 			if (observer) {
 				observer.disconnect();
