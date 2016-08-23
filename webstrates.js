@@ -243,35 +243,50 @@ app.get('/new', function(req, res) {
 	var prototypeId = req.query.prototype;
 	var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
 
-	var permissions = permissionManager.getDefaultPermissions(req.user.username, req.user.provider);
+	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
+		req.user.provider);
 
-	if (permissions.indexOf("w") === -1) {
+	// If the user has no default write permissions, they're not allowed to create documents.
+	if (defaultPermissions.indexOf("w") === -1) {
 		return res.send("Permission denied");
 	}
 
-	documentManager.createNewDocument({
-		webstrateId,
-		prototypeId,
-		version
-	}, function(err, webstrateId) {
+	// If the user is trying to create a new document from a prototype, we need to make sure that the
+	// user has read access to the document in the first place.
+	if (prototypeId) {
+		return permissionManager.getPermissions(req.user.username, req.user.provider, prototypeId,
+			function(err, webstratePermissions) {
+			if (webstratePermissions.indexOf("r") === -1) {
+				return res.send("Permission denied");
+			}
+
+			documentManager.createNewDocument({ webstrateId, prototypeId, version },
+				function(err, webstrateId) {
+				if (err) {
+					console.error(err);
+					return res.status(409).send(err);
+				}
+
+				var source = req.user.userId;
+				permissionManager.addPermissions(req.user.username, req.user.provider, defaultPermissions,
+					webstrateId, source, function(err, ops) {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					return res.redirect("/" + webstrateId);
+				});
+			});
+		});
+	}
+
+	// If there's no prototypeId defined, the user is just trying to create a clean new webstrate.
+	documentManager.createNewDocument({ webstrateId, version }, function(err, webstrateId) {
 		if (err) {
 			console.error(err);
 			return res.status(409).send(err);
 		}
-
-		if (!prototypeId) {
-			return res.redirect("/" + webstrateId);
-		}
-
-		var source = req.user.userId;
-		permissionManager.addPermissions(req.user.username, req.user.provider, permissions,
-			webstrateId, source, function(err, ops) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-			return res.redirect("/" + webstrateId);
-		});
+		return res.redirect("/" + webstrateId);
 	});
 });
 
