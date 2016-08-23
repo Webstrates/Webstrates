@@ -1,18 +1,19 @@
 "use strict";
 
+var argv = require('optimist').argv;
 var Duplex = require('stream').Duplex;
 var express = require('express');
-var argv = require('optimist').argv;
-var sharedb = require('sharedb');
-var sharedbMongo = require('sharedb-mongo');
-var jsonml = require('jsonml-tools');
-var httpAuth = require('http-auth');
-var WebSocketServer = require('ws').Server;
+var fs = require("fs-sync");
 var http = require('http');
+var httpAuth = require('http-auth');
+var jsonml = require('jsonml-tools');
+var MongoClient = require('mongodb').MongoClient;
 var passport = require('passport');
 var sessions = require("client-sessions");
-var fs = require("fs-sync");
-var MongoClient = require('mongodb').MongoClient;
+var sharedb = require('sharedb');
+var sharedbMongo = require('sharedb-mongo');
+var shortId = require('shortid');
+var WebSocketServer = require('ws').Server;
 
 if (!fs.exists("config.json")) {
 	console.warn("No config file present, creating one now.");
@@ -91,14 +92,14 @@ if (config.auth) {
 		app.get('/auth/' + provider + '/callback', passport.authenticate(provider, {
 			failureRedirect: '/auth/' + provider
 		}), function(req, res) {
-			return res.redirect('/');
+			return res.redirect("/");
 		});
 		console.log(provider + "-based authentication enabled");
 	}
 
 	app.get('/auth/logout', function(req, res) {
 		req.logout();
-		return res.redirect('/');
+		return res.redirect("/");
 	});
 
 	auth = true;
@@ -259,7 +260,7 @@ app.get('/new', function(req, res) {
 		}
 
 		if (!prototypeId) {
-			return res.redirect('/' + webstrateId);
+			return res.redirect("/" + webstrateId);
 		}
 
 		var source = req.user.userId;
@@ -267,9 +268,9 @@ app.get('/new', function(req, res) {
 			webstrateId, source, function(err, ops) {
 			if (err) {
 				console.error(err);
-				return res.status(409).send(err);
+				return res.status(409).send(String(err));
 			}
-			return res.redirect('/' + webstrateId);
+			return res.redirect("/" + webstrateId);
 		});
 	});
 });
@@ -306,18 +307,26 @@ app.get('/:id', function(req, res) {
 			}
 
 			if (typeof version !== "undefined") {
-				// If version is set, but not defined (i.e. "/myWebstrate?v"), the user is requesting the
+				// If version is set, but not defined (i.e. /<id>?v), the user is requesting the
 				// current version number.
 				if (version == "") {
 					return res.send(String(snapshot.v));
 				}
 
-				// If the version is set and defined, we generate the version on the server and return it.
-				// Note that this returned version will not be interactive -- operations performed on it
-				// will not be saved.
-				return res.send(jsonml.toXML(snapshot.data, ["area", "base", "br", "col", "embed", "hr",
-					"img", "input", "keygen", "link", "menuitem", "meta", "param", "source", "track",
-					"wbr"]));
+				// If a specific version is requested, we create a new webstrate from the requested version
+				// with a name of the format /<id>-<version>-<random string> and redirect the user to it.
+				var newWebstrateId = webstrateId + "-" + version + "-" + shortId.generate();
+				return documentManager.createNewDocument({
+					webstrateId: newWebstrateId,
+					prototypeId: webstrateId,
+					version
+				}, function(err, newWebstrateId) {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					res.redirect("/" + newWebstrateId);
+				});
 			}
 
 			// If the user is requesting a list of operations by calling: /<id>?ops.
@@ -358,7 +367,7 @@ app.get('/:id', function(req, res) {
 				var source = req.user.userId;
 				return documentManager.revertDocument({ webstrateId, version: revertVersion }, source,
 					function() {
-					res.redirect('/' + webstrateId);
+					res.redirect("/" + webstrateId);
 				});
 			}
 
@@ -369,7 +378,7 @@ app.get('/:id', function(req, res) {
 						console.error(err);
 						return res.status(409).send(String(err));
 					}
-					res.redirect('/');
+					res.redirect("/");
 				});
 			}
 
@@ -379,7 +388,7 @@ app.get('/:id', function(req, res) {
 	});
 });
 
-app.get('/', function(req, res) {
+app.get("/", function(req, res) {
 	return res.redirect('/frontpage');
 });
 
