@@ -56,9 +56,8 @@ Advanced creation of webstrates
 Accessing the history of a webstrate
 ------------------------------------
  * GET on `http://<server host>/<some_name>?v` will return the version number of `<some_name>`.
- * GET on `http://<server host>/<some_name>?v=10` will return the raw HTML of version 10 of `<some_name>`.
- * GET on `http://<server host>/<some_name>?v=head` will return the raw HTML of the current version of `<some_name>`.
- * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>`. (beware: can be a huge list)
+ * GET on `http://<server host>/<some_name>?v=<version>` will create a new webstrate prototyped from `<some_name>` at version `<version>`. (Short-hand for `/new?prototype=<some_name>&version=<version>&id=<some_name>-<version>-<random string>`).
+ * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
 Deletion of a webstrate
 -----------------------
