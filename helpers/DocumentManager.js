@@ -92,8 +92,8 @@ module.exports = function(share, agent, sessionLog) {
 		request.submit(function(err) {
 			if (err) {
 				return next(new Error(err.message));
-				next();
 			}
+			next();
 		});
 	};
 
