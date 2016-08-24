@@ -65,7 +65,7 @@ Deletion of a webstrate
 
 DOM events
 ----------
-The user may subscribe to certain events triggered by Webstrates using `webstrates.on(event, function)`. When an event occurs, the attached function will be triggered with potential arguments.
+The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)`. When an event occurs, the attached function will be triggered with potential arguments.
 
 ### Trigger event when a webstrate has finished loading
 

@@ -315,7 +315,7 @@ root.webstrates = (function(webstrates) {
 				if (fragment.id) {
 					return;
 				}
-				fragment.id = Math.random().toString(36).substr(2, 8);
+				fragment.id = webstrates.util.randomString();
 				var fragmentObserver = new MutationObserver(mutationToOps);
 				fragmentObserver.observe(fragment, observerOptions);
 				fragmentObservers[fragment.id] = [fragment, fragmentObserver];
@@ -470,6 +470,12 @@ root.webstrates = (function(webstrates) {
 			})
 		};
 
+		var jsonml = {
+			TAG_NAME_INDEX: 0,
+			ATTRIBUTE_INDEX: 1,
+			ELEMENT_LIST_OFFSET: 2
+		};
+
 		/**
 		 * Attach a webstrate object (with an `on` event attacher) to a Node. The `on` event attacher
 		 * has different hooks, depending on the type of node.
@@ -499,29 +505,46 @@ root.webstrates = (function(webstrates) {
 				triggerCallbacks(callbackLists[event], ...parameters);
 			};
 
-			if (node.nodeType === Node.ELEMENT_NODE && node.tagName.toLowerCase() === "iframe") {
-				callbackLists.transcluded = [];
-
-				// We need to sent transcluded events on the iframes, so we listen to all transcluded
-				// events on the DOM, see if it's for this iframe, and if so dispatches it on the DOM
-				// element.
-				module.on("transcluded", function(webstrateId, clientId) {
-					// If `contentWindow` isn't set on this iframe, this can't be the iframe that has just
-					// been transcluded.
-					if (!node.contentWindow) {
-						return;
+			if (node.nodeType === Node.ELEMENT_NODE) {
+				// Create a unique ID for each element.
+				var nodePath = webstrates.PathTree.getPathNode(node).toPath();
+				var jml = webstrates.util.elementAtPath(doc.data, nodePath);
+				var rawAttributes = jml[jsonml.ATTRIBUTE_INDEX];
+				if (typeof rawAttributes === "object") {
+					if (rawAttributes.__wId) {
+						node.webstrate.id = rawAttributes.__wId;
+					} else {
+						var __wId = webstrates.util.randomString();
+						node.webstrate.id = __wId;
+						doc.submitOp([{ oi: __wId, p: [...nodePath, jsonml.ATTRIBUTE_INDEX, "__wId" ]}]);
 					}
+				}
 
-					var webstrate = node.contentWindow.webstrate;
-					// `webstrate` may not be set if what we transclude is just a regular iframe, not an
-					// iframe with webstrates running in it.
-					if (webstrate && webstrate.clientId === clientId &&
-						webstrate.webstrateId === webstrateId) {
-						triggerCallbacks(callbackLists.transcluded, webstrateId, clientId);
-					}
-				});
+				// Setup callback for iframe.
+				if (node.tagName.toLowerCase() === "iframe") {
+					callbackLists.transcluded = [];
 
-				return node;
+					// We need to sent transcluded events on the iframes, so we listen to all transcluded
+					// events on the DOM, see if it's for this iframe, and if so dispatches it on the DOM
+					// element.
+					module.on("transcluded", function(webstrateId, clientId) {
+						// If `contentWindow` isn't set on this iframe, this can't be the iframe that has just
+						// been transcluded.
+						if (!node.contentWindow) {
+							return;
+						}
+
+						var webstrate = node.contentWindow.webstrate;
+						// `webstrate` may not be set if what we transclude is just a regular iframe, not an
+						// iframe with webstrates running in it.
+						if (webstrate && webstrate.clientId === clientId &&
+							webstrate.webstrateId === webstrateId) {
+							triggerCallbacks(callbackLists.transcluded, webstrateId, clientId);
+						}
+					});
+
+					return node;
+				}
 			}
 
 			// If the node is neither an iframe, nor a text node, we don't do anything more.
