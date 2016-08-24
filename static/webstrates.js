@@ -576,6 +576,18 @@ root.webstrates = (function(webstrates) {
 			return removeCallbackFromEvent(event, callback, callbackLists);
 		}
 
+
+		/**
+		 * Exposes document version through getter.
+		 * @return {Number} Document version
+		 * @public
+		 */
+		Object.defineProperty(module, "version", {
+			get: function getVersion() {
+				return doc.version;
+			}
+		});
+
 		/**
 		 * Exposes an object with references to objects useful for testing.
 		 * @return {object} Object
