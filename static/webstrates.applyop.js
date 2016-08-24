@@ -306,6 +306,11 @@ root.webstrates = (function(webstrates) {
 			// For attribute insertions and attribute deletions, we extract the attribtue name from the
 			// path.
 			var attributeName = path.pop();
+
+			// the __wId attribute is a unique ID assigned each node and should not be in the DOM.
+			if (attributeName === "__wId") {
+				return;
+			}
 		}
 
 		// Attribute insertion (object insertion). Also catches replace operations, i.e. operations with

@@ -119,6 +119,34 @@ root.webstrates = (function(webstrates) {
 		return value.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 	}
 
+	/**
+	 * Get random integer from interval [min, max). Unbiased and evenly distributed (or close to).
+	 * @param  {int} min Minimum number, inclusive.
+	 * @param  {int} max Maximum number, exclusive.
+	 * @return {int}     Random number in interval [min, max);
+	 * @private
+	 */
+	var random = function(min, max) {
+		return Math.floor(Math.random() * (max - min) + min);
+	};
+
+	/**
+	 * Get random string of size.
+	 * @param  {int} size        Expected length of string (optional).
+	 * @param  {string} alphabet List of characters to be used in string (optional).
+	 * @return {string}          Generated string.
+	 * @public
+	 */
+	util.randomString = function(size = 8,
+		alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ_-") {
+		var len = alphabet.length;
+		var str = "";
+		while (size--) {
+			str += alphabet[random(0, len)];
+		}
+		return str;
+	};
+
 	webstrates.util = util;
 
 	return webstrates;

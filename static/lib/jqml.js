@@ -73,6 +73,10 @@
 						selector.async = false;
 					}
 					for (var index in elem[i]) {
+						// the __wId attribute is a unique ID assigned each node and should not be in the DOM.
+						if (index === "__wId") {
+							continue;
+						}
 						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 						if (xmlNs !== undefined) {
 							if (index === "href" || index === "xlink:href") {

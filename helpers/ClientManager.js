@@ -31,7 +31,7 @@ module.exports = (function() {
 		};
 
 		return socketId;
-	}
+	};
 
 	/**
 	 * Remove client from all webstrates (and broadcast departure) and remove client itself from
@@ -49,7 +49,7 @@ module.exports = (function() {
 		});
 
 		delete clients[socketId];
-	}
+	};
 
 	/**
 	 * Add client to Webstrate and broadcast join.
@@ -79,7 +79,7 @@ module.exports = (function() {
 
 		webstrates[webstrateId].push(socketId);
 		clients[socketId].webstrateIds.push(webstrateId);
-	}
+	};
 
 	/**
 	 * Remove client from webstrate and broadcast departure.
@@ -100,12 +100,13 @@ module.exports = (function() {
 			c: "webstrates",
 			d: webstrateId
 		});
-	}
+	};
 
 	/**
 	 * Send message to all clients currently connected to a webstrate.
 	 * @param  {string} webstrateId WebstrateId.
 	 * @param  {string} message     Message.
+	 * @private
 	 */
 	function broadcastToWebstrateClients(webstrateId, message) {
 		if (!webstrates[webstrateId]) {
@@ -121,6 +122,7 @@ module.exports = (function() {
 	 * @param  {string} socketId SocketId.
 	 * @param  {string} message  Message.
 	 * @return {bool}            True on success, false on failure.
+	 * @private
 	 */
 	function sendToClient(socketId, message) {
 		try {
