@@ -576,7 +576,6 @@ root.webstrates = (function(webstrates) {
 			return removeCallbackFromEvent(event, callback, callbackLists);
 		}
 
-
 		/**
 		 * Exposes document version through getter.
 		 * @return {Number} Document version
