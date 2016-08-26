@@ -129,9 +129,6 @@ root.webstrates = (function(webstrates) {
 					console.warn("No parentPathNode found, aborting. This shouldn't happen, but...");
 					return;
 				}
-				var oldElementPathNode = webstrates.PathTree.getPathNode(oldElement);
-				var newElementPathNode = webstrates.PathTree.create(newElement, parentPathNode);
-
 				// Move all children.
 				while (oldElement.firstChild) {
 					webstrates.util.appendChildWithoutScriptExecution(newElement, oldElement.firstChild);
@@ -146,6 +143,8 @@ root.webstrates = (function(webstrates) {
 				// Overwrite old node with new node.
 				webstrates.util.appendChildWithoutScriptExecution(parentElement, newElement, oldElement);
 				oldElement.remove();
+
+				var newElementPathNode = webstrates.PathTree.create(newElement, parentPathNode, true);
 
 				// New element may not have a PathNode if it's a transient object.
 				if (!newElementPathNode) {
@@ -307,7 +306,7 @@ root.webstrates = (function(webstrates) {
 			// path.
 			var attributeName = path.pop();
 
-			// the __wid attribute is a unique ID assigned each node and should not be in the DOM.
+			// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 			if (attributeName === "__wid") {
 				return;
 			}
