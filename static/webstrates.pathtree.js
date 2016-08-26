@@ -63,7 +63,16 @@ root.webstrates = (function(webstrates) {
 		}.bind(this));
 	};
 
+	/**
+	 * Add PathNode to node if the node isn't a <transient> element.
+	 * @param  {[type]} DOMNode        [description]
+	 * @param  {[type]} parentPathTree [description]
+	 * @param  {[type]} overwrite      [description]
+	 * @return {[type]}                [description]
+	 */
 	PathTree.create = function(DOMNode, parentPathTree, overwrite) {
+		// Transient elements are not supposed to be persisted, and should thus not be part of the
+		// PathTree.
 		if (DOMNode.tagName && DOMNode.tagName.toLowerCase() === "transient") {
 			return;
 		}
