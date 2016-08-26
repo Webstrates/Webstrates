@@ -511,12 +511,12 @@ root.webstrates = (function(webstrates) {
 				var jml = webstrates.util.elementAtPath(doc.data, nodePath);
 				var rawAttributes = jml[jsonml.ATTRIBUTE_INDEX];
 				if (typeof rawAttributes === "object") {
-					if (rawAttributes.__wId) {
-						node.webstrate.id = rawAttributes.__wId;
+					if (rawAttributes.__wid) {
+						node.webstrate.id = rawAttributes.__wid;
 					} else {
-						var __wId = webstrates.util.randomString();
-						node.webstrate.id = __wId;
-						doc.submitOp([{ oi: __wId, p: [...nodePath, jsonml.ATTRIBUTE_INDEX, "__wId" ]}]);
+						var __wid = webstrates.util.randomString();
+						node.webstrate.id = __wid;
+						doc.submitOp([{ oi: __wid, p: [...nodePath, jsonml.ATTRIBUTE_INDEX, "__wid" ]}]);
 					}
 				}
 
