@@ -184,8 +184,11 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
-	 * Returns the last added pathNode of an element
-	 * If a parent DOM element is provided, we search for the pathNode that matches on parent
+	 * Returns the last added pathNode of an element. If a parent DOM element is provided, we search
+	 * for the pathNode that matches on parent.
+	 * @param  {DOMNode} elem       Element to get pathNode of.
+	 * @param  {DOMNode} parentElem Parent of Element (optional).
+	 * @return {PathTree}           PathNode found or null.
 	 */
 	PathTree.getPathNode = function(elem, parentElem) {
 		if (!elem || !elem.__pathNodes) {
@@ -199,7 +202,7 @@ root.webstrates = (function(webstrates) {
 		var matchingElement = null;
 		parentElem.__pathNodes.some(function(parentPathNode) {
 			return (matchingElement = elem.__pathNodes.find(function(pathNode) {
-				return pathNode.parent.id === parentPathNode.id
+				return pathNode.parent.id === parentPathNode.id;
 			}));
 		});
 

@@ -423,14 +423,39 @@ wss.on('connection', function(client) {
 		}
 
 		// Ignore keep alive messages.
-		if (data.type && data.type === 'alive') {
+		if (data.type === 'alive') {
 			return;
 		}
 
 		// Adding socketId to every incoming message
 		data.socketId = socketId;
 
-		return stream.push(JSON.stringify(data));
+		// Handle webstrate actions.
+		if (data.wa) {
+			var webstrateId = data.d;
+			var nodeId = data.id || "document";
+			switch (data.wa) {
+				// Subscribe to signals.
+				case "subscribe":
+					clientManager.subscribe(socketId, webstrateId, nodeId);
+					break;
+				// Unsubscribe from signals.
+				case "unsubscribe":
+					clientManager.unsubscribe(socketId, webstrateId, nodeId);
+					break;
+				// Send a signal.
+				case "publish":
+					var message = data.msg;
+					var recipients = data.recipients;
+					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
+					break;
+			}
+
+			// We return, so the message isn't sent through to ShareDB.
+			return;
+		}
+
+		stream.push(JSON.stringify(data));
 	});
 
 	client.on('close', function(reason) {

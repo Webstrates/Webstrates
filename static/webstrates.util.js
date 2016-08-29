@@ -29,7 +29,7 @@ root.webstrates = (function(webstrates) {
 		}
 
 		return util.elementAtPath(snapshot[head], tail);
-	}
+	};
 
 	/**
 	 * Append a DOM element childElement to another DOM element parentElement. If the DOM element to
@@ -61,7 +61,7 @@ root.webstrates = (function(webstrates) {
 			parentElement = parentElement.content;
 		}
 		return parentElement.childNodes;
-	}
+	};
 
 	/**
 	 * Traverses an element tree and applies a callback to each element.
@@ -105,7 +105,7 @@ root.webstrates = (function(webstrates) {
 	util.escape = function(value) {
 		if (!value) return value;
 		return value.replace(/&/g, '&amp;').replace(/\"/g, "&quot;");
-	}
+	};
 
 	/**
 	 * Replaces HTML entities for ampersands (&) and double-quotes (") with their actual character
@@ -117,7 +117,7 @@ root.webstrates = (function(webstrates) {
 	util.unescape = function(value) {
 		if (!value) return value;
 		return value.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
-	}
+	};
 
 	/**
 	 * Get random integer from interval [min, max). Unbiased and evenly distributed (or close to).

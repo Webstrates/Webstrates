@@ -59,21 +59,25 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?v=<version>` will create a new webstrate prototyped from `<some_name>` at version `<version>`. (Short-hand for `/new?prototype=<some_name>&version=<version>&id=<some_name>-<version>-<random string>`).
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
+Revertion of a webstrate
+------------------------
+* GET on `http://<server host>/<some name>?revert=<version>` reverts the document to `<version>` and redirects the user to `/<some nam>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
+
 Deletion of a webstrate
 -----------------------
 * GET on `http://<server host>/<some name>?delete` will delete the document and redirect all connected users to the server root. The document data will be deleted, but a record of the document (containing name, version number, creation and modification timestamps) will remain in the database.
 
-DOM events
+Events
 ----------
-The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)`. When an event occurs, the attached function will be triggered with potential arguments.
+The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)` (the webstrate instance) or `DOMElement.webstrate.on(event, function)` (the webstrate object attached to every DOM element). When an event occurs, the attached function will be triggered with potential arguments.
 
 ### Trigger event when a webstrate has finished loading
 
-When the Webstrates client has finished loading a webstrate, it will trigger `loaded` event on webstrate instance. Using the default `client.html` and `client.js`,  the webstrance instance will be attached to the point element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
+When the Webstrates client has finished loading a webstrate, it will trigger a `loaded` event on the Webstrate instance. Using the default `client.html` and `client.js`,  the webstrate instance will be attached to the window element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
 
 ```javascript
 webstrate.on("loaded", function(webstrateId, clientId) {
-	// The Webstrates client has now finished loading.
+  // The Webstrates client has now finished loading.
 });
 ```
 
@@ -83,8 +87,9 @@ If a webstrate has been transcluded (i.e. loaded in an iframe), a `transcluded` 
 var myIframe = document.createElement("iframe");
 myIframe.src = "/some_webstrate";
 myIframe.webstrate.on("transcluded", function(webstrateId, clientId) {
-	// The webstrate client in the iframe has now finished loading.
+  // The webstrate client in the iframe has now finished loading.
 });
+document.body.appendChild(myIframe);
 ```
 
 ### Events on text nodes
@@ -93,19 +98,19 @@ Webstrates does fine-grained synchronization on text nodes and attributes, howev
 
 ```javascript
 textNode.webstrate.on("insertText", function(position, value) {
-	// Some text has just been inserted into textNode.
+  // Some text has just been inserted into textNode.
 });
 
 textNode.webstrate.on("deleteText", function(position, value) {
-	// Some text has just been deleted from textNode.
+  // Some text has just been deleted from textNode.
 });
 
 elementNode.webstrate.on("insertText", function(position, value, attributeName) {
-	// Some text has just been inserted into an attribute on elementNode.
+  // Some text has just been inserted into an attribute on elementNode.
 });
 
 elementNode.webstrate.on("deleteText", function(position, value, attributeName) {
-	// Some text has just been deleted from an attribute on textNode.
+  // Some text has just been deleted from an attribute on textNode.
 });
 ```
 
@@ -113,37 +118,80 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 
 | Event         | Arguments                          | Description                                                            |
 |---------------|------------------------------------|------------------------------------------------------------------------|
-| `loaded`      | Webstrate Id, Client ID            | Triggered when the webstrate document has finished loading.            |
-| `transcluded` | Webstrate Id, Client ID            | Triggered if a webstrate is transcluded and has finished loading.      |
-| `clientJoin`  | Client ID                          | Triggered when a client joins the document.                            |
-| `clientPart`  | Client ID                          | Triggered when a client leaves the document.                           |
-| `insertText`  | Position, Value [, Attribute Name] | Triggered when a text has been inserted into a text node or attribute. |
-| `deleteText`  | Position, Value [, Attribute Name] | Triggered when text has been deleted from a text node or attribute.    |
+| `loaded`      | webstrateId, clientId              | Triggered when the webstrate document has finished loading.            |
+| `transcluded` | webstrateId, clientId              | Triggered if a webstrate is transcluded and has finished loading.      |
+| `clientJoin`  | clientId                           | Triggered when a client joins the document.                            |
+| `clientPart`  | clientId                           | Triggered when a client leaves the document.                           |
+| `insertText`  | position, value [, attributeName]  | Triggered when a text has been inserted into a text node or attribute. |
+| `deleteText`  | position, value [, attributeName]  | Triggered when text has been deleted from a text node or attribute.    |
+| `signal`      | message, senderId, node            | Triggered when a client (senderId) signals on a DOM node.              |
 
 All the events can also be unregistered using `off`, e.g.:
 
 ```javascript
 webstrate.on("loaded", function loadedFunction() {
-	// Work here...
-	webstrate.off("loaded", loadedFunction);
+  // Work here...
+  webstrate.off("loaded", loadedFunction);
 });
 ```
 
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
+Signaling
+---------
+Subscribe to signals on DOM elements and receive messages from other clients sending signals on the DOM element. Useful especially for huge amounts of data that will be expensive to continuously publish through the DOM (e.g. sensor data).
+
+Listen for messages on `elementNode`:
+
+```html
+elementNode.webstrate.on("signal", function(message, senderId, node) {
+  // Received message from senderId on node.
+});
+```
+
+`node` will always equal `elementNode`, but may be useful if the node is no longer in scope.
+
+Send messages on `elementNode`:
+
+```html
+elementNode.webstrate.signal(message, [recipients]);
+```
+
+An optional array of Client IDs (`recipients`) can be passed in. If recipients is not defined, all subscribers will recieve the message, otherwise only the clients in recipients will. Recipients are never aware of who else has received the signal.
+
+Instead of listening for specific signals on DOM nodes, it is also possible to listen for all events using the webstrate instance.
+
+```html
+webstrate.on("signal", function(message, senderId, node) {
+  if (node) {
+    // Signal sent on node.
+  } else {
+    // Signal sent on webstrate instance.
+  }
+});
+```
+
+If the signal was sent on the webstrate instance (`webstrate.signal(message, [recipients])`), `node` will be undefined, otherwise `node` will be the DOM element the signal was sent on.
+
+Listening on the webstrate instance does not circumvent the recipients mechanism -- subscribers will still not recieve signals specifically addressed to other clients.
+
 Transient data
 --------------
-Webstrates comes with a custom HTML element `<transient>`. This lets users create DOM trees that are not being synced by Webstrates. That is to say, any changes made to the children of a `<transient>` element (or to the element itself) will not be persisted or shared among the other clients:
+Webstrates comes with a custom HTML element `<transient>`. This lets users create DOM trees that are not being synced by Webstrates. That is to say, any changes made to the children of a `<transient>` element (or to the element itself) will not be persisted or shared among the other clients. Useful especially for storing data received through signaling.
 
 ```html
 <html>
 <body>
-  This content will be saved on the server and synchronized on to all connected users as per usual.
+  This content will be saved on the server and synchronized to all connected users as per usual.
   <transient>This tag and its contents will only be visible to the user who created the tag.</transient>
 </body>
 </html>
 ```
 Disclaimer: If a user reloads a webstrate in which they had transient data, the data will be unrecoverable.
+
+Connected clients
+-----------------
+Other than detecting when clients connect and disconnect through the `clientJoin` and `clientPart` events described previously, the webstrate instance also holds a list of client IDs of connected clients access through `webstrate.clients`.
 
 Authentication
 --------------
@@ -153,9 +201,9 @@ To enable basic HTTP authentication on the Webstrates server, add the following 
 
 ```javascript
 "basic_auth": {
-	"realm": "Webstrates",
-	"username": "some_username",
-	"password": "some_password"
+  "realm": "Webstrates",
+  "username": "some_username",
+  "password": "some_password"
 }
 ```
 
@@ -167,18 +215,18 @@ Add the following to your `config.json`:
 
 ```javascript
 "auth": {
-	"secret": "This is a secret",
-	"cookieDuration": 31536000000,
-	"providers": {
-		"github": {
-			"node_module": "passport-github",
-			"config": {
-				"clientID": "<github client id>",
-				"clientSecret": "<github Secret>",
-				"callbackURL": "http://<server host>/auth/github/callback"
-			}
-		}
-	}
+  "secret": "This is a secret",
+  "cookieDuration": 31536000000,
+  "providers": {
+    "github": {
+      "node_module": "passport-github",
+      "config": {
+        "clientID": "<github client id>",
+        "clientSecret": "<github Secret>",
+        "callbackURL": "http://<server host>/auth/github/callback"
+      }
+    }
+  }
 }
 ```
 
@@ -203,8 +251,8 @@ It is also possible to set default permissions. Adding the following under the `
 
 ```javascript
 "defaultPermissions": [
-	{"username": "cklokmose", "provider": "github", "permissions": "rw"}
-	{"username": "anonymous", "provider": "", "permissions": "r"}
+  {"username": "cklokmose", "provider": "github", "permissions": "rw"}
+  {"username": "anonymous", "provider": "", "permissions": "r"}
 ]
 ```
 
