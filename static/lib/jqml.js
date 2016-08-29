@@ -74,7 +74,7 @@
 					}
 					for (var index in elem[i]) {
 						// the __wid attribute is a unique ID assigned each node and should not be in the DOM.
-						if (index === "__wid") {
+						if (index.toLowerCase() === "__wid") {
 							continue;
 						}
 						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");

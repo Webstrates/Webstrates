@@ -15,7 +15,14 @@ root.webstrates = (function(webstrates) {
 
 		module.webstrateId = webstrateId;
 
+		// Every webstrate object needs a unique ID. There is only one webstrate instance, so "document"
+		// will do.
+		module.id = "document";
+
 		var COLLECTION_NAME = "webstrates";
+
+		// One-to-one mapping from nodeIds to their nodes.
+		var nodeIds = {};
 
 		var fragmentObservers = {};
 		var fragmentParentMap = {};
@@ -39,7 +46,8 @@ root.webstrates = (function(webstrates) {
 			loaded: [],      // Callbacks triggered when the document has been loaded.
 			transcluded: [], // Callbacks triggered when the document has been transcluded.
 			clientJoin: [],  // Callbacks triggered when a client connects to the webstrate.
-			clientPart: []   // Callbacks triggered when a client disconnects from the webstrate.
+			clientPart: [],  // Callbacks triggered when a client disconnects from the webstrate.
+			signal: []       // Callbacks triggered when a client sends a signal.
 		};
 
 		// Setup event listeners for events coming both from ourselves, but also anything coming
@@ -144,6 +152,19 @@ root.webstrates = (function(webstrates) {
 					module.clients.splice(module.clients.indexOf(data.id), 1);
 					triggerCallbacks(callbackLists.clientPart, data.id);
 					break;
+				case "publish":
+					var nodeId = data.id;
+					var node = nodeIds[nodeId];
+					if (!node && nodeId !== "document") {
+						return;
+					}
+					var senderId = data.s;
+					var message = data.msg;
+					webstrate.fireEvent("signal", message, senderId, node);
+					if (node) {
+						node.webstrate.fireEvent("signal", message, senderId, node);
+					}
+					break;
 				default:
 					console.warn("Unknown event", data);
 			}
@@ -205,18 +226,20 @@ root.webstrates = (function(webstrates) {
 		};
 
 		/**
-		 * Add callbacks to a callback list or execute immediately if event has already occured.
+		 * Add callback to a callback list or execute immediately if event has already occured.
 		 * @param {string}   event          Event name (loaded, transcluded, clientJoin, clientPart).
-		 * @param {Function} callback       Function to be called when event occurs.
+		 * @param {Function} callback       Callback function to be registered.
 		 * @param {object}   callbackLists  Object containing callback lists for different events.
 		 * @param {window}   context        Window object housing the webstrate object.
+		 * @param {DOMNode}  node           Related node if any (used with signaling).
 		 * @private
 		 */
-		var addCallbackToEvent = function(event, callback, callbackLists, context) {
+		var addCallbackToEvent = function(event, callback, callbackLists, context, node) {
 			if (!callbackLists[event]) {
 				console.error("On-event '" + event + "' does not exist");
 				return;
 			}
+
 			if (context.webstrate) {
 				if ((event === "loaded" && context.webstrate.loaded) ||
 					(event === "transcluded" && context.webstrate.transcluded)) {
@@ -224,10 +247,29 @@ root.webstrates = (function(webstrates) {
 					return;
 				}
 			}
+
+			// The server needs to be informed that we are now subscribed to signaling events, otherwise
+			// we won't recieve the events at all.
+			if (event === "signal" && callbackLists.signal.length === 0) {
+				websocket.send(JSON.stringify({
+					wa: "subscribe",
+					d: webstrateId,
+					id: (node || context).webstrate.id
+				}));
+			}
+
 			callbackLists[event].push(callback);
 		};
 
-		var removeCallbackFromEvent = function(event, callback, callbackLists) {
+		/**
+		 * Remove callback from a callback list.
+		 * @param {string}   event          Event name
+		 * @param {Function} callback       Callback function.
+		 * @param {object}   callbackLists  Object containing callback lists for different events.
+		 * @param {DOMNode}  node           Related node if any (used with signaling).
+		 * @private
+		 */
+		var removeCallbackFromEvent = function(event, callback, callbackLists, node) {
 			if (!callbackLists[event]) {
 				console.error("On-event '" + event + "' does not exist");
 				return;
@@ -236,6 +278,16 @@ root.webstrates = (function(webstrates) {
 			var callbackIdx = callbackLists[event].indexOf(callback);
 			if (callbackIdx !== -1) {
 				callbackLists[event].splice(callbackIdx, 1);
+			}
+
+			// If we're just removed the last signaling event listener, we should tell the server we
+			// unsubscribed, so we no longer recieve events.
+			if (event === "signal" && callbackLists.signal.length === 0) {
+				websocket.send(JSON.stringify({
+					wa: "unsubscribe",
+					d: webstrateId,
+					id: (node || context).webstrate.id
+				}));
 			}
 		};
 
@@ -476,6 +528,19 @@ root.webstrates = (function(webstrates) {
 			ELEMENT_LIST_OFFSET: 2
 		};
 
+		var sendSignal = function(nodeId, msg, recipients) {
+			var msgObj = {
+				wa: "publish",
+				d: webstrateId,
+				id: nodeId,
+				msg: msg
+			};
+			if (recipients) {
+				msgObj.recipients = recipients;
+			}
+			websocket.send(JSON.stringify(msgObj));
+		};
+
 		/**
 		 * Attach a webstrate object (with an `on` event attacher) to a Node. The `on` event attacher
 		 * has different hooks, depending on the type of node.
@@ -484,30 +549,74 @@ root.webstrates = (function(webstrates) {
 		 * @private
 		 */
 		var attachWebstrateObjectToNode = function(node) {
+			// Nodes are given a webstrate object once they're added into the DOM, but elements created
+			// with document.createElement() have had webstrate objects since before they were added to
+			// the DOM. Therefore, we need to make sure the current node doesn't already have a webstrate
+			// object.
+			if (node.webstrate) {
+				return;
+			}
+
 			var callbackLists = {
 				insertText: [],
-				deleteText: []
+				deleteText: [],
+				signal: []
 			};
+
 			node.webstrate = {};
 
-			// Make it possible to registers event listeners on events defined in callbackLists.
+			/**
+			 * Register event listeners on events defined in callbackLists.
+			 * @param  {string}   event    Event name.
+			 * @param  {Function} callback Callback function to be registered.
+			 * @public
+			 */
 			node.webstrate.on = function(event, callback) {
-				addCallbackToEvent(event, callback, callbackLists, window);
+				addCallbackToEvent(event, callback, callbackLists, window, node);
 			};
 
-			// Make it possible to unregister event listeners.
+			/**
+			 * Unregister event listeners.
+			 * @param {string}   event    Event name.
+			 * @param {Function} callback Callback function to be unregistered.
+			 * @public
+			 */
 			node.webstrate.off = function(event, callback) {
-				removeCallbackFromEvent(event, callback, callbackLists);
+				removeCallbackFromEvent(event, callback, callbackLists, node);
 			};
 
-			// Make it possible to trigger insertText and deleteText events on text nodes and attributes.
+			/**
+			 * Trigger events.
+			 * @param {string} event      Event name.
+			 * @param {...[*]} parameters Any parameters that should be passed to the callback.
+			 * @public
+			 */
 			node.webstrate.fireEvent = function(event, ...parameters) {
 				triggerCallbacks(callbackLists[event], ...parameters);
 			};
 
+			/**
+			 * Signal a message on the element to all subscribers or a list of recipients.
+			 * @param {*} msg            Message to be signalled. Can
+			 * @param {array} recipients (optional) List of recipient client IDs. If no recipients are
+			 *                           specified, all listening clients will recieve the mesasge.
+			 * @public
+			 */
+			node.webstrate.signal = function(msg, recipients) {
+				sendSignal(node.webstrate.id, msg, recipients);
+			};
+
 			if (node.nodeType === Node.ELEMENT_NODE) {
 				// Create a unique ID for each element.
-				var nodePath = webstrates.PathTree.getPathNode(node).toPath();
+				var pathNode = webstrates.PathTree.getPathNode(node);
+				// If the node doesn't have a path node, it either hasn't been created yet, so we can't
+				// create an op for other clients, or the element isn't being tracked by Webstrates. Either
+				// way, we don't care about adding a unique ID (for now).
+				if (!pathNode) {
+					return;
+				}
+
+				var nodePath = pathNode.toPath();
 				var jml = webstrates.util.elementAtPath(doc.data, nodePath);
 				var rawAttributes = jml[jsonml.ATTRIBUTE_INDEX];
 				if (typeof rawAttributes === "object") {
@@ -518,6 +627,7 @@ root.webstrates = (function(webstrates) {
 						node.webstrate.id = __wid;
 						doc.submitOp([{ oi: __wid, p: [...nodePath, jsonml.ATTRIBUTE_INDEX, "__wid" ]}]);
 					}
+					nodeIds[node.webstrate.id] = node;
 				}
 
 				// Setup callback for iframe.
@@ -542,14 +652,9 @@ root.webstrates = (function(webstrates) {
 							triggerCallbacks(callbackLists.transcluded, webstrateId, clientId);
 						}
 					});
-
-					return node;
 				}
 			}
-
-			// If the node is neither an iframe, nor a text node, we don't do anything more.
-			return node;
-		}
+		};
 
 		/**
 		 * Override addEventListener to show warnings when using it to listen for Webstrates events,
@@ -585,19 +690,46 @@ root.webstrates = (function(webstrates) {
 		};
 
 		/**
-		 * Add callbacks to a the webstrate's callback list or execute immediately if event has already
-		 * occured.
-		 * @param {string}   event          Event name (loaded, transcluded, clientJoin, clientPart).
-		 * @param {Function} callback       Function to be called when event occurs.
+		 * Register event listeners on events defined in callbackLists.or execute immediately if event
+		 * has already occured (loaded, transcluded).
+		 * @param {string}   event    Event name.
+		 * @param {Function} callback Callback function to be registered.
 		 * @public
 		 */
 		module.on = function(event, callback) {
 			return addCallbackToEvent(event, callback, callbackLists, window);
 		};
 
+		/**
+		 * Unregister event listeners.
+		 * @param {string}   event    Event name.
+		 * @param {Function} callback Callback function to be unregistered.
+		 * @public
+		 */
 		module.off = function(event, callback) {
 			return removeCallbackFromEvent(event, callback, callbackLists);
-		}
+		};
+
+		/**
+		 * Trigger events
+		 * @param {string} event        Event name.
+		 * @param {...[*]} parameters   Any parameters that should be passed to the callback.
+		 * @public
+		 */
+		module.fireEvent = function(event, ...parameters) {
+			triggerCallbacks(callbackLists[event], ...parameters);
+		};
+
+		/**
+		 * Signal a message on the element to all subscribers or a list of recipients.
+		 * @param {*} msg            Message to be signalled. Can
+		 * @param {array} recipients (optional) List of recipient client IDs. If no recipients are
+		 *                           specified, all listening clients will recieve the mesasge.
+		 * @public
+		 */
+		module.signal = function(msg, recipients) {
+			sendSignal(module.id, msg, recipients);
+		};
 
 		/**
 		 * Exposes document version through getter.

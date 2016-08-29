@@ -17,6 +17,10 @@ module.exports = (function() {
 	// this is faster.
 	var webstrates = {};
 
+	// One-to-many mapping from webstrateIds to nodeIds as well as one-to-many mapping from nodeIds
+	// to socketIds.
+	var nodeIds = {};
+
 	/**
 	 * Add client to ClientManager.
 	 * @param  {Socket} client Client socket.
@@ -27,7 +31,7 @@ module.exports = (function() {
 		var socketId = shortId.generate();
 		clients[socketId] = {
 			socket: client,
-			webstrateIds: []
+			webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 		};
 
 		return socketId;
@@ -44,7 +48,7 @@ module.exports = (function() {
 			return;
 		}
 
-		clients[socketId].webstrateIds.forEach(function(webstrateId) {
+		Object.keys(clients[socketId].webstrates).forEach(function(webstrateId) {
 			module.removeClientFromWebstrate(socketId, webstrateId);
 		});
 
@@ -78,7 +82,7 @@ module.exports = (function() {
 		});
 
 		webstrates[webstrateId].push(socketId);
-		clients[socketId].webstrateIds.push(webstrateId);
+		clients[socketId].webstrates[webstrateId] = [];
 	};
 
 	/**
@@ -91,14 +95,98 @@ module.exports = (function() {
 		var socketIdIdx = webstrates[webstrateId].indexOf(socketId);
 		webstrates[webstrateId].splice(socketIdIdx, 1);
 
-		var webstrateIdIdx = clients[socketId].webstrateIds.indexOf(webstrateId);
-		clients[socketId].webstrateIds.splice(webstrateIdIdx, 1);
+		clients[socketId].webstrates[webstrateId].forEach(function(nodeId) {
+			unsubscribe(socketId, webstrateId, nodeId);
+		});
 
 		broadcastToWebstrateClients(webstrateId, {
 			wa: "clientPart",
 			id: socketId,
 			c: "webstrates",
 			d: webstrateId
+		});
+	};
+
+	/**
+	 * Subscribe client to signals on a node in a webstrate.
+	 * @param  {string} socketId    SocketId.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @param  {string} nodeId      NodeId.
+	 * @public
+	 */
+	module.subscribe = function(socketId, webstrateId, nodeId) {
+		// Make sure the client is connected to the webstrate.
+		if (!clients[socketId].webstrates[webstrateId]) {
+			return;
+		}
+
+		if (!nodeIds[webstrateId]) {
+			nodeIds[webstrateId] = {};
+		}
+
+		if (!nodeIds[webstrateId][nodeId]) {
+			nodeIds[webstrateId][nodeId] = [];
+		}
+
+		nodeIds[webstrateId][nodeId].push(socketId);
+	};
+
+	/**
+	 * Unsubscribe client from signals on a node in a webstrate.
+	 * @param {string} socketId    SocketId.
+	 * @param {string} webstrateId WebstrateId.
+	 * @param {string} nodeId      NodeId.
+	 * @public
+	 */
+	module.unsubscribe = function(socketId, webstrateId, nodeId) {
+		if (!nodeIds[webstrateId] || !nodeIds[webstrateId][nodeId]) {
+			return;
+		}
+
+		var socketIdIdx = nodeIds[webstrateId][nodeId].indexOf(socketId);
+		nodeIds[webstrateId][nodeId].splice(socketIdIdx, 1);
+
+		var nodeIdIdx = clients[socketId].webstrates[webstrateId].indexOf(nodeId);
+		clients[socketId].webstrates[webstrateId].splice(nodeIdIdx, 1);
+	};
+
+	/**
+	 * Send signal to a list of clients (or a all clients) subscribed to a node in a webstrate.
+	 * @param {string} senderSocketId SocketId of sender.
+	 * @param {string} socketId       SocketId.
+	 * @param {string} webstrateId    WebstrateId.
+	 * @param {string} nodeId         NodeId.
+	 * @public
+	 */
+	module.publish = function(senderSocketId, webstrateId, nodeId, message, recipients) {
+		if (!nodeIds[webstrateId]) {
+			return;
+		}
+
+		// Messages should be sent to everybody listening on the nodeId and the "document". We use a
+		// Set, so we don't send to the same socketId twice.
+		var listeners = new Set([...(nodeIds[webstrateId][nodeId] || []),
+			...nodeIds[webstrateId]["document"]]);
+
+		// If recipients is defined, make sure we only send to the recipients, and only the recipients
+		// that are actually listening.
+		if (recipients) {
+			recipients = recipients.filter(function(recipientId) {
+				return listeners.includes(recipientId);
+			});
+		} else {
+			recipients = listeners;
+		}
+
+		recipients.forEach(function(recipientSocketId) {
+			sendToClient(recipientSocketId, {
+				wa: "publish",
+				id: nodeId,
+				c: "webstrates",
+				d: webstrateId,
+				s: senderSocketId,
+				msg: message
+			});
 		});
 	};
 
