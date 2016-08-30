@@ -125,7 +125,7 @@ root.webstrates = (function(webstrates) {
 			}
 
 			if (addedNode.nodeType === document.ELEMENT_NODE) {
-				var sanitizedTagName = webstrates.util.sanitizeTagName(addedNode.tagName);
+				var sanitizedTagName = webstrates.util.sanitizeString(addedNode.tagName);
 				// If the name is unsanitized, we remove the element and replace it with an identical
 				// element with a sanitized tag name.
 				if (sanitizedTagName !== addedNode.tagName) {
@@ -138,10 +138,11 @@ root.webstrates = (function(webstrates) {
 							addedNode.firstChild);
 					}
 
-					// Copy all attributes.
+					// Copy all attributes and sanitize them as well.
 					for (var i = 0; i < addedNode.attributes.length; i++) {
-						var attr = addedNode.attributes.item(i);
-						replacementNode.setAttribute(attr.nodeName, attr.nodeValue);
+						var attr = addedNode.attributes[i];
+						replacementNode.setAttribute(webstrates.util.sanitizeString(attr.nodeName),
+							attr.nodeValue);
 					}
 
 					// Insert the element before addedNode.
@@ -149,6 +150,16 @@ root.webstrates = (function(webstrates) {
 						replacementNode, addedNode);
 					addedNode.remove();
 					addedNode = replacementNode;
+				} else {
+					// If we haven't replaced the element, we still have to sanitize the attributes.
+					for (var i = 0; i < addedNode.attributes.length; i++) {
+						var attr = addedNode.attributes[i];
+						var sanitizedNodeName = webstrates.util.sanitizeString(attr.nodeName);
+						if (sanitizedNodeName !== attr.nodeName) {
+							addedNode.removeAttribute(attr.nodeName);
+							addedNode.setAttribute(sanitizedNodeName, attr.nodeValue);
+						}
+					}
 				}
 			}
 
