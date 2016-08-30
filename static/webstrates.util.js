@@ -78,17 +78,17 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
-	 * Removes illegal characters from tag names.
-	 * @param  {string} tagName Unsanitized tag name.
-	 * @return {string}         Sanitized tag name.
+	 * Removes characters that are illegal in attributes and tag names.
+	 * @param  {string} tagName Unsanitized string.
+	 * @return {string}         Sanitized string.
 	 */
-	util.sanitizeTagName = function(tagName) {
-		// Defined according to the specification (https://www.w3.org/TR/REC-xml/#NT-Name), but does not
-		// support some special characters, because the regex won't accept them.
+	util.sanitizeString = function(string) {
+		// See https://www.w3.org/TR/html5/syntax.html#syntax-tag-name and
+		// https://www.w3.org/TR/html5/syntax.html#syntax-attribute-name
 		var NAME_START_CHAR_REGEX = /\:|[A-Z]|\_|[a-z]/;
 		var NAME_CHAR_REGEX = /\-|\.|[0-9]/;
 
-		return tagName.split("").map(function(char, index) {
+		return string.split("").map(function(char, index) {
 			if (NAME_START_CHAR_REGEX.test(char) || (index > 0 && NAME_CHAR_REGEX.test(char))) {
 				return char;
 			}
