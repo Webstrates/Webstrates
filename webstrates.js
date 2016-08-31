@@ -40,10 +40,10 @@ MongoClient.connect(WEBSTRATE_DB, function(err, db) {
 	sessionLog.coll = db.collection('sessionLog');
 });
 
-var clientManager = require("./helpers/ClientManager.js");
+var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
+var clientManager = require("./helpers/ClientManager.js")(cookieHelper);
 var documentManager = require("./helpers/DocumentManager.js")(share, agent, sessionLog);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth);
-var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
 
 var app = express();
 app.server = http.createServer(app);
