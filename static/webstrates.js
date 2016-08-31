@@ -141,6 +141,7 @@ root.webstrates = (function(webstrates) {
 			switch (data.wa) {
 				case "hello":
 					module.clientId = data.id;
+					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
 					module.clients.push(data.id);
 					break;
@@ -308,7 +309,8 @@ root.webstrates = (function(webstrates) {
 			document.dispatchEvent(new CustomEvent("loaded", {
 				detail: {
 					webstrateId: webstrateId,
-					clientId: module.clientId
+					clientId: module.clientId,
+					user: module.user
 				}
 			}));
 
@@ -337,7 +339,8 @@ root.webstrates = (function(webstrates) {
 				window.frameElement.dispatchEvent(new CustomEvent("transcluded", {
 					detail: {
 						webstrateId: webstrateId,
-						clientId: module.clientId
+						clientId: module.clientId,
+						user: module.user
 					},
 					bubbles: true,
 					cancelable: true

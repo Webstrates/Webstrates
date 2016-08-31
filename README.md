@@ -76,7 +76,7 @@ The user may subscribe to certain events triggered by Webstrates using `webstrat
 When the Webstrates client has finished loading a webstrate, it will trigger a `loaded` event on the Webstrate instance. Using the default `client.html` and `client.js`,  the webstrate instance will be attached to the window element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
 
 ```javascript
-webstrate.on("loaded", function(webstrateId, clientId) {
+webstrate.on("loaded", function(webstrateId, clientId, user) {
   // The Webstrates client has now finished loading.
 });
 ```
@@ -86,11 +86,13 @@ If a webstrate has been transcluded (i.e. loaded in an iframe), a `transcluded` 
 ```javascript
 var myIframe = document.createElement("iframe");
 myIframe.src = "/some_webstrate";
-myIframe.webstrate.on("transcluded", function(webstrateId, clientId) {
+myIframe.webstrate.on("transcluded", function(webstrateId, clientId, user) {
   // The webstrate client in the iframe has now finished loading.
 });
 document.body.appendChild(myIframe);
 ```
+
+If the client is logged in using a passport provider (like GitHub), `user` will be an object containinig a `userId`, `username`, `provider` and `displayName`. This object is also available on the global `webstrate` instance as `webstrate.user`.
 
 ### Events on text nodes
 
@@ -118,8 +120,8 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 
 | Event         | Arguments                          | Description                                                            |
 |---------------|------------------------------------|------------------------------------------------------------------------|
-| `loaded`      | webstrateId, clientId              | Triggered when the webstrate document has finished loading.            |
-| `transcluded` | webstrateId, clientId              | Triggered if a webstrate is transcluded and has finished loading.      |
+| `loaded`      | webstrateId, clientId, user        | Triggered when the webstrate document has finished loading.            |
+| `transcluded` | webstrateId, clientId, user        | Triggered if a webstrate is transcluded and has finished loading.      |
 | `clientJoin`  | clientId                           | Triggered when a client joins the document.                            |
 | `clientPart`  | clientId                           | Triggered when a client leaves the document.                           |
 | `insertText`  | position, value [, attributeName]  | Triggered when a text has been inserted into a text node or attribute. |
@@ -134,7 +136,6 @@ webstrate.on("loaded", function loadedFunction() {
   webstrate.off("loaded", loadedFunction);
 });
 ```
-
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
 Signaling

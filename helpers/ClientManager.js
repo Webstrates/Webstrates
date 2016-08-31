@@ -6,7 +6,7 @@ var shortId = require('shortid');
  * ClientManager constructor.
  * @constructor
  */
-module.exports = (function() {
+module.exports = function(cookieHelper) {
 	var module = {};
 
 	// One-to-one mapping from socketIds to client sockets as well as one-to-many mapping from
@@ -29,8 +29,16 @@ module.exports = (function() {
 	 */
 	module.addClient = function(client) {
 		var socketId = shortId.generate();
+		var user = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie).passport.user || {};
+
 		clients[socketId] = {
 			socket: client,
+			user: {
+				userId: user.userId,
+				username: user.username,
+				provider: user.provider,
+				displayName: user.displayName
+			},
 			webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 		};
 
@@ -71,6 +79,7 @@ module.exports = (function() {
 			id: socketId,
 			c: "webstrates",
 			d: webstrateId,
+			user: clients[socketId].user,
 			clients: webstrates[webstrateId]
 		});
 
@@ -223,4 +232,4 @@ module.exports = (function() {
 	}
 
 	return module;
-}());
+};
