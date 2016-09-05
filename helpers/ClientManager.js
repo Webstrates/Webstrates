@@ -29,7 +29,8 @@ module.exports = function(cookieHelper) {
 	 */
 	module.addClient = function(client) {
 		var socketId = shortId.generate();
-		var user = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie).passport.user || {};
+		var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
+		var user = (cookie && cookie.passport.user) || {};
 
 		clients[socketId] = {
 			socket: client,
