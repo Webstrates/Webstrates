@@ -59,16 +59,75 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?v=<version>` will create a new webstrate prototyped from `<some_name>` at version `<version>`. (Short-hand for `/new?prototype=<some_name>&version=<version>&id=<some_name>-<version>-<random string>`).
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
-Revertion of a webstrate
+Restoring a webstrate
 ------------------------
-* GET on `http://<server host>/<some name>?revert=<version>` reverts the document to `<version>` and redirects the user to `/<some nam>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
+* GET on `http://<server host>/<some name>?restore=<version>` restore the document to look like it did in version `<version>` and redirects the user to `/<some name>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
+
+Alternatively, a Webstrate can be restored by calling `webstrate.restore(version)` or `webstrate.restore(tag)`.
 
 Deletion of a webstrate
 -----------------------
 * GET on `http://<server host>/<some name>?delete` will delete the document and redirect all connected users to the server root. The document data will be deleted, but a record of the document (containing name, version number, creation and modification timestamps) will remain in the database.
 
+Signaling
+---------
+Subscribe to signals on DOM elements and receive messages from other clients sending signals on the DOM element. Useful especially for huge amounts of data that will be expensive to continuously publish through the DOM (e.g. sensor data).
+
+Listen for messages on `elementNode`:
+
+```javascript
+elementNode.webstrate.on("signal", function(message, senderId, node) {
+  // Received message from senderId on node.
+});
+```
+
+`node` will always equal `elementNode`, but may be useful if the node is no longer in scope.
+
+Send messages on `elementNode`:
+
+```javascript
+elementNode.webstrate.signal(message, [recipients]);
+```
+
+An optional array of Client IDs (`recipients`) can be passed in. If recipients is not defined, all subscribers will recieve the message, otherwise only the clients in recipients will. Recipients are never aware of who else has received the signal.
+
+Instead of listening for specific signals on DOM nodes, it is also possible to listen for all events using the webstrate instance.
+
+```javascript
+webstrate.on("signal", function(message, senderId, node) {
+  if (node) {
+    // Signal sent on node.
+  } else {
+    // Signal sent on webstrate instance.
+  }
+});
+```
+
+If the signal was sent on the webstrate instance (`webstrate.signal(message, [recipients])`), `node` will be undefined, otherwise `node` will be the DOM element the signal was sent on.
+
+Listening on the webstrate instance does not circumvent the recipients mechanism -- subscribers will still not recieve signals specifically addressed to other clients.
+
+Tagging
+-------
+For easier navigation through document revisions, Webstrate includes tagging. A tag is a label applied to a specific version of the document.
+
+All tags for a document can be seen by either accessing `http://<server host>/<some_name>?tags` or calling `webstrate.tags()` in the Webstrate. The current tag can also be seen by calling `webstrate.tag()`.
+
+#### Manual tagging
+Tagging can be done by calling `webstrate.tag(label, [version])`. If no version is supplied, the current version will be used. A label can be any text string that does not begin with a number.
+
+Restoring a document from a tag can be achieved by calling `webstrate.restore(label)`.
+
+A tag can be removed by calling `webstrate.untag(label)` or `webstrate.untag(version)`.
+
+All labels are unique for each Webstrate (i.e. no two versions of the same document can carry the same label), and likewise each version can only have one label. Adding a label to a version that is already tagged will overwrite the existing tag. Adding a label that already exists on another version will move the tag to the new version.
+
+#### Auto-tagging
+
+In addition to manual tagging, Webstrates also automatically creates tags when a user starts modifying a document after a set period of inactivity. By default, the inactivity period is defined to be 3600 seconds (60 minutes). This can be modified by changing `autotagInterval` in `config.json`. Tags are labeled with the current timestamp, making it easy to track when changes were made to a document.
+
 Events
-----------
+------
 The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)` (the webstrate instance) or `DOMElement.webstrate.on(event, function)` (the webstrate object attached to every DOM element). When an event occurs, the attached function will be triggered with potential arguments.
 
 ### Trigger event when a webstrate has finished loading
@@ -138,44 +197,6 @@ webstrate.on("loaded", function loadedFunction() {
 ```
 For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
-Signaling
----------
-Subscribe to signals on DOM elements and receive messages from other clients sending signals on the DOM element. Useful especially for huge amounts of data that will be expensive to continuously publish through the DOM (e.g. sensor data).
-
-Listen for messages on `elementNode`:
-
-```html
-elementNode.webstrate.on("signal", function(message, senderId, node) {
-  // Received message from senderId on node.
-});
-```
-
-`node` will always equal `elementNode`, but may be useful if the node is no longer in scope.
-
-Send messages on `elementNode`:
-
-```html
-elementNode.webstrate.signal(message, [recipients]);
-```
-
-An optional array of Client IDs (`recipients`) can be passed in. If recipients is not defined, all subscribers will recieve the message, otherwise only the clients in recipients will. Recipients are never aware of who else has received the signal.
-
-Instead of listening for specific signals on DOM nodes, it is also possible to listen for all events using the webstrate instance.
-
-```html
-webstrate.on("signal", function(message, senderId, node) {
-  if (node) {
-    // Signal sent on node.
-  } else {
-    // Signal sent on webstrate instance.
-  }
-});
-```
-
-If the signal was sent on the webstrate instance (`webstrate.signal(message, [recipients])`), `node` will be undefined, otherwise `node` will be the DOM element the signal was sent on.
-
-Listening on the webstrate instance does not circumvent the recipients mechanism -- subscribers will still not recieve signals specifically addressed to other clients.
-
 Transient data
 --------------
 Webstrates comes with a custom HTML element `<transient>`. This lets users create DOM trees that are not being synced by Webstrates. That is to say, any changes made to the children of a `<transient>` element (or to the element itself) will not be persisted or shared among the other clients. Useful especially for storing data received through signaling.
@@ -216,14 +237,12 @@ Add the following to your `config.json`:
 
 ```javascript
 "auth": {
-  "secret": "This is a secret",
-  "cookieDuration": 31536000000,
   "providers": {
     "github": {
       "node_module": "passport-github",
       "config": {
         "clientID": "<github client id>",
-        "clientSecret": "<github Secret>",
+        "clientSecret": "<github secret>",
         "callbackURL": "http://<server host>/auth/github/callback"
       }
     }
@@ -259,7 +278,7 @@ It is also possible to set default permissions. Adding the following under the `
 
 ### A note on Quirks Mode and Standards Mode
 
-Previous versions of Webstrates have run in [Quirks Mode](http://www.quirksmode.org/css/quirksmode.html). However, the current version ships with "strict mode". The user is encouraged to conform to the standard, but if quirks mode is required (for compliance with legacy code), the doctype (`<!doctype html>`) can be removed from the top of `static/client.html`.
+Previous versions of Webstrates have run in [Quirks Mode](http://www.quirksmode.org/css/quirksmode.html). However, the current version ships with "strict mode". The user is encouraged to conform to the standard, but if quirks mode is required (for compliance with legacy code), the line including the doctype (`<!doctype html>`) can be removed from the top of file`static/client.html`.
 
 Disclaimer
 ==========
@@ -268,5 +287,4 @@ After each set of DOM manipulations, Webstrate checks the integrity of the mappi
 
 License
 =======
-
 This work is licenced under the [Apache License, Version 2.0](http://www.apache.org/licenses/LICENSE-2.0).

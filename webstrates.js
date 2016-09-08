@@ -3,7 +3,8 @@
 var argv = require('optimist').argv;
 var Duplex = require('stream').Duplex;
 var express = require('express');
-var fs = require("fs-sync");
+var fs = require("fs");
+var fss = require("fs-sync");
 var http = require('http');
 var httpAuth = require('http-auth');
 var jsonml = require('jsonml-tools');
@@ -15,16 +16,30 @@ var sharedbMongo = require('sharedb-mongo');
 var shortId = require('shortid');
 var WebSocketServer = require('ws').Server;
 
-if (!fs.exists("config.json")) {
+global.APP_PATH = __dirname;
+
+require('console-stamp')(console, {
+	metadata: function() {
+		return (new Error().stack.split("\n")[3]).trim().substr(3);
+	},
+	pattern: 'HH:MM:ss',
+	colors: {
+		stamp: "yellow",
+		label: "blue",
+		metadata: "grey"
+	}
+});
+if (!fss.exists(APP_PATH + "/config.json")) {
 	console.warn("No config file present, creating one now.");
-	if (!fs.exists("config-sample.json")) {
+	if (!fss.exists(APP_PATH + "/config-sample.json")) {
 		console.warn("Sample config not present either, creating empty config.")
-		fs.write("config.json", "{}");
+		fss.write(APP_PATH + "/config.json", "{}");
 	} else {
-		fs.copy("config-sample.json", "config.json");
+		fss.copy(APP_PATH + "/config-sample.json", APP_PATH + "/config.json");
 	}
 }
-var config = fs.readJSON("config.json");
+
+var config = fss.readJSON(APP_PATH + "/config.json");
 
 var WEBSTRATE_DB = config.db || "mongodb://localhost:27017/webstrate";
 
@@ -33,17 +48,24 @@ var share = sharedb({
 });
 var agent = share.connect();
 
-var sessionLog = {};
-MongoClient.connect(WEBSTRATE_DB, function(err, db) {
+var db = {};
+MongoClient.connect(WEBSTRATE_DB, function(err, _db) {
 	if (err)
 		throw err;
-	sessionLog.coll = db.collection('sessionLog');
+	db.sessionLog = _db.collection('sessionLog');
+	db.tags = _db.collection('tags');
+	db.tags.ensureIndex({ webstrateId: 1, label: 1 }, { unique: true });
+	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
 });
 
 var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
 var clientManager = require("./helpers/ClientManager.js")(cookieHelper);
-var documentManager = require("./helpers/DocumentManager.js")(share, agent, sessionLog);
+var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth);
+
+var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,
+	permissionManager);
+
 
 var app = express();
 app.server = http.createServer(app);
@@ -78,10 +100,10 @@ if (config.auth) {
 		var PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
 		passport.use(new PassportStrategy(config.auth.providers[key].config,
 			function(accessToken, refreshToken, profile, done) {
-			return process.nextTick(function() {
-				return done(null, profile);
-			});
-		}));
+				return process.nextTick(function() {
+					return done(null, profile);
+				});
+			}));
 	}
 
 	app.use(passport.initialize());
@@ -105,17 +127,23 @@ if (config.auth) {
 	auth = true;
 }
 
+app.get("/", httpRequestController.rootRequestHandler);
+app.get('/new', httpRequestController.newWebstrateRequestHandler);
+app.get('/favicon.ico', httpRequestController.faviconRequestHandler);
+// :id is a catch all, so it must come last.
+app.get('/:id', httpRequestController.idRequestHandler);
+
 /**
 	Middleware for logging userIds of connected clients. Makes it possible to map sessionIds to
 	userIds. Used when getting ops list.
  */
 var sessionLoggingMiddleware = function(req, next) {
 	var insertFn = function() {
-		if (!sessionLog.coll) {
+		if (!db.sessionLog) {
 			return process.nextTick(insertFn);
 		}
 
-		sessionLog.coll.insert({
+		db.sessionLog.insert({
 			sessionId: req.agent.clientId,
 			userId: req.user.userId,
 			connectTime: req.agent.connectTime,
@@ -168,244 +196,100 @@ app.use(function(req, res, next) {
 	sessionMiddleware(req, next);
 });
 
-share.use('connect', function(req, next) {
+share.use('connect', function(req, next) {
 	sessionLoggingMiddleware(req, next)
 });
 
-share.use(['receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'submit', 'delete'],
+var webstrateActivites = {};
+var AUTO_TAGGING_PREFIX = config.tagging && config.tagging.tagPrefix || "Session of ";
+var AUTO_TAGGING_INTERVAL = config.tagging && config.tagging.autotagInterval || 3600;
+share.use('op', function(req, next) {
+	var webstrateId = req.op.d;
+	var timestamp = Date.now();
+
+	if (!webstrateActivites[webstrateId] || webstrateActivites[webstrateId] +
+		AUTO_TAGGING_INTERVAL * 1000 < timestamp) {
+		var version = req.op.v;
+		var label = AUTO_TAGGING_PREFIX + new Date(timestamp);
+		documentManager.tagDocument(webstrateId, req.op.v, label);
+	}
+
+	webstrateActivites[webstrateId] = timestamp;
+	next();
+});
+
+share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete'],
 	function(req, next) {
-	// If the user is creating a new document, it makes no sense to verify whether he has access to
-	// said document.
-	if (req.op && req.op.create) {
-		return next();
-	}
-
-	permissionManager.getPermissions(req.user.username, req.user.provider, req.webstrateId,
-		function(err, permissions) {
-		if (err) {
-			return next(err);
+		// If the user is creating a new document, it makes no sense to verify whether he has access to
+		// said document.
+		if (req.op && req.op.create) {
+			return next();
 		}
 
-		// If the user doesn't have any permissions.
-		if (!permissions) {
-			return next(new Error("Forbidden"));
-		}
-
-		switch (req.action) {
-			case "fetch":
-				console.log("req.action fetch");
-			case "getOps": // Operations request
-			case "query": // Document request
-				if (permissions.indexOf("r") !== -1) {
-					return next();
-				}
-				break;
-			case "submit": // Operation submission
-				if (permissions.indexOf("w") !== -1) {
-					return next();
-				}
-				break;
-			case "receive":
-				// u = unsubscribe
-				if (req.data.a === "u") {
-					clientManager.removeClientFromWebstrate(req.data.socketId, req.webstrateId);
-					return;
-				}
-
-				if (req.data.a !== "s") {
-					return next();
-				}
-
-				// Initial document request (s = subscribe)
-				if (req.data.a === "s" && permissions.indexOf("r") !== -1) {
-					clientManager.addClientToWebstrate(req.data.socketId, req.webstrateId);
-					return next();
-				}
-				break;
-			case "bulk fetch":
-				console.log("req.action bulk fetch");
-				break;
-			case "delete":
-				console.log("req.action delete");
-				break;
-		}
-
-		return next(new Error("Forbidden"));
-	});
-});
-
-app.get('/favicon.ico', function(req, res) {
-	return res.status(404).send("");
-});
-
-app.get('/new', function(req, res) {
-	var webstrateId = req.query.id;
-	var prototypeId = req.query.prototype;
-	var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
-
-	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
-		req.user.provider);
-
-	// If the user has no default write permissions, they're not allowed to create documents.
-	if (defaultPermissions.indexOf("w") === -1) {
-		return res.send("Permission denied");
-	}
-
-	// If the user is trying to create a new document from a prototype, we need to make sure that the
-	// user has read access to the document in the first place.
-	if (prototypeId) {
-		return permissionManager.getPermissions(req.user.username, req.user.provider, prototypeId,
-			function(err, webstratePermissions) {
-			if (webstratePermissions.indexOf("r") === -1) {
-				return res.send("Permission denied");
-			}
-
-			documentManager.createNewDocument({ webstrateId, prototypeId, version },
-				function(err, webstrateId) {
-				if (err) {
-					console.error(err);
-					return res.status(409).send(err);
-				}
-
-				var source = req.user.userId;
-				permissionManager.addPermissions(req.user.username, req.user.provider, defaultPermissions,
-					webstrateId, source, function(err, ops) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					return res.redirect("/" + webstrateId);
-				});
-			});
-		});
-	}
-
-	// If there's no prototypeId defined, the user is just trying to create a clean new webstrate.
-	documentManager.createNewDocument({ webstrateId, version }, function(err, webstrateId) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(err);
-		}
-		return res.redirect("/" + webstrateId);
-	});
-});
-
-app.get('/:id', function(req, res) {
-	var webstrateId = req.params.id;
-	var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
-	if (!webstrateId) {
-		return res.redirect('/frontpage');
-	}
-
-	documentManager.getDocument({ webstrateId, version }, function(err, snapshot) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-
-		// TODO: We could use getPermissionsFromSnapshot and save a database call here.
-		permissionManager.getPermissions(req.user.username, req.user.provider, webstrateId,
+		permissionManager.getPermissions(req.user.username, req.user.provider, req.webstrateId,
 			function(err, permissions) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-
-			// If the webstrate doesn't exist, write permissions are required to create it.
-			if (!snapshot.type && permissions.indexOf("w") === -1) {
-				return res.send("Permission denied");
-			}
-
-			// If the webstrate does exist, read permissions are required to access it.
-			if (permissions.indexOf("r") === -1) {
-				return res.send("Permission denied");
-			}
-
-			if (typeof version !== "undefined") {
-				// If version is set, but not defined (i.e. /<id>?v), the user is requesting the
-				// current version number.
-				if (version == "") {
-					return res.send(String(snapshot.v));
-				}
-
-				// If a specific version is requested, we create a new webstrate from the requested version
-				// with a name of the format /<id>-<version>-<random string> and redirect the user to it.
-				var newWebstrateId = webstrateId + "-" + version + "-" + shortId.generate();
-				return documentManager.createNewDocument({
-					webstrateId: newWebstrateId,
-					prototypeId: webstrateId,
-					version
-				}, function(err, newWebstrateId) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					res.redirect("/" + newWebstrateId);
-				});
-			}
-
-			// If the user is requesting a list of operations by calling: /<id>?ops.
-			if (typeof req.query.ops !== "undefined") {
-				return documentManager.getOps({
-					webstrateId,
-					version
-				}, function(err, ops) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					res.send(ops);
-				});
-			}
-
-			// If the user is requesting to revert the document to an old version by calling:
-			// /<id>?revert=<version>.
-			if (typeof req.query.revert !== "undefined") {
-				var revertVersion = Number(req.query.revert);
-				var err;
-
-				if (!revertVersion) {
-					err = new Error("Version to revert to required.");
-				}
-
-				if (revertVersion >= snapshot.v) {
-					err = new Error("Version to revert to must be older than document's current version.");
-				}
-
 				if (err) {
-					console.error(err);
-					return res.status(409).send(String(err));
-				};
+					return next(err);
+				}
 
-				// Ops always have a source (src) set by the client when the op comes in. This source is
-				// usually the websocket clientId. We don't have that here, so let's just use the userId.
-				var source = req.user.userId;
-				return documentManager.revertDocument({ webstrateId, version: revertVersion }, source,
-					function() {
-					res.redirect("/" + webstrateId);
-				});
-			}
+				// If the user doesn't have any permissions.
+				if (!permissions) {
+					return next(new Error("Forbidden"));
+				}
 
-			if (typeof req.query.delete !== "undefined") {
-				var source = req.user.userId;
-				return documentManager.deleteDocument(webstrateId, source, function(err) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					res.redirect("/");
-				});
-			}
+				switch (req.action) {
+					case "fetch":
+						console.log("req.action fetch");
+					case "getOps": // Operations request.
+					case "query": // Document request.
+						if (permissions.indexOf("r") !== -1) {
+							return next();
+						}
+						break;
+					case "submit": // Operation submission.
+						if (permissions.indexOf("w") !== -1) {
+							return next();
+						}
+						break;
+					case "receive":
+						// u = unsubscribe.
+						if (req.data.a === "u") {
+							clientManager.removeClientFromWebstrate(req.data.socketId, req.webstrateId);
+							return;
+						}
 
-			res.setHeader("Location", "/" + webstrateId);
-			return res.sendFile(__dirname + "/static/client.html");
-		});
+						// Anything but a subscribe request.
+						if (req.data.a !== "s") {
+							return next();
+						}
+
+						// Initial document request (s = subscribe).
+						if (req.data.a === "s" && permissions.indexOf("r") !== -1) {
+							return documentManager.getTags(req.data.d, function(err, tags) {
+								if (err) console.error(err);
+								if (tags) {
+									clientManager.sendToClient(req.data.socketId, {
+										wa: "tags",
+										d: req.data.d,
+										tags: tags
+									});
+								}
+								clientManager.addClientToWebstrate(req.data.socketId, req.webstrateId);
+								next();
+							});
+						}
+						break;
+					case "bulk fetch":
+						console.log("req.action bulk fetch");
+						break;
+					case "delete":
+						console.log("req.action delete");
+						break;
+				}
+
+				return next(new Error("Forbidden"));
+			});
 	});
-});
-
-app.get("/", function(req, res) {
-	return res.redirect('/frontpage');
-});
 
 var wss = new WebSocketServer({
 	server: app.server
@@ -414,78 +298,23 @@ var wss = new WebSocketServer({
 wss.on('connection', function(client) {
 	var socketId = clientManager.addClient(client);
 
-	client.on('message', function(data) {
-		try {
-			data = JSON.parse(data);
-		} catch (err)  {
-			console.error("Received invalid websocket data from", socketId + ":", data);
-			return;
-		}
-
-		// Ignore keep alive messages.
-		if (data.type === 'alive') {
-			return;
-		}
-
-		// Adding socketId to every incoming message
-		data.socketId = socketId;
-
-		// Handle webstrate actions.
-		if (data.wa) {
-			var webstrateId = data.d;
-			var nodeId = data.id || "document";
-			switch (data.wa) {
-				// Subscribe to signals.
-				case "subscribe":
-					clientManager.subscribe(socketId, webstrateId, nodeId);
-					break;
-				// Unsubscribe from signals.
-				case "unsubscribe":
-					clientManager.unsubscribe(socketId, webstrateId, nodeId);
-					break;
-				// Send a signal.
-				case "publish":
-					var message = data.msg;
-					var recipients = data.recipients;
-					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
-					break;
-			}
-
-			// We return, so the message isn't sent through to ShareDB.
-			return;
-		}
-
-		stream.push(JSON.stringify(data));
-	});
-
-	client.on('close', function(reason) {
-		clientManager.removeClient(socketId);
-		stream.push(null);
-		stream.emit('close');
-		stream.emit('end');
-		stream.end();
-		try {
-			return client.close(reason);
-		} catch (err) {
-			console.error(err);
-		}
-	});
-
 	var stream = new Duplex({
 		objectMode: true
 	});
 
-	stream.session = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
+	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
+	var user = (cookie && cookie.passport.user) || {};
+	stream.session = cookie;
 	stream.headers = client.upgradeReq.headers;
 	stream.remoteAddress = client.upgradeReq.connection.remoteAddress;
 
 	stream._write = function(chunk, encoding, callback) {
 		try {
 			client.send(JSON.stringify(chunk));
-		} catch (error) {
-			console.error(error);
+		} catch (err) {
+			console.error(err);
 		}
-		return callback();
+		callback();
 	};
 
 	stream._read = function() {};
@@ -501,6 +330,103 @@ wss.on('connection', function(client) {
 	stream.on('end', function() {
 		try {
 			return client.close();
+		} catch (err) {
+			console.error(err);
+		}
+	});
+
+	client.on('message', function(data) {
+		try {
+			data = JSON.parse(data);
+		} catch (err) {
+			console.error("Received invalid websocket data from", socketId + ":", data);
+			return;
+		}
+
+		// Ignore keep alive messages.
+		if (data.type === 'alive') {
+			return;
+		}
+
+		// Adding socketId to every incoming message
+		data.socketId = socketId;
+
+		// Handle webstrate actions.
+		if (data.wa && data.d) {
+			var webstrateId = data.d;
+			switch (data.wa) {
+				// Subscribe to signals.
+				case "subscribe":
+					var nodeId = data.id || "document";
+					clientManager.subscribe(socketId, webstrateId, nodeId);
+					break;
+				// Unsubscribe from signals.
+				case "unsubscribe":
+					var nodeId = data.id || "document";
+					clientManager.unsubscribe(socketId, webstrateId, nodeId);
+					break;
+				// Send a signal.
+				case "publish":
+					var nodeId = data.id || "document";
+					var message = data.m;
+					var recipients = data.recipients;
+					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
+					break;
+				// restoreing a document to a previous version.
+				case "restore":
+					var version = data.v;
+					var tag = data.l;
+					// Only one of these should be defined. We can't restore to a version and a tag.
+					// version xor tag.
+					if (!!version ^ !!tag) {
+						var source = user.userId;
+						documentManager.restoreDocument({ webstrateId, tag, version }, source);
+					} else {
+						console.error("Can't restore, need either a tag label or version.");
+					}
+				// Adding a tag to a document version.
+				case "tag":
+					var tag = data.l;
+					var version = parseInt(data.v);
+					// Ensure that label does not begin with a number and that version is a number.
+					if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
+						return;
+					}
+					documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
+						if (err) return console.error(err);
+					});
+					break;
+				// Removing a tag from a document version.
+				case "untag":
+					var tag = data.l;
+					if (tag && !/^\d/.test(tag)) {
+						documentManager.untagDocument(webstrateId, { tag });
+						break;
+					}
+					var version = parseInt(data.v);
+					if (version) {
+						documentManager.untagDocument(webstrateId, { version });
+						break;
+					}
+					console.error("Can't restore, need either a tag label or version.");
+					break;
+			}
+
+			// We return, so the message isn't sent through to ShareDB.
+			return;
+		}
+
+		stream.push(data);
+	});
+
+	client.on('close', function(reason) {
+		clientManager.removeClient(socketId);
+		stream.push(null);
+		stream.emit('close');
+		stream.emit('end');
+		stream.end();
+		try {
+			return client.close(reason);
 		} catch (err) {
 			console.error(err);
 		}

@@ -32,11 +32,47 @@ module.exports = function(documentManager, authConfig) {
 				return next(err);
 			}
 
-			var permissions = getPermissionsFromSnapshot(username, provider, snapshot);
+			var permissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
 			setCachedPermissions(username, provider, permissions, snapshot.id);
 			next(null, permissions);
 		});
-	}
+	};
+
+	/**
+	 * Get a user's permissions for a specific snapshot.
+	 * @param  {string} username Username.
+	 * @param  {string} provider Login provider (GitHub, Facebook, OAuth, ...).
+	 * @param  {JsonML} snapshot ShareDB docuemnt snapshot.
+	 * @return {string}          Document permissions (r, rw).
+	 * @public
+	 */
+	module.getPermissionsFromSnapshot = function(username, provider, snapshot) {
+		var permissionsList;
+
+		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === "html" &&
+			snapshot.data[1] && snapshot.data[1]['data-auth']) {
+			try {
+				permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
+					.replace(/&quot;/g, "\"").replace(/&amp;/g, "&"));
+			} catch (err) {
+				console.warn("Couldn't parse document permissions for", snapshot.id);
+				// We don't have to do anything. No valid document permissions.
+			}
+		}
+
+		// If we found no permissions, resort to default permissions.
+		if (!permissionsList || Object.keys(permissionsList).length === 0) {
+			// If there's also no default permissions, we pretend every user has read-write permissions
+			// lest we lock everybody out. We append a question mark to let the system know that these are
+			// last-resort permissions.
+			if (!defaultPermissionsList) {
+				return "rw?";
+			}
+			permissionsList = defaultPermissionsList;
+		}
+
+		return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
+	};
 
 	/**
 	 * Get a user's default permission.
@@ -47,7 +83,7 @@ module.exports = function(documentManager, authConfig) {
 	 */
 	module.getDefaultPermissions = function(username, provider) {
 		return getUserPermissionsFromPermissionsList(username, provider, defaultPermissionsList);
-	}
+	};
 
 	/**
 	 * Add permissions for a username and provider to a webstrate with the given webstrateId. If the
@@ -69,7 +105,7 @@ module.exports = function(documentManager, authConfig) {
 				return next(err);
 			}
 
-			var currentPermissions = getPermissionsFromSnapshot(username, provider, snapshot);
+			var currentPermissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
 			if (currentPermissions === permissions) {
 				return next();
 			}
@@ -107,42 +143,6 @@ module.exports = function(documentManager, authConfig) {
 			documentManager.submitOp(webstrateId, op, source, next);
 		});
 	};
-
-	/**
-	 * Get a user's permissions for a specific snapshot.
-	 * @param  {string} username Username.
-	 * @param  {string} provider Login provider (GitHub, Facebook, OAuth, ...).
-	 * @param  {JsonML} snapshot ShareDB docuemnt snapshot.
-	 * @return {string}          Document permissions (r, rw).
-	 * @private
-	 */
-	function getPermissionsFromSnapshot(username, provider, snapshot) {
-		var permissionsList;
-
-		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === "html" &&
-			snapshot.data[1] && snapshot.data[1]['data-auth']) {
-			try {
-				permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
-					.replace(/&quot;/g, "\"").replace(/&amp;/g, "&"));
-			} catch (err) {
-				console.warn("Couldn't parse document permissions for", snapshot.id);
-				// We don't have to do anything. No valid document permissions.
-			}
-		}
-
-		// If we found no permissions, resort to default permissions.
-		if (!permissionsList) {
-			// If there's also no default permissions, we pretend every user has read-write permissions
-			// lest we lock everybody out. We append a question mark to let the system know that these are
-			// last-resort permissions.
-			if (!defaultPermissionsList) {
-				return "rw?";
-			}
-			permissionsList = defaultPermissionsList;
-		}
-
-		return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
-	}
 
 	/**
 	 * Extract a user's permissions from a permissions list
