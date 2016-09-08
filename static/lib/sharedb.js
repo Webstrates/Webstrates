@@ -303,6 +303,121 @@ function isUndefined(arg) {
 }
 
 },{}],2:[function(require,module,exports){
+// ISC @ Julien Fontanet
+
+'use strict'
+
+// ===================================================================
+
+var defineProperty = Object.defineProperty
+
+// -------------------------------------------------------------------
+
+var captureStackTrace = Error.captureStackTrace
+if (!captureStackTrace) {
+  captureStackTrace = function captureStackTrace (error) {
+    var container = new Error()
+
+    defineProperty(error, 'stack', {
+      configurable: true,
+      get: function getStack () {
+        var stack = container.stack
+
+        // Replace property with value for faster future accesses.
+        defineProperty(this, 'stack', {
+          value: stack
+        })
+
+        return stack
+      },
+      set: function setStack (stack) {
+        defineProperty(error, 'stack', {
+          configurable: true,
+          value: stack,
+          writable: true
+        })
+      }
+    })
+  }
+}
+
+// -------------------------------------------------------------------
+
+function BaseError (message) {
+  if (message) {
+    defineProperty(this, 'message', {
+      configurable: true,
+      value: message,
+      writable: true
+    })
+  }
+
+  var cname = this.constructor.name
+  if (
+    cname &&
+    cname !== this.name
+  ) {
+    defineProperty(this, 'name', {
+      configurable: true,
+      value: cname,
+      writable: true
+    })
+  }
+
+  captureStackTrace(this, this.constructor)
+}
+
+BaseError.prototype = Object.create(Error.prototype, {
+  // See: https://github.com/julien-f/js-make-error/issues/4
+  constructor: {
+    configurable: true,
+    value: BaseError,
+    writable: true
+  }
+})
+
+// -------------------------------------------------------------------
+
+function makeError (constructor, super_) {
+  if (super_ == null || super_ === Error) {
+    super_ = BaseError
+  } else if (typeof super_ !== 'function') {
+    throw new TypeError('super_ should be a function')
+  }
+
+  var name
+  if (typeof constructor === 'string') {
+    name = constructor
+    constructor = function () { super_.apply(this, arguments) }
+  } else if (typeof constructor === 'function') {
+    name = constructor.name
+  } else {
+    throw new TypeError('constructor should be either a string or a function')
+  }
+
+  // Also register the super constructor also as `constructor.super_` just
+  // like Node's `util.inherits()`.
+  constructor.super_ = constructor['super'] = super_
+
+  constructor.prototype = Object.create(super_.prototype, {
+    constructor: {
+      configurable: true,
+      value: constructor,
+      writable: true
+    },
+    name: {
+      configurable: true,
+      value: name,
+      writable: true
+    }
+  })
+
+  return constructor
+}
+exports = module.exports = makeError
+exports.BaseError = BaseError
+
+},{}],3:[function(require,module,exports){
 // These methods let you build a transform function from a transformComponent
 // function for OT types like JSON0 in which operations are lists of components
 // and transforming them requires N^2 work. I find it kind of nasty that I need
@@ -382,7 +497,7 @@ function bootstrapTransform(type, transformComponent, checkValidOp, append) {
   };
 };
 
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 // Only the JSON type is exported, because the text type is deprecated
 // otherwise. (If you want to use it somewhere, you're welcome to pull it out
 // into a separate module that json0 can depend on).
@@ -391,7 +506,7 @@ module.exports = {
   type: require('./json0')
 };
 
-},{"./json0":4}],4:[function(require,module,exports){
+},{"./json0":5}],5:[function(require,module,exports){
 /*
  This is the implementation of the JSON OT type.
 
@@ -1058,7 +1173,7 @@ json.registerSubtype(text);
 module.exports = json;
 
 
-},{"./bootstrapTransform":2,"./text0":5}],5:[function(require,module,exports){
+},{"./bootstrapTransform":3,"./text0":6}],6:[function(require,module,exports){
 // DEPRECATED!
 //
 // This type works, but is not exported. Its included here because the JSON0
@@ -1316,7 +1431,7 @@ text.invert = function(op) {
 
 require('./bootstrapTransform')(text, transformComponent, checkValidOp, append);
 
-},{"./bootstrapTransform":2}],6:[function(require,module,exports){
+},{"./bootstrapTransform":3}],7:[function(require,module,exports){
 // shim for using process in browser
 var process = module.exports = {};
 
@@ -1478,11 +1593,12 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 (function (process){
 var Doc = require('./doc');
 var Query = require('./query');
 var emitter = require('../emitter');
+var ShareDBError = require('../error');
 var types = require('../types');
 var util = require('../util');
 
@@ -1639,8 +1755,11 @@ Connection.prototype.bindToSocket = function(socket) {
  * @param {String} message.a action
  */
 Connection.prototype.handleMessage = function(message) {
-  var err = message.error;
-  if (err) {
+  var err = null;
+  if (message.error) {
+    // wrap in Error object so can be passed through event emitters
+    err = new Error(message.error.message);
+    err.code = message.error.code;
     // Add the message data to the error object for more context
     err.data = message;
     delete message.error;
@@ -1651,15 +1770,15 @@ Connection.prototype.handleMessage = function(message) {
     case 'init':
       // Client initialization packet
       if (message.protocol !== 1) {
-        err = new Error('Invalid protocol version');
+        err = new ShareDBError(4019, 'Invalid protocol version');
         return this.emit('error', err);
       }
       if (types.map[message.type] !== types.defaultType) {
-        err = new Error('Invalid default type');
+        err = new ShareDBError(4020, 'Invalid default type');
         return this.emit('error', err);
       }
       if (typeof message.id !== 'string') {
-        err = new Error('Invalid client id');
+        err = new ShareDBError(4021, 'Invalid client id');
         return this.emit('error', err);
       }
       this.id = message.id;
@@ -1757,7 +1876,7 @@ Connection.prototype._setState = function(newState, reason) {
     (newState === 'connecting' && this.state !== 'disconnected' && this.state !== 'stopped' && this.state !== 'closed') ||
     (newState === 'connected' && this.state !== 'connecting')
   ) {
-    var err = new Error('Cannot transition directly from ' + this.state + ' to ' + newState);
+    var err = new ShareDBError(5007, 'Cannot transition directly from ' + this.state + ' to ' + newState);
     return this.emit('error', err);
   }
 
@@ -2056,9 +2175,10 @@ Connection.prototype._firstQuery = function(fn) {
 };
 
 }).call(this,require('_process'))
-},{"../emitter":11,"../types":12,"../util":13,"./doc":8,"./query":10,"_process":6}],8:[function(require,module,exports){
+},{"../emitter":12,"../error":13,"../types":14,"../util":15,"./doc":9,"./query":11,"_process":7}],9:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
+var ShareDBError = require('../error');
 var types = require('../types');
 
 /**
@@ -2193,7 +2313,7 @@ Doc.prototype._setType = function(newType) {
     this.data = undefined;
 
   } else {
-    var err = new Error('Missing type ' + newType);
+    var err = new ShareDBError(4008, 'Missing type ' + newType);
     return this.emit('error', err);
   }
 };
@@ -2210,7 +2330,7 @@ Doc.prototype.ingestSnapshot = function(snapshot, callback) {
   if (!snapshot) return callback && callback();
 
   if (typeof snapshot.v !== 'number') {
-    var err = new Error('Missing version in ingested snapshot. ' + this.collection + '.' + this.id);
+    var err = new ShareDBError(5008, 'Missing version in ingested snapshot. ' + this.collection + '.' + this.id);
     if (callback) return callback(err);
     return this.emit('error', err);
   }
@@ -2230,7 +2350,7 @@ Doc.prototype.ingestSnapshot = function(snapshot, callback) {
         return callback && this.once('no write pending', callback);
       }
       // Otherwise, we've encounted an error state
-      var err = new Error('Cannot ingest snapshot in doc with null version. ' + this.collection + '.' + this.id);
+      var err = new ShareDBError(5009, 'Cannot ingest snapshot in doc with null version. ' + this.collection + '.' + this.id);
       if (callback) return callback(err);
       return this.emit('error', err);
     }
@@ -2512,10 +2632,10 @@ function transformX(client, server) {
   if (client.del) return setNoOp(server);
 
   if (server.del) {
-    return new Error('Document was deleted');
+    return new ShareDBError(4017, 'Document was deleted');
   }
   if (server.create) {
-    return new Error('Document alredy created');
+    return new ShareDBError(4018, 'Document alredy created');
   }
 
   // Ignore no-op coming from server
@@ -2523,7 +2643,7 @@ function transformX(client, server) {
 
   // I believe that this should not occur, but check just in case
   if (client.create) {
-    return new Error('Document already created');
+    return new ShareDBError(4018, 'Document already created');
   }
 
   // They both edited the document. This is the normal case for this function -
@@ -2533,9 +2653,16 @@ function transformX(client, server) {
   // The reason is, if we get ops at an old version of the document, this.type
   // might be undefined or a totally different type. By pinning the type to the
   // op data, we make sure the right type has its transform function called.
-  var result = client.type.transformX(client.op, server.op);
-  client.op = result[0];
-  server.op = result[1];
+  if (client.type.transformX) {
+    var result = client.type.transformX(client.op, server.op);
+    client.op = result[0];
+    server.op = result[1];
+  } else {
+    var clientOp = client.type.transform(client.op, server.op, 'left');
+    var serverOp = client.type.transform(server.op, client.op, 'right');
+    client.op = clientOp;
+    server.op = serverOp;
+  }
 };
 
 /**
@@ -2553,7 +2680,7 @@ function transformX(client, server) {
 Doc.prototype._otApply = function(op, source) {
   if (op.op) {
     if (!this.type) {
-      var err = new Error('Cannot apply op to uncreated document. ' + this.collection + '.' + this.id);
+      var err = new ShareDBError(4015, 'Cannot apply op to uncreated document. ' + this.collection + '.' + this.id);
       return this.emit('error', err);
     }
 
@@ -2641,7 +2768,7 @@ Doc.prototype._sendOp = function() {
   }
   var op = this.inflightOp;
   if (!op) {
-    var err = new Error('No op to send on call to _sendOp');
+    var err = new ShareDBError(5010, 'No op to send on call to _sendOp');
     return this.emit('error', err);
   }
 
@@ -2684,7 +2811,7 @@ Doc.prototype._submit = function(op, source, callback) {
   // The op contains either op, create, delete, or none of the above (a no-op).
   if (op.op) {
     if (!this.type) {
-      var err = new Error('Cannot submit op. Document has not been created. ' + this.collection + '.' + this.id);
+      var err = new ShareDBError(4015, 'Cannot submit op. Document has not been created. ' + this.collection + '.' + this.id);
       if (callback) return callback(err);
       return this.emit('error', err);
     }
@@ -2780,16 +2907,18 @@ Doc.prototype._tryCompose = function(op) {
 // Submit an operation to the document.
 //
 // @param operation handled by the OT type
-// @param source
+// @param options  {source: ...}
 // @param [callback] called after operation submitted
 //
 // @fires before op, op, after op
-Doc.prototype.submitOp = function(op, source, callback) {
-  if (typeof source === 'function') {
-    callback = source;
-    source = null;
+Doc.prototype.submitOp = function(component, options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = null;
   }
-  this._submit({op: op}, source, callback);
+  var op = {op: component};
+  var source = options && options.source;
+  this._submit(op, source, callback);
 };
 
 // Create the document, which in ShareJS semantics means to set its type. Every
@@ -2799,27 +2928,27 @@ Doc.prototype.submitOp = function(op, source, callback) {
 //
 // @param data  initial
 // @param type  OT type
-// @param source
+// @param options  {source: ...}
 // @param callback  called when operation submitted
-Doc.prototype.create = function(data, type, source, callback) {
+Doc.prototype.create = function(data, type, options, callback) {
   if (typeof type === 'function') {
     callback = type;
-    source = null;
+    options = null;
     type = null;
-  } else if (typeof source === 'function') {
-    callback = source;
-    source = null;
+  } else if (typeof options === 'function') {
+    callback = options;
+    options = null;
   }
   if (!type) {
     type = types.defaultType.uri;
   }
   if (this.type) {
-    var err = new Error('Document already exists');
+    var err = new ShareDBError(4016, 'Document already exists');
     if (callback) return callback(err);
     return this.emit('error', err);
   }
-
   var op = {create: {type: type, data: data}};
+  var source = options && options.source;
   this._submit(op, source, callback);
 };
 
@@ -2828,20 +2957,21 @@ Doc.prototype.create = function(data, type, source, callback) {
 // document still exists, and still has the version it used to have before you
 // deleted it (well, old version +1).
 //
-// @param source
+// @param options  {source: ...}
 // @param callback  called when operation submitted
-Doc.prototype.del = function(source, callback) {
-  if (typeof source === 'function') {
-    callback = source;
-    source = null;
+Doc.prototype.del = function(options, callback) {
+  if (typeof options === 'function') {
+    callback = options;
+    options = null;
   }
   if (!this.type) {
-    var err = new Error('Document does not exist');
+    var err = new ShareDBError(4015, 'Document does not exist');
     if (callback) return callback(err);
     return this.emit('error', err);
   }
-
-  this._submit({del: true}, source, callback);
+  var op = {del: true};
+  var source = options && options.source;
+  this._submit(op, source, callback);
 };
 
 
@@ -2953,13 +3083,14 @@ function callEach(callbacks, err) {
 }
 
 }).call(this,require('_process'))
-},{"../emitter":11,"../types":12,"_process":6}],9:[function(require,module,exports){
+},{"../emitter":12,"../error":13,"../types":14,"_process":7}],10:[function(require,module,exports){
 exports.Connection = require('./connection');
 exports.Doc = require('./doc');
+exports.Error = require('../error');
 exports.Query = require('./query');
 exports.types = require('../types');
 
-},{"../types":12,"./connection":7,"./doc":8,"./query":10}],10:[function(require,module,exports){
+},{"../error":13,"../types":14,"./connection":8,"./doc":9,"./query":11}],11:[function(require,module,exports){
 (function (process){
 var emitter = require('../emitter');
 
@@ -3152,6 +3283,8 @@ Query.prototype._handleDiff = function(diff) {
         break;
     }
   }
+
+  this.emit('changed', this.results);
 };
 
 Query.prototype._handleExtra = function(extra) {
@@ -3160,7 +3293,7 @@ Query.prototype._handleExtra = function(extra) {
 };
 
 }).call(this,require('_process'))
-},{"../emitter":11,"_process":6}],11:[function(require,module,exports){
+},{"../emitter":12,"_process":7}],12:[function(require,module,exports){
 var EventEmitter = require('events').EventEmitter;
 
 exports.EventEmitter = EventEmitter;
@@ -3172,7 +3305,19 @@ function mixin(Constructor) {
   }
 }
 
-},{"events":1}],12:[function(require,module,exports){
+},{"events":1}],13:[function(require,module,exports){
+var makeError = require('make-error');
+
+function ShareDBError(code, message) {
+  ShareDBError.super.call(this, message);
+  this.code = code;
+};
+
+makeError(ShareDBError);
+
+module.exports = ShareDBError;
+
+},{"make-error":2}],14:[function(require,module,exports){
 
 exports.defaultType = require('ot-json0').type;
 
@@ -3185,7 +3330,7 @@ exports.register = function(type) {
 
 exports.register(exports.defaultType);
 
-},{"ot-json0":3}],13:[function(require,module,exports){
+},{"ot-json0":4}],15:[function(require,module,exports){
 
 exports.doNothing = doNothing;
 function doNothing() {}
@@ -3195,5 +3340,5 @@ exports.hasKeys = function(object) {
   return false;
 };
 
-},{}]},{},[9])(9)
+},{}]},{},[10])(10)
 });

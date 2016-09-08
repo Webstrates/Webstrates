@@ -13,7 +13,7 @@ module.exports = function(cookieHelper) {
 	// socketId to webstrateIds.
 	var clients = {};
 
-	// One-to-many mapping from webstrateIds to clientIds. This could be derived from `clients`, but
+	// One-to-many mapping from webstrateIds to socketIds. This could be derived from `clients`, but
 	// this is faster.
 	var webstrates = {};
 
@@ -75,10 +75,9 @@ module.exports = function(cookieHelper) {
 			webstrates[webstrateId] = [];
 		}
 
-		sendToClient(socketId, {
+		module.sendToClient(socketId, {
 			wa: "hello",
 			id: socketId,
-			c: "webstrates",
 			d: webstrateId,
 			user: clients[socketId].user,
 			clients: webstrates[webstrateId]
@@ -87,7 +86,6 @@ module.exports = function(cookieHelper) {
 		broadcastToWebstrateClients(webstrateId, {
 			wa: "clientJoin",
 			id: socketId,
-			c: "webstrates",
 			d: webstrateId
 		});
 
@@ -112,7 +110,6 @@ module.exports = function(cookieHelper) {
 		broadcastToWebstrateClients(webstrateId, {
 			wa: "clientPart",
 			id: socketId,
-			c: "webstrates",
 			d: webstrateId
 		});
 	};
@@ -180,7 +177,7 @@ module.exports = function(cookieHelper) {
 
 		// If recipients is defined, make sure we only send to the recipients, and only the recipients
 		// that are actually listening.
-		if (recipients) {
+		if (Array.isArray(recipients)) {
 			recipients = recipients.filter(function(recipientId) {
 				return listeners.includes(recipientId);
 			});
@@ -189,15 +186,49 @@ module.exports = function(cookieHelper) {
 		}
 
 		recipients.forEach(function(recipientSocketId) {
-			sendToClient(recipientSocketId, {
+			module.sendToClient(recipientSocketId, {
 				wa: "publish",
 				id: nodeId,
-				c: "webstrates",
 				d: webstrateId,
 				s: senderSocketId,
-				msg: message
+				m: message
 			});
 		});
+	};
+
+	/**
+	 * Send message to clients in a webstrate.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @param  {string} message  Message.
+	 * @return {bool}            True on success, false on failure.
+	 * @public
+	 */
+	module.sendToClients = function(webstrateId, message) {
+		if (!webstrates[webstrateId]) {
+			return true;
+		}
+
+		return webstrates[webstrateId].reduce(function(success, socketId) {
+			return module.sendToClient(socketId, message) && success;
+		}, true);
+	};
+
+	/**
+	 * Send message to client by socketId.
+	 * @param  {string} socketId SocketId.
+	 * @param  {string} message  Message.
+	 * @return {bool}            True on success, false on failure.
+	 * @public
+	 */
+	module.sendToClient = function(socketId, message) {
+		message.c = "webstrates";
+		try {
+			clients[socketId].socket.send(JSON.stringify(message));
+		} catch (e) {
+			module.removeClient(socketId);
+			return false;
+		}
+		return true;
 	};
 
 	/**
@@ -211,26 +242,9 @@ module.exports = function(cookieHelper) {
 			return;
 		}
 		webstrates[webstrateId].forEach(function(socketId) {
-			sendToClient(socketId, message);
+			module.sendToClient(socketId, message);
 		});
-	}
-
-	/**
-	 * Send message to client by socketId.
-	 * @param  {string} socketId SocketId.
-	 * @param  {string} message  Message.
-	 * @return {bool}            True on success, false on failure.
-	 * @private
-	 */
-	function sendToClient(socketId, message) {
-		try {
-			clients[socketId].socket.send(JSON.stringify(message));
-		} catch (e) {
-			module.removeClient(socketId);
-			return false;
-		}
-		return true;
-	}
+	};
 
 	return module;
 };

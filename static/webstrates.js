@@ -24,6 +24,16 @@ root.webstrates = (function(webstrates) {
 		// One-to-one mapping from nodeIds to their nodes.
 		var nodeIds = {};
 
+		// Holds current tag label if it exists.
+		var currentTag;
+
+		// Holds a list of all tags.
+		var allTags;
+
+		// Holds a list of future tags in case we have received tags before our own document has been
+		// synchronized to this version.
+		var futureTags = {};
+
 		var fragmentObservers = {};
 		var fragmentParentMap = {};
 		var observer, doc, rootElement, pathTree;
@@ -42,12 +52,14 @@ root.webstrates = (function(webstrates) {
 		var transcluded = false;
 
 		// Lists containing callbacks for events that the user may subscribe to.
-		var callbackLists = {
-			loaded: [],      // Callbacks triggered when the document has been loaded.
-			transcluded: [], // Callbacks triggered when the document has been transcluded.
-			clientJoin: [],  // Callbacks triggered when a client connects to the webstrate.
-			clientPart: [],  // Callbacks triggered when a client disconnects from the webstrate.
-			signal: []       // Callbacks triggered when a client sends a signal.
+		var callbackLists = { // Callbacks are triggered when:
+			loaded: [],         // the document has been loaded.
+			transcluded: [],    // the document has been transcluded.
+			clientJoin: [],     // a client connects to the webstrate.
+			clientPart: [],     // a client disconnects from the webstrate.
+			signal: [],         // a client sends a signal.
+			tag: [],            // a new tag has been set.
+			untag: []           // a tag has been removed.
 		};
 
 		// Setup event listeners for events coming both from ourselves, but also anything coming
@@ -140,18 +152,21 @@ root.webstrates = (function(webstrates) {
 
 			switch (data.wa) {
 				case "hello":
-					module.clientId = data.id;
+					var clientId = data.id;
+					module.clientId = clientId;
 					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
-					module.clients.push(data.id);
+					module.clients.push(clientId);
 					break;
 				case "clientJoin":
-					module.clients.push(data.id);
-					triggerCallbacks(callbackLists.clientJoin, data.id);
+					var clientId = data.id;
+					module.clients.push(clientId);
+					triggerCallbacks(callbackLists.clientJoin, clientId);
 					break;
 				case "clientPart":
-					module.clients.splice(module.clients.indexOf(data.id), 1);
-					triggerCallbacks(callbackLists.clientPart, data.id);
+					var clientId = clientId;
+					module.clients.splice(module.clients.indexOf(clientId), 1);
+					triggerCallbacks(callbackLists.clientPart, clientId);
 					break;
 				case "publish":
 					var nodeId = data.id;
@@ -160,11 +175,50 @@ root.webstrates = (function(webstrates) {
 						return;
 					}
 					var senderId = data.s;
-					var message = data.msg;
+					var message = data.m;
 					webstrate.fireEvent("signal", message, senderId, node);
 					if (node) {
 						node.webstrate.fireEvent("signal", message, senderId, node);
 					}
+					break;
+				case "tags":
+					allTags = {};
+					data.tags.forEach(function(tag) {
+						if (tag.v === module.version) {
+							currentTag = tag.label;
+						}
+						allTags[tag.v] = tag.label;
+					});
+					break;
+				case "tag":
+					var label = data.l;
+					var version = data.v;
+
+					// The label may already be in use, but since labels are unique, we should remove it.
+					var existingVersion = Object.keys(allTags).find(function(candidateVersion) {
+						return allTags[candidateVersion] === label;
+					});
+					if (existingVersion) {
+						delete allTags[existingVersion];
+					}
+
+					allTags[version] = label;
+					if (module.version === version) {
+						currentTag = label;
+					} else if (version > module.version) {
+						futureTags[version] = label;
+					}
+					triggerCallbacks(callbackLists.tag, version, label);
+					break;
+				case "untag":
+					var label = data.l;
+					var version = data.v;
+					if (!version && label) {
+						version = Object.keys(allTags).find(function(candidateVersion) {
+							return allTags[candidateVersion] === label;
+						});
+					}
+					delete allTags[version];
 					break;
 				default:
 					console.warn("Unknown event", data);
@@ -179,6 +233,7 @@ root.webstrates = (function(webstrates) {
 			if (error) {
 				throw error;
 			}
+			currentTag = allTags[doc.version];
 			populateElementWithDocument(webstrateId, doc, targetElement);
 			rootElement = targetElement.children[0];
 			pathTree = new webstrates.PathTree(rootElement, null, true);
@@ -476,6 +531,19 @@ root.webstrates = (function(webstrates) {
 		 */
 		var setupOpListener = function(doc, rootElement, pathTree) {
 			doc.on('op', function onOp(ops, source) {
+				// When an op comes in, the document version changes and so does the tag. In rare cases, we
+				// may have received a tag for a version we were yet to be in at the time, in which case we
+				// may already know the tag of the new version, but most likely, this will set currentTag
+				// to undefined.
+				currentTag = futureTags[module.version];
+				// Move all futureTags that are no longer "future" into allTags.
+				Object.keys(futureTags).forEach(function(futureVersion) {
+					if (futureVersion <= module.version) {
+						allTags[futureVersion] = futureTags[futureVersion];
+						delete futureTags[futureVersion];
+					}
+				});
+
 				// If source is truthy, it is our own op, which should not be applied (again).
 				if (source) {
 					return;
@@ -536,7 +604,7 @@ root.webstrates = (function(webstrates) {
 				wa: "publish",
 				d: webstrateId,
 				id: nodeId,
-				msg: msg
+				m: msg
 			};
 			if (recipients) {
 				msgObj.recipients = recipients;
@@ -600,9 +668,9 @@ root.webstrates = (function(webstrates) {
 
 			/**
 			 * Signal a message on the element to all subscribers or a list of recipients.
-			 * @param {*} msg            Message to be signalled. Can
+			 * @param {*} msg            Message to be signalled.
 			 * @param {array} recipients (optional) List of recipient client IDs. If no recipients are
-			 *                           specified, all listening clients will recieve the mesasge.
+			 *                           specified, all listening clients will receive the message.
 			 * @public
 			 */
 			node.webstrate.signal = function(msg, recipients) {
@@ -657,6 +725,68 @@ root.webstrates = (function(webstrates) {
 					});
 				}
 			}
+		};
+
+		/**
+		 * Tag a document with a label at a specific version. Triggered by `webstrate.tag(label,
+		 * version)`.
+		 * @param  {string} label    Tag label.
+		 * @param  {integer} version Version.
+		 * @private
+		 */
+		var tagDocument = function(label, version) {
+			if (/^\d/.test(label)) {
+				throw new Error("Tag name should not begin with a number");
+			}
+			if (!version) {
+				version = module.version;
+			}
+			if (isNaN(version)) {
+				throw new Error("Version must be a number");
+			}
+			if (allTags[module.version] === label) return;
+			allTags[module.version] = label;
+			websocket.send(JSON.stringify({
+				wa: "tag",
+				d: webstrateId,
+				v: version,
+				l: label
+			}));
+		};
+
+		/**
+		 * Remove a tag from a version of the document. Triggered by `webstrate.untag(label, version)`.
+		 * @param  {integer} version Version.
+		 * @private
+		 */
+		var untagDocument = function(tagOrVersion) {
+			if (!tagOrVersion) {
+				throw new Error("Tag label or version number must he provided");
+			}
+
+			var msgObj = {
+				wa: "untag",
+				d: webstrateId,
+			};
+
+			if (/^\d/.test(tagOrVersion)) {
+				msgObj.v = tagOrVersion;
+				if (!allTags[tagOrVersion]) {
+					throw new Error("No tag exists for provided version");
+				}
+				var version = tagOrVersion;
+			} else {
+				msgObj.l = tagOrVersion;
+				var version = Object.keys(allTags).find(function(candidateVersion) {
+					return allTags[candidateVersion] === tagOrVersion;
+				});
+				if (!version) {
+					throw new Error("Provided tag does not exist");
+				}
+			}
+
+			delete allTags[version];
+			websocket.send(JSON.stringify(msgObj));
 		};
 
 		/**
@@ -735,6 +865,52 @@ root.webstrates = (function(webstrates) {
 		};
 
 		/**
+		 * Restore document to a previous version, either by version number or tag label.
+		 * Labels cannot begin with a digit whereas versions consist only of digits, so distinguishing
+		 * is easy.
+		 * @param  {string} tagOrVersion Tag label or version number.
+		 */
+		module.restore = function(tagOrVersion) {
+			if (!tagOrVersion) {
+				throw new Error("Tag label or version number must he provided");
+			}
+
+			var msgObj = {
+				wa: "restore",
+				d: webstrateId,
+			};
+
+			if (/^\d/.test(tagOrVersion)) {
+				msgObj.v = tagOrVersion;
+			} else {
+				msgObj.l = tagOrVersion;
+			}
+
+			websocket.send(JSON.stringify(msgObj));
+		};
+
+		/**
+		 * Tag a document with a label at a specific version.
+		 * @param  {string} label    Tag label.
+		 * @param  {integer} version Version.
+		 * @public
+		 */
+		module.tag = function(label, version) {
+			if (!label && !version) {
+				return currentTag;
+			}
+			tagDocument(label, version);
+		};
+
+		module.untag = function(tagOrVersion) {
+			untagDocument(tagOrVersion)
+		};
+
+		module.tags = function() {
+			return allTags;
+		}
+
+		/**
 		 * Exposes document version through getter.
 		 * @return {Number} Document version
 		 * @public
@@ -742,6 +918,9 @@ root.webstrates = (function(webstrates) {
 		Object.defineProperty(module, "version", {
 			get: function getVersion() {
 				return doc.version;
+			},
+			set: function setVersion(v) {
+				throw new Error("Version is read-only");
 			}
 		});
 
