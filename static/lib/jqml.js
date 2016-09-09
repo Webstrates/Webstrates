@@ -36,7 +36,7 @@
 			Object.getPrototypeOf(obj) === Object.prototype && !obj.nodeType;
 	}
 
-	function createObj(elem, xmlNs) {
+	function createObj(elem, xmlNs, scripts) {
 		var fragment = document.createDocumentFragment();
 		var i = 0;
 		var selector;
@@ -55,7 +55,7 @@
 		for (; i < elem.length; i++) {
 			// If array create new element
 			if (isArray(elem[i])) {
-				fragment.appendChild(createObj(elem[i], xmlNs));
+				fragment.appendChild(createObj(elem[i], xmlNs, scripts));
 
 				// If object set element attributes
 			} else if (isPlainObject(elem[i])) {
@@ -68,9 +68,10 @@
 						selector = document.createElementNS(xmlNs, name);
 					} else {
 						selector = document.createElement(name);
-					};
+					}
 					if (selector.tagName.toLowerCase() === "script") {
 						selector.async = false;
+						scripts && scripts.push(selector);
 					}
 					for (var index in elem[i]) {
 						// the __wid attribute is a unique ID assigned each node and should not be in the DOM.
@@ -120,9 +121,9 @@
 		return fragment.childNodes;
 	}
 
-	global.jqml = function(arg, namespace) {
+	global.jqml = function(arg, namespace, scripts) {
 		// Return new jQuery object of elements
-		return createObj(arg, namespace);
+		return createObj(arg, namespace, scripts);
 	};
 
 })(document, this);

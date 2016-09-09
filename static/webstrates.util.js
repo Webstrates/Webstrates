@@ -40,11 +40,22 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMNode} childElement  Child element.
 	 */
 	util.appendChildWithoutScriptExecution = function(parentElement, childElement, referenceNode) {
+		// Remove all children, so we can later insert them. This way, we can prevent script execution.
+		var childElementsChildren = [];
+		while (childElement.firstChild) {
+			childElementsChildren.push(childElement.removeChild(childElement.firstChild));
+		}
+
 		if (childElement.tagName && childElement.tagName.toLowerCase() === "script") {
-			var script = childElement.innerHTML;
-			childElement.innerHTML = "// Execution prevention";
-			parentElement.insertBefore(childElement, referenceNode || null);
-			childElement.innerHTML = script;
+				var src = childElement.src;
+				var innerHTML = childElement.innerHTML;
+				if (src) childElement.src = "about:blank";
+				// This is so weird! childElement.innerHTML is empty, but it's clearly not! Otherwise, we
+				// should check here: if (innerHTML) { ... }, but now we can't.
+				childElement.innerHTML = "// Execution prevention";
+				parentElement.insertBefore(childElement, referenceNode || null);
+				if (src) childElement.src = src;
+				childElement.innerHTML = innerHTML;
 		} else {
 			// If parentElement.content exists, parentElement contains a documentFragment, and we should
 			// be adding the content to this documentFragment instead. This happens when parentElement is
@@ -54,8 +65,55 @@ root.webstrates = (function(webstrates) {
 			}
 			parentElement.insertBefore(childElement, referenceNode || null);
 		}
+
+		var childElemensChild;
+		while (childElemensChild = childElementsChildren.shift()) {
+			util.appendChildWithoutScriptExecution(childElement, childElemensChild);
+		}
 	};
 
+	/**
+	 * Reinsert and execute an array of scripts in order.
+	 * @param {array}    scripts  Array of script DOM elements.
+	 * @param {Function} callback Function to call once all scripts have been executed.
+	 */
+	util.executeScripts = function(scripts, callback) {
+		var script = scripts.shift();
+		if (!script) {
+			return callback();
+		}
+
+		var executeImmediately = !script.src;
+		var newScript = document.createElement("script");
+		if (!executeImmediately) {
+			newScript.onload = function() {
+				util.executeScripts(scripts, callback);
+			};
+			newScript.onerror = function(e) {
+				util.executeScripts(scripts, callback);
+			};
+		}
+
+		for (var i = 0; i < script.attributes.length; i++) {
+			var attr = script.attributes[i];
+			newScript.setAttribute(attr.nodeName, attr.nodeValue);
+		}
+
+		newScript.innerHTML = script.innerHTML;
+
+		script.parentElement.insertBefore(newScript, script);
+		script.remove();
+
+		if (executeImmediately) {
+			util.executeScripts(scripts, callback);
+		}
+	}
+
+	/**
+	 * Get child nodes of an element. If the element is a fragment, get the content's child nodes.
+	 * @param  {DOMElement} parentElement Element to get child nodes of.
+	 * @return {array}                    List of child nodes.
+	 */
 	util.getChildNodes = function(parentElement) {
 		if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
 			parentElement = parentElement.content;

@@ -252,14 +252,15 @@ root.webstrates = (function(webstrates) {
 				throw error;
 			}
 			currentTag = allTags[doc.version];
-			populateElementWithDocument(webstrateId, doc, targetElement);
-			rootElement = targetElement.children[0];
-			pathTree = new webstrates.PathTree(rootElement, null, true);
-			setupMutationObservers(doc, rootElement, function afterMutationCallback() {
-				pathTree.check();
+			populateElementWithDocument(webstrateId, doc, targetElement, function documentPopulated() {
+				rootElement = targetElement.children[0];
+				pathTree = new webstrates.PathTree(rootElement, null, true);
+				setupMutationObservers(doc, rootElement, function afterMutationCallback() {
+					pathTree.check();
+				});
+				setupOpListener(doc, rootElement, pathTree);
+				notifyListeners(webstrateId);
 			});
-			setupOpListener(doc, rootElement, pathTree);
-			notifyListeners(webstrateId);
 		});
 
 		/**
@@ -270,7 +271,7 @@ root.webstrates = (function(webstrates) {
 		 * @param {DOMNode} targetElement Element to be populated.
 		 * @private
 		 */
-		var populateElementWithDocument = function(webstrateId, doc, targetElement) {
+		var populateElementWithDocument = function(webstrateId, doc, targetElement, callback) {
 			// Empty the document, so we can use it.
 			while (targetElement.firstChild) {
 				targetElement.removeChild(targetElement.firstChild);
@@ -296,7 +297,13 @@ root.webstrates = (function(webstrates) {
 			if (doc.type.name !== 'json0') {
 				throw `Unsupported document type: ${sjsDocument.type.name}`;
 			}
-			targetElement.appendChild(jqml(doc.data));
+
+			// In order to execute scripts synchronously, we insert them all without execution, and then
+			// execute them in order afterwards.
+			var scripts = [];
+			webstrates.util.appendChildWithoutScriptExecution(targetElement,
+				jqml(doc.data, null, scripts));
+			webstrates.util.executeScripts(scripts, callback);
 		};
 
 		/**
