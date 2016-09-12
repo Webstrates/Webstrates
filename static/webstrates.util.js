@@ -46,16 +46,36 @@ root.webstrates = (function(webstrates) {
 			childElementsChildren.push(childElement.removeChild(childElement.firstChild));
 		}
 
+		// To prevent scripts from being executed when inserted, we use a little hack. Before inserting
+		// the script, we replace the actual script with dummy content, causing that to be executed
+		// instead of the actual script. If it's an inline script, we insert a script with dummy content
+		// ("// Execution prevention"), and then replace the innerHTML afterwards. If the script is from
+		// an external resource, set the src attribute "about:blank", and then set it to the actual src.
+		// This way, only "about:blank" will be loaded.
+		// To prevent issues with any other attributes (e.g. crossorigin and integrity), we also remove
+		// all those attributes and insert them later.
 		if (childElement.tagName && childElement.tagName.toLowerCase() === "script") {
-				var src = childElement.src;
-				var innerHTML = childElement.innerHTML;
-				if (src) childElement.src = "about:blank";
-				// This is so weird! childElement.innerHTML is empty, but it's clearly not! Otherwise, we
-				// should check here: if (innerHTML) { ... }, but now we can't.
-				childElement.innerHTML = "// Execution prevention";
-				parentElement.insertBefore(childElement, referenceNode || null);
-				if (src) childElement.src = src;
-				childElement.innerHTML = innerHTML;
+			// Save all attributes and innerHTML.
+			var src = childElement.src;
+			var attrs = [];
+			Array.from(childElement.attributes).forEach(function(attr) {
+				attrs.push(attr);
+				childElement.removeAttribute(attr.nodeName);
+			});
+			var innerHTML = childElement.innerHTML;
+			if (src) {
+				childElement.src = "about:blank";
+			}
+			childElement.innerHTML = "// Execution prevention";
+
+			// Now insert a bare script (dummy content and about:blank src).
+			parentElement.insertBefore(childElement, referenceNode || null);
+
+			// And re-add attributes and real content.
+			attrs.forEach(function(attr) {
+				childElement.setAttribute(attr.nodeName, attr.nodeValue);
+			});
+			childElement.innerHTML = innerHTML;
 		} else {
 			// If parentElement.content exists, parentElement contains a documentFragment, and we should
 			// be adding the content to this documentFragment instead. This happens when parentElement is
