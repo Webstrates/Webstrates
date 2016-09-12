@@ -104,12 +104,9 @@ root.webstrates = (function(webstrates) {
 		}
 
 		var executeImmediately = !script.src;
-		var newScript = document.createElement("script");
+		var newScript = document.createElementNS(script.namespaceURI, "script");
 		if (!executeImmediately) {
-			newScript.onload = function() {
-				util.executeScripts(scripts, callback);
-			};
-			newScript.onerror = function(e) {
+			newScript.onload = newScript.onerror = function() {
 				util.executeScripts(scripts, callback);
 			};
 		}
