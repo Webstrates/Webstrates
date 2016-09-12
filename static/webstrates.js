@@ -66,14 +66,14 @@ root.webstrates = (function(webstrates) {
 		// useful to access the Webstrate object before the element has been added to the DOM.
 		// Therefore, we add Webstrate objects to all elements created with document.createElement and
 		// document.createElementNS immediately here.
-		document.__createElement = document.createElement;
+		document.__createElementNS = document.createElementNS;
 		document.createElementNS = function(namespaceURI, qualifiedName) {
 			var element = document.__createElementNS(namespaceURI, qualifiedName);
 			attachWebstrateObjectToNode(element);
 			return element;
 		};
 
-		document.__createElementNS = document.createElementNS;
+		document.__createElement = document.createElement;
 		document.createElement = function(tagName, options) {
 			var element = document.__createElement(tagName, options);
 			attachWebstrateObjectToNode(element);
@@ -302,7 +302,7 @@ root.webstrates = (function(webstrates) {
 			// execute them in order afterwards.
 			var scripts = [];
 			webstrates.util.appendChildWithoutScriptExecution(targetElement,
-				jqml(doc.data, null, scripts));
+				jqml(doc.data, undefined, scripts));
 			webstrates.util.executeScripts(scripts, callback);
 		};
 

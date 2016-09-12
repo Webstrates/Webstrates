@@ -30,7 +30,6 @@ module.exports = function(documentManager, permissionManager) {
 				return res.status(409).send(String(err));
 			}
 
-			// TODO: We could use getPermissionsFromSnapshot and save a database call here.
 			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 

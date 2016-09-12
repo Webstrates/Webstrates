@@ -61,7 +61,7 @@
 			} else if (isPlainObject(elem[i])) {
 				if (name) {
 					name = webstrates.util.sanitizeString(name);
-					if (xmlNs === undefined) {
+					if (xmlNs) {
 						xmlNs = getNs(elem[i]);
 					}
 					if (xmlNs) {
@@ -80,7 +80,7 @@
 						}
 						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 						index = webstrates.util.sanitizeString(index);
-						if (xmlNs !== undefined) {
+						if (xmlNs) {
 							if (index === "href" || index === "xlink:href") {
 								selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
 							}
@@ -122,7 +122,6 @@
 	}
 
 	global.jqml = function(arg, namespace, scripts) {
-		// Return new jQuery object of elements
 		return createObj(arg, namespace, scripts);
 	};
 
