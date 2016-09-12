@@ -230,21 +230,26 @@ root.webstrates = (function(webstrates) {
 		var parentPathNode = parentElement instanceof PathTree ? parentElement
 			: PathTree.getPathNode(parentElement);
 
-		// Let's not create side effects -- clone path array.
-		path = path.slice(0);
-
-		var childIndex = path.shift() - jsonml.ELEMENT_LIST_OFFSET;
-		var childPathNode = parentPathNode && parentPathNode.children[childIndex];
-
-		var nextChildIndex = path[0];
-		if (path.length === 0 || nextChildIndex === jsonml.TAG_NAME_INDEX
-			|| nextChildIndex === jsonml.ATTRIBUTE_INDEX) {
-			var childElement = childPathNode && childPathNode.DOMNode;
-			var parentElement = parentPathNode.DOMNode;
-			return [childElement, childIndex, parentElement, nextChildIndex];
+		var jsonmlIndex = path[0];
+		if (jsonmlIndex === jsonml.ATTRIBUTE_INDEX) {
+			// We could calculate childIndex and parentElement here, but since we won't be needing them,
+			// let's not waste resources.
+			return [parentElement, ];
 		}
 
-		return PathTree.elementAtPath(childPathNode, path);
+		var childIndex = jsonmlIndex - jsonml.ELEMENT_LIST_OFFSET;
+		var childPathNode = parentPathNode && parentPathNode.children[childIndex];
+
+		var nextJsonmlIndex = path[1];
+		if (path.length === 1
+			|| nextJsonmlIndex === jsonml.TAG_NAME_INDEX
+			|| nextJsonmlIndex === jsonml.ATTRIBUTE_INDEX) {
+			var childElement = childPathNode && childPathNode.DOMNode;
+			var parentElement = parentPathNode.DOMNode;
+			return [childElement, childIndex, parentElement, nextJsonmlIndex];
+		}
+
+		return PathTree.elementAtPath(childPathNode, path.slice(1));
 	}
 
 	webstrates.PathTree = PathTree;

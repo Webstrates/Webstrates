@@ -32,6 +32,32 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
+	 * Get child nodes of an element. If the element is a fragment, get the content's child nodes.
+	 * @param  {DOMElement} parentElement Element to get child nodes of.
+	 * @return {array}                    List of child nodes.
+	 */
+	util.getChildNodes = function(parentElement) {
+		if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
+			parentElement = parentElement.content;
+		}
+		return parentElement.childNodes;
+	};
+
+	/**
+	 * Traverses an element tree and applies a callback to each element.
+	 * @param {DOMNode}  element  Element tree to traverse.
+	 * @param {Function} callback Callback.
+	 * @public
+	 */
+	util.recursiveForEach = function(element, callback) {
+		callback(element);
+
+		Array.from(util.getChildNodes(element)).forEach(function(childNode) {
+			util.recursiveForEach(childNode, callback);
+		});
+	};
+
+	/**
 	 * Append a DOM element childElement to another DOM element parentElement. If the DOM element to
 	 * be appended is a script, prevent the execution of the script. If the parentElement is a
 	 * <template>, add the child to the parentElement's documentFragment instead. If a referenceNode
@@ -127,32 +153,6 @@ root.webstrates = (function(webstrates) {
 	}
 
 	/**
-	 * Get child nodes of an element. If the element is a fragment, get the content's child nodes.
-	 * @param  {DOMElement} parentElement Element to get child nodes of.
-	 * @return {array}                    List of child nodes.
-	 */
-	util.getChildNodes = function(parentElement) {
-		if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
-			parentElement = parentElement.content;
-		}
-		return parentElement.childNodes;
-	};
-
-	/**
-	 * Traverses an element tree and applies a callback to each element.
-	 * @param {DOMNode}   element Element tree to traverse.
-	 * @param {Function} callback Callback.
-	 * @public
-	 */
-	util.recursiveForEach = function(element, callback) {
-		callback(element);
-
-		Array.from(util.getChildNodes(element)).forEach(function(childNode) {
-			util.recursiveForEach(childNode, callback);
-		});
-	};
-
-	/**
 	 * Removes characters that are illegal in attributes and tag names.
 	 * @param  {string} tagName Unsanitized string.
 	 * @return {string}         Sanitized string.
@@ -207,7 +207,7 @@ root.webstrates = (function(webstrates) {
 
 	/**
 	 * Get random string of size.
-	 * @param  {int} size        Expected length of string (optional).
+	 * @param  {int}    size     Expected length of string (optional).
 	 * @param  {string} alphabet List of characters to be used in string (optional).
 	 * @return {string}          Generated string.
 	 * @public

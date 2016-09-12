@@ -21,6 +21,7 @@ root.webstrates = (function(webstrates) {
 	 * Extract the XML namespace from a DOM element.
 	 * @param  {DOMNode} element Element.
 	 * @return {string}          Namespace string.
+	 * @private
 	 */
 	var getNamespace = function(element) {
 		if (!element || !element.getAttribute) {
@@ -38,6 +39,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMPath} path          Path to follow on DOMNode. Last element of path is the attribute
 	 *                                key.
 	 * @param {string} value          Attribute value.
+	 * @private
 	 */
 	var setAttribute = function(rootElement, path, attributeName, attributeValue) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
@@ -49,6 +51,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMNode} rootElement   DOMNode usf ed as root element for path navigation.
 	 * @param {DOMPath} path          Path to fllow on DOMNode. Last element of path is the attribute
 	 *                                key.
+	 * @private
 	 */
 	var removeAttribute = function(rootElement, path, attributeName) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
@@ -60,6 +63,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMNode} rootElement   DOMNode used as root element for path navigation.
 	 * @param {DOMPath} path          Path to follow on DOMNode.
 	 * @param {mixed} value           Element to insert, either a text string or JQML element.
+	 * @private
 	 */
 	var insertNode = function(rootElement, path, value) {
 		var [childElement, childIndex, parentElement] =
@@ -90,6 +94,7 @@ root.webstrates = (function(webstrates) {
 	 * Recursively navigates an element using path to delete an element.
 	 * @param {DOMNode} rootElement   DOMNode used as root element for path navigation.
 	 * @param {DOMPath} path          Path to follow on DOMNode.
+	 * @private
 	 */
 	var deleteNode = function(rootElement, path) {
 		var [childElement, childIndex, parentElement] =
@@ -112,6 +117,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMNode} rootElement    DOMNode used as root element for path navigation.
 	 * @param {DOMPath} path          Path to follow on DOMNode.
 	 * @param {mixed} value           Element to insert, new tag name, or new set of attributes.
+	 * @private
 	 */
 	var replaceNode = function(rootElement, path, value) {
 		var [childElement, childIndex, parentElement, indexType] =
@@ -186,6 +192,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMPath} path          Path to follow on DOMNode.
 	 * @param {int} charIndex         Index in existing string to insert new string at.
 	 * @param {string} value          String to be inserted.
+	 * @private
 	 */
 	var insertInText = function(rootElement, path, charIndex, value) {
 		var [childElement, childIndex, parentElement, indexType] =
@@ -195,7 +202,7 @@ root.webstrates = (function(webstrates) {
 		switch (indexType) {
 			case jsonml.TAG_NAME_INDEX:
 				// Diff changes to tag names is not supported.
-				throw Error("Unsupported indexType jsonml.TAGNAME_INDEX (1)");
+				throw Error("Unsupported indexType jsonml.TAGNAME_INDEX (0)");
 				break;
 			case jsonml.ATTRIBUTE_INDEX:
 				// This is not necessarily an attribute change, because the attribuet object in JsonML is
@@ -238,6 +245,7 @@ root.webstrates = (function(webstrates) {
 	 * @param {DOMPath} path          Path to follow on DOMNode.
 	 * @param {int} charIndex         Index in existing string to remove string from.
 	 * @param {string} value          String to be removed.
+	 * @private
 	 */
 	var deleteInText = function(rootElement, path, charIndex, value) {
 		var [childElement, childIndex, parentElement, indexType] =
@@ -287,6 +295,7 @@ root.webstrates = (function(webstrates) {
 	 * Apply an operation to an element.
 	 * @param  {Op} op   Operation to be applied. Contains path and op type.
 	 * @param  {DOMNode} DOMNode used as root element for path navigation.
+	 * @public
 	 */
 	var applyOp = function(op, rootElement) {
 		var path = op.p;
