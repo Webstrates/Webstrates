@@ -61,7 +61,7 @@
 			} else if (isPlainObject(elem[i])) {
 				if (name) {
 					name = webstrates.util.sanitizeString(name);
-					if (xmlNs) {
+					if (!xmlNs) {
 						xmlNs = getNs(elem[i]);
 					}
 					if (xmlNs) {
