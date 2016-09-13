@@ -281,8 +281,8 @@ module.exports = function(clientManager, share, agent, db) {
 				// Therefore, we delete anything with the label or version, and then insert it again.
 				db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]}, function(err) {
 					if (err) return next && next(err);
-					// And now insert.
-					db.tags.insert({ webstrateId, label, v: version }, function(err) {
+					// And now reinsert.
+					db.tags.insert({ webstrateId, v: version, label, data, type }, function(err) {
 						if (err) return next && next(err);
 						return next && next(null, version, label);
 					});

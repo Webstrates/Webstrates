@@ -725,7 +725,7 @@ root.webstrates = (function(webstrates) {
 						});
 					}
 				}
-			}
+			};
 
 			var pathNode = webstrates.PathTree.getPathNode(node);
 			// Create a unique ID for each element.
