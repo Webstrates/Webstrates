@@ -34,12 +34,12 @@ module.exports = function(documentManager, permissionManager) {
 				req.user.provider, snapshot);
 
 			// If the webstrate doesn't exist, write permissions are required to create it.
-			if (!snapshot.type && permissions.indexOf("w") === -1) {
+			if (!snapshot.type && !permissions.includes("w")) {
 				return res.send("Permission denied");
 			}
 
 			// If the webstrate does exist, read permissions are required to access it.
-			if (permissions.indexOf("r") === -1) {
+			if (!permissions.includes("r")) {
 				return res.send("Permission denied");
 			}
 
@@ -96,6 +96,11 @@ module.exports = function(documentManager, permissionManager) {
 			// If the user is requesting to restore the document to an old version by calling
 			// /<id>?restore=<version>.
 			if (typeof req.query.restore !== "undefined") {
+				// Restoring requires write permissions.
+				if (!permissions.includes("w")) {
+					return res.send("Permission denied");
+				}
+
 				var tagOrVersion = req.query.restore;
 				var version;
 				var tag;
@@ -130,6 +135,11 @@ module.exports = function(documentManager, permissionManager) {
 			}
 
 			if (typeof req.query.delete !== "undefined") {
+				// Deleting requires write permissions.
+				if (!permissions.includes("w")) {
+					return res.send("Permission denied");
+				}
+
 				var source = req.user.userId;
 				return documentManager.deleteDocument(webstrateId, source, function(err) {
 					if (err) {
@@ -159,7 +169,7 @@ module.exports = function(documentManager, permissionManager) {
 			req.user.provider);
 
 		// If the user has no default write permissions, they're not allowed to create documents.
-		if (defaultPermissions.indexOf("w") === -1) {
+		if (!defaultPermissions.includes("w")) {
 			return res.send("Permission denied");
 		}
 
@@ -168,7 +178,7 @@ module.exports = function(documentManager, permissionManager) {
 		if (prototypeId) {
 			return permissionManager.getPermissions(req.user.username, req.user.provider, prototypeId,
 				function(err, webstratePermissions) {
-				if (webstratePermissions.indexOf("r") === -1) {
+				if (!webstratePermissions.includes("r")) {
 					return res.send("Permission denied");
 				}
 

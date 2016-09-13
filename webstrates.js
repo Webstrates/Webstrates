@@ -354,66 +354,87 @@ wss.on('connection', function(client) {
 		// Handle webstrate actions.
 		if (data.wa && data.d) {
 			var webstrateId = data.d;
-			switch (data.wa) {
-				// Subscribe to signals.
-				case "subscribe":
-					var nodeId = data.id || "document";
-					clientManager.subscribe(socketId, webstrateId, nodeId);
-					break;
-				// Unsubscribe from signals.
-				case "unsubscribe":
-					var nodeId = data.id || "document";
-					clientManager.unsubscribe(socketId, webstrateId, nodeId);
-					break;
-				// Send a signal.
-				case "publish":
-					var nodeId = data.id || "document";
-					var message = data.m;
-					var recipients = data.recipients;
-					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
-					break;
-				// restoreing a document to a previous version.
-				case "restore":
-					var version = data.v;
-					var tag = data.l;
-					// Only one of these should be defined. We can't restore to a version and a tag.
-					// version xor tag.
-					if (!!version ^ !!tag) {
-						var source = user.userId;
-						documentManager.restoreDocument({ webstrateId, tag, version }, source);
-					} else {
-						console.error("Can't restore, need either a tag label or version.");
-					}
-				// Adding a tag to a document version.
-				case "tag":
-					var tag = data.l;
-					var version = parseInt(data.v);
-					// Ensure that label does not begin with a number and that version is a number.
-					if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
-						return;
-					}
-					documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
-						if (err) return console.error(err);
-					});
-					break;
-				// Removing a tag from a document version.
-				case "untag":
-					var tag = data.l;
-					if (tag && !/^\d/.test(tag)) {
-						documentManager.untagDocument(webstrateId, { tag });
-						break;
-					}
-					var version = parseInt(data.v);
-					if (version) {
-						documentManager.untagDocument(webstrateId, { version });
-						break;
-					}
-					console.error("Can't restore, need either a tag label or version.");
-					break;
-			}
 
-			// We return, so the message isn't sent through to ShareDB.
-			return;
+			documentManager.getDocument({ webstrateId }, function(err, snapshot) {
+				if (err) return console.error(err);
+
+				var permissions = permissionManager.getPermissionsFromSnapshot(user.username, user.provider,
+					snapshot);
+
+				if (!permissions.includes("r")) {
+					return console.error("Insufficient read permissions in", data.wa, "call");
+				}
+
+				switch (data.wa) {
+					// Subscribe to signals.
+					case "subscribe":
+						var nodeId = data.id || "document";
+						clientManager.subscribe(socketId, webstrateId, nodeId);
+						break;
+					// Unsubscribe from signals.
+					case "unsubscribe":
+						var nodeId = data.id || "document";
+						clientManager.unsubscribe(socketId, webstrateId, nodeId);
+						break;
+					// Send a signal.
+					case "publish":
+						var nodeId = data.id || "document";
+						var message = data.m;
+						var recipients = data.recipients;
+						clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
+						break;
+					// restoreing a document to a previous version.
+					case "restore":
+						if (!permissions.includes("w")) {
+							return console.error("Insufficient write permissions in", data.wa, "call");
+						}
+						var version = data.v;
+						var tag = data.l;
+						// Only one of these should be defined. We can't restore to a version and a tag.
+						// version xor tag.
+						if (!!version ^ !!tag) {
+							var source = user.userId;
+							documentManager.restoreDocument({ webstrateId, tag, version }, source);
+						} else {
+							console.error("Can't restore, need either a tag label or version.");
+						}
+					// Adding a tag to a document version.
+					case "tag":
+						if (!permissions.includes("w")) {
+							return console.error("Insufficient write permissions in", data.wa, "call");
+						}
+						var tag = data.l;
+						var version = parseInt(data.v);
+						// Ensure that label does not begin with a number and that version is a number.
+						if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
+							return;
+						}
+						documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
+							if (err) return console.error(err);
+						});
+						break;
+					// Removing a tag from a document version.
+					case "untag":
+						if (!permissions.includes("w")) {
+							return console.error("Insufficient write permissions in", data.wa, "call");
+						}
+						var tag = data.l;
+						if (tag && !/^\d/.test(tag)) {
+							documentManager.untagDocument(webstrateId, { tag });
+							break;
+						}
+						var version = parseInt(data.v);
+						if (version) {
+							documentManager.untagDocument(webstrateId, { version });
+							break;
+						}
+						console.error("Can't restore, need either a tag label or version.");
+						break;
+				}
+
+				// We return, so the message isn't sent through to ShareDB.
+				return;
+			});
 		}
 
 		stream.push(data);
