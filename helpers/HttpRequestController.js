@@ -1,5 +1,7 @@
 "use strict";
 
+var shortId = require('shortid');
+
 module.exports = function(documentManager, permissionManager) {
 	var module = {};
 
@@ -102,7 +104,6 @@ module.exports = function(documentManager, permissionManager) {
 				}
 
 				var tagOrVersion = req.query.restore;
-				var version;
 				var tag;
 
 				if (/^\d/.test(tagOrVersion)) {
