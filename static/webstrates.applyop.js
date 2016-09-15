@@ -123,6 +123,13 @@ root.webstrates = (function(webstrates) {
 		var [childElement, childIndex, parentElement, indexType] =
 			webstrates.PathTree.elementAtPath(rootElement, path);
 
+		// Webstrates file system has some broken parsing, so it may think JavaScript like "< b)" in
+		// "if (a < b)" is an element and try to send a replacement op. In this case, childElement
+		// doesn't exist. This should be solved in Webstrates file system, but we'll fix it here, too.
+		if (!childElement) {
+			return;
+		}
+
 		switch (indexType) {
 			// We're renaming a tag, e.g. when <span>foo</span> should become <div>foo</div>.
 			case jsonml.TAG_NAME_INDEX:
