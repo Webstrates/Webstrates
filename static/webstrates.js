@@ -148,6 +148,41 @@ root.webstrates = (function(webstrates) {
 		// END keepAlive Handling
 		//////////////////////////////////////////////////////////////
 
+		// Mapping from tokens to callback functions.
+		var tokenCallbackMap = {};
+
+		/**
+		 * Send message through the websocket.
+		 * @param  {Object}   obj      Any object to be sent over the websocket.
+		 * @param  {Function} callback Function to be called when we get a reply to the message.
+		 * @private
+		 */
+		var websocketSend = function(msgObj, callback) {
+			if (callback) {
+				var token = webstrates.util.randomString();
+				msgObj.token = token;
+				tokenCallbackMap[token] = function(...args) {
+					// Wrap the callback in another function, so the token gets deleted from the table when
+					// it's being run.
+					delete tokenCallbackMap[token];
+					callback(...args);
+				};
+
+				// Call the callback function with a timeout error after 2 seconds if we haven't gotten a
+				// reply from the server.
+				setTimeout(function() {
+					// If the token still exists in the map, it means the callback function hasn't been
+					// removed.
+					if (tokenCallbackMap[token]) {
+						callback(new Error("Request timed out"));
+					}
+				}, 2000);
+
+			}
+			msgObj.d = msgObj.d || module.webstrateId;
+			websocket.send(JSON.stringify(msgObj));
+		}
+
 		// We want to use ShareDB's websocket connection for emitting our own events, specifically
 		// events for when clients join and leave the webstrate. ShareDB attaches itself as listener on
 		// the websocket, but we need to intercept the messages and filter out our own first. So we save
@@ -158,6 +193,16 @@ root.webstrates = (function(webstrates) {
 			var data = JSON.parse(event.data);
 			if (!data.wa) {
 				sdbMessageHandler(event);
+				return;
+			}
+
+			if (data.token) {
+				var callback = tokenCallbackMap[data.token];
+				if (!callback) {
+					console.error("Received callback for token that doesn't exist", data);
+				} else {
+					callback(data.error || null, data.reply, data.token);
+				}
 				return;
 			}
 
@@ -332,11 +377,11 @@ root.webstrates = (function(webstrates) {
 			// The server needs to be informed that we are now subscribed to signaling events, otherwise
 			// we won't recieve the events at all.
 			if (event === "signal" && callbackLists.signal.length === 0) {
-				websocket.send(JSON.stringify({
+				websocketSend({
 					wa: "subscribe",
 					d: webstrateId,
 					id: (node || context).webstrate.id
-				}));
+				});
 			}
 
 			callbackLists[event].push(callback);
@@ -364,11 +409,11 @@ root.webstrates = (function(webstrates) {
 			// If we're just removed the last signaling event listener, we should tell the server we
 			// unsubscribed, so we no longer recieve events.
 			if (event === "signal" && callbackLists.signal.length === 0) {
-				websocket.send(JSON.stringify({
+				websocketSend({
 					wa: "unsubscribe",
 					d: webstrateId,
 					id: (node || context).webstrate.id
-				}));
+				});
 			}
 		};
 
@@ -633,7 +678,7 @@ root.webstrates = (function(webstrates) {
 			if (recipients) {
 				msgObj.recipients = recipients;
 			}
-			websocket.send(JSON.stringify(msgObj));
+			websocketSend(msgObj);
 		};
 
 		/**
@@ -768,12 +813,12 @@ root.webstrates = (function(webstrates) {
 			}
 			if (allTags[module.version] === label) return;
 			allTags[module.version] = label;
-			websocket.send(JSON.stringify({
+			websocketSend({
 				wa: "tag",
 				d: webstrateId,
 				v: version,
 				l: label
-			}));
+			});
 		};
 
 		/**
@@ -808,7 +853,7 @@ root.webstrates = (function(webstrates) {
 			}
 
 			delete allTags[version];
-			websocket.send(JSON.stringify(msgObj));
+			websocketSend(msgObj);
 		};
 
 		/**
@@ -892,7 +937,7 @@ root.webstrates = (function(webstrates) {
 		 * is easy.
 		 * @param  {string} tagOrVersion Tag label or version number.
 		 */
-		module.restore = function(tagOrVersion) {
+		module.restore = function(tagOrVersion, callback) {
 			if (!tagOrVersion) {
 				throw new Error("Tag label or version number must he provided");
 			}
@@ -908,7 +953,7 @@ root.webstrates = (function(webstrates) {
 				msgObj.l = tagOrVersion;
 			}
 
-			websocket.send(JSON.stringify(msgObj));
+			websocketSend(msgObj, callback);
 		};
 
 		/**

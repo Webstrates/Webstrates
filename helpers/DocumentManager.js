@@ -86,7 +86,6 @@ module.exports = function(clientManager, share, agent, db) {
 
 		getTagBeforeVersion(webstrateId, version, function(err, snapshot) {
 			if (err) return next && next(err);
-
 			transformDocumentToVersion({ webstrateId, snapshot, version }, next);
 		});
 	};
@@ -332,7 +331,6 @@ module.exports = function(clientManager, share, agent, db) {
 	module.addTagToSnapshot = function(snapshot, next) {
 		module.getTag(snapshot.id, snapshot.v, function(err, tag) {
 			if (err) return next && next(err);
-			console.log("SETTING TAG");
 			if (tag) {
 				snapshot.tag = tag.label;
 			}
@@ -362,8 +360,6 @@ module.exports = function(clientManager, share, agent, db) {
 			ops.forEach(function(op) {
 				ot.apply(snapshot, op);
 			});
-
-			return next && next(null, snapshot);
 
 			// If after we've applied all updates, we haven't reached the desired version, the user must
 			// be requesting a version that doesn't exist yet.

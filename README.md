@@ -63,7 +63,16 @@ Restoring a webstrate
 ------------------------
 * GET on `http://<server host>/<some name>?restore=<version>` restore the document to look like it did in version `<version>` and redirects the user to `/<some name>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
 
-Alternatively, a Webstrate can be restored by calling `webstrate.restore(version)` or `webstrate.restore(tag)`.
+Alternatively, a Webstrate can be restored by calling `webstrate.restore(version, fn)` or `webstrate.restore(tag, fn)`. `fn` is a function callback that takes two arguments, an error and the new version:
+
+```javascript
+webstrate.restore(versionOrTag, function(error, newVersion) {
+  if (error) {
+    // Handle error.
+  } else {
+    // Otherwise, document is not at newVersion.
+});
+```
 
 Deletion of a webstrate
 -----------------------
