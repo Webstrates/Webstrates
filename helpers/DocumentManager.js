@@ -76,7 +76,7 @@ module.exports = function(clientManager, share, agent, db) {
 			return getDocumentFromTag(webstrateId, tag, next);
 		}
 
-		if (version === undefined || version === "head") {
+		if (version === undefined || version === "" || version === "head") {
 			return share.fetch(agent, 'webstrates', webstrateId, next);
 		}
 

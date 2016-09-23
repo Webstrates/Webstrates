@@ -49,7 +49,7 @@ module.exports = function(documentManager, permissionManager) {
 			// requesting the current version number by calling /<id>?v.
 			if (typeof version !== "undefined") {
 				// The user is requesting the current version number.
-				if (version == "") {
+				if (version === "") {
 					return res.send(String(snapshot.v));
 				}
 
