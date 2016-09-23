@@ -299,7 +299,7 @@ root.webstrates = (function(webstrates) {
 			currentTag = allTags[doc.version];
 			populateElementWithDocument(webstrateId, doc, targetElement, function documentPopulated() {
 				rootElement = targetElement.children[0];
-				pathTree = new webstrates.PathTree(rootElement, null, true);
+				pathTree = webstrates.PathTree.create(rootElement, null, true);
 				setupMutationObservers(doc, rootElement, function afterMutationCallback() {
 					pathTree.check();
 				});

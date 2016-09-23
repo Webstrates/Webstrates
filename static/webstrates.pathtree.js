@@ -219,7 +219,7 @@ root.webstrates = (function(webstrates) {
 	 * Returns the DOM element at the end of the path.
 	 * @param  {HTMLElement|PathTree} parentElement The element used to nagivate to the path from. May
 	 *                                              be either a DOM element or a PathTree.
-	 * @param  {JsonMLPath} path                    Path to fllow on parentElement.
+	 * @param  {JsonMLPath} path                    Path to follow on parentElement.
 	 * @return {[DOMElement, int, DOMElement, int]} The DOM element found, including its index on its
 	 *                                              parent, the parent DOM element, as possibly a
 	 *                                              JsonML index in case the path doesn't at a DOM
