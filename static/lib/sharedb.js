@@ -368,13 +368,32 @@ function BaseError (message) {
 }
 
 BaseError.prototype = Object.create(Error.prototype, {
-  // See: https://github.com/julien-f/js-make-error/issues/4
+  // See: https://github.com/JsCommunity/make-error/issues/4
   constructor: {
     configurable: true,
     value: BaseError,
     writable: true
   }
 })
+
+// -------------------------------------------------------------------
+
+// Sets the name of a function if possible (depends of the JS engine).
+var setFunctionName = (function () {
+  function setFunctionName (fn, name) {
+    return defineProperty(fn, 'name', {
+      configurable: true,
+      value: name
+    })
+  }
+  try {
+    var f = function () {}
+    setFunctionName(f, 'foo')
+    if (f.name === 'foo') {
+      return setFunctionName
+    }
+  } catch (_) {}
+})()
 
 // -------------------------------------------------------------------
 
@@ -389,9 +408,13 @@ function makeError (constructor, super_) {
   if (typeof constructor === 'string') {
     name = constructor
     constructor = function () { super_.apply(this, arguments) }
-  } else if (typeof constructor === 'function') {
-    name = constructor.name
-  } else {
+
+    // If the name can be set, do it once and for all.
+    if (setFunctionName) {
+      setFunctionName(constructor, name)
+      name = null
+    }
+  } else if (typeof constructor !== 'function') {
     throw new TypeError('constructor should be either a string or a function')
   }
 
@@ -399,18 +422,24 @@ function makeError (constructor, super_) {
   // like Node's `util.inherits()`.
   constructor.super_ = constructor['super'] = super_
 
-  constructor.prototype = Object.create(super_.prototype, {
+  var properties = {
     constructor: {
       configurable: true,
       value: constructor,
       writable: true
-    },
-    name: {
+    }
+  }
+
+  // If the name could not be set on the constructor, set it on the
+  // prototype.
+  if (name != null) {
+    properties.name = {
       configurable: true,
       value: name,
       writable: true
     }
-  })
+  }
+  constructor.prototype = Object.create(super_.prototype, properties)
 
   return constructor
 }
@@ -1443,25 +1472,40 @@ var process = module.exports = {};
 var cachedSetTimeout;
 var cachedClearTimeout;
 
+function defaultSetTimout() {
+    throw new Error('setTimeout has not been defined');
+}
+function defaultClearTimeout () {
+    throw new Error('clearTimeout has not been defined');
+}
 (function () {
     try {
-        cachedSetTimeout = setTimeout;
-    } catch (e) {
-        cachedSetTimeout = function () {
-            throw new Error('setTimeout is not defined');
+        if (typeof setTimeout === 'function') {
+            cachedSetTimeout = setTimeout;
+        } else {
+            cachedSetTimeout = defaultSetTimout;
         }
+    } catch (e) {
+        cachedSetTimeout = defaultSetTimout;
     }
     try {
-        cachedClearTimeout = clearTimeout;
-    } catch (e) {
-        cachedClearTimeout = function () {
-            throw new Error('clearTimeout is not defined');
+        if (typeof clearTimeout === 'function') {
+            cachedClearTimeout = clearTimeout;
+        } else {
+            cachedClearTimeout = defaultClearTimeout;
         }
+    } catch (e) {
+        cachedClearTimeout = defaultClearTimeout;
     }
 } ())
 function runTimeout(fun) {
     if (cachedSetTimeout === setTimeout) {
         //normal enviroments in sane situations
+        return setTimeout(fun, 0);
+    }
+    // if setTimeout wasn't available but was latter defined
+    if ((cachedSetTimeout === defaultSetTimout || !cachedSetTimeout) && setTimeout) {
+        cachedSetTimeout = setTimeout;
         return setTimeout(fun, 0);
     }
     try {
@@ -1482,6 +1526,11 @@ function runTimeout(fun) {
 function runClearTimeout(marker) {
     if (cachedClearTimeout === clearTimeout) {
         //normal enviroments in sane situations
+        return clearTimeout(marker);
+    }
+    // if clearTimeout wasn't available but was latter defined
+    if ((cachedClearTimeout === defaultClearTimeout || !cachedClearTimeout) && clearTimeout) {
+        cachedClearTimeout = clearTimeout;
         return clearTimeout(marker);
     }
     try {
