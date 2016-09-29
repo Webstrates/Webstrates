@@ -85,6 +85,10 @@
 								selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
 							}
 						}
+						var isSvgPath = selector.tagName.toLowerCase() === "path" && index === "d";
+						if (isSvgPath) {
+							selector.__d = value;
+						}
 						selector.setAttribute(index, value);
 					}
 				}

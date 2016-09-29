@@ -43,6 +43,9 @@ root.webstrates = (function(webstrates) {
 	 */
 	var setAttribute = function(rootElement, path, attributeName, attributeValue) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
+
+		var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
+		if (isSvgPath) childElement.__d = attributeValue;
 		childElement.setAttribute(attributeName, attributeValue);
 	};
 
@@ -55,6 +58,8 @@ root.webstrates = (function(webstrates) {
 	 */
 	var removeAttribute = function(rootElement, path, attributeName) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
+		var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
+		if (isSvgPath) delete childElement.__d;
 		childElement.removeAttribute(attributeName);
 	};
 
@@ -150,6 +155,8 @@ root.webstrates = (function(webstrates) {
 				// Copy all attributes.
 				for (var i = 0; i < oldElement.attributes.length; i++) {
 					var attr = oldElement.attributes.item(i);
+					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
+					if (isSvgPath) newElement.__d = attr.nodeValue;
 					newElement.setAttribute(attr.nodeName, attr.nodeValue);
 				}
 
@@ -177,9 +184,12 @@ root.webstrates = (function(webstrates) {
 
 				var attributes = new Set([...Object.keys(newAttributes), ...oldAttributeKeys]);
 				attributes.forEach(function(attributeName) {
+					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 					if (attributeName in newAttributes) {
+						if (isSvgPath) childElement.__d = newAttributes[attributeName];
 						childElement.setAttribute(attributeName, newAttributes[attributeName]);
 					} else {
+						if (isSvgPath) delete childElement.__d;
 						childElement.removeAttribute(attributeName);
 					}
 				});
@@ -218,9 +228,12 @@ root.webstrates = (function(webstrates) {
 				if (attributeName) {
 					// Attribute value diff.
 					attributeName = path.pop();
+					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 					var oldString = childElement.getAttribute(attributeName);
+					if (isSvgPath) oldString = childElement.__d;
 					var newString = oldString.substring(0, charIndex)
 						+ value + oldString.substring(charIndex);
+					if (isSvgPath) childElement.__d = newString;
 					childElement.setAttribute(attributeName, newString);
 					break;
 				}
@@ -268,9 +281,12 @@ root.webstrates = (function(webstrates) {
 				if (attributeName) {
 					// Attribute value diff.
 					attributeName = path.pop();
+					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 					var oldString = childElement.getAttribute(attributeName);
+					if (isSvgPath) oldString = childElement.__d;
 					var newString = oldString.substring(0, charIndex)
 						+ oldString.substring(charIndex + value.length);
+					if (isSvgPath) childElement.__d = newString;
 					childElement.setAttribute(attributeName, newString);
 					break;
 				}
