@@ -85,21 +85,20 @@ root.webstrates = (function(webstrates) {
 			var src = childElement.src;
 			var attrs = [];
 			Array.from(childElement.attributes).forEach(function(attr) {
-				attrs.push(attr);
+				attrs.push([ attr.nodeName, attr.nodeValue ]);
 				childElement.removeAttribute(attr.nodeName);
 			});
+
 			var innerHTML = childElement.innerHTML;
-			if (src) {
-				childElement.src = "about:blank";
-			}
 			childElement.innerHTML = "// Execution prevention";
 
-			// Now insert a bare script (dummy content and about:blank src).
+			// Now insert a bare script (dummy content and empty src).
 			parentElement.insertBefore(childElement, referenceNode || null);
 
 			// And re-add attributes and real content.
 			attrs.forEach(function(attr) {
-				childElement.setAttribute(attr.nodeName, attr.nodeValue);
+				var [nodeName, nodeValue] = attr;
+				childElement.setAttribute(nodeName, nodeValue);
 			});
 			childElement.innerHTML = innerHTML;
 		} else {
