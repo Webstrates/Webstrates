@@ -53,10 +53,11 @@ module.exports = function(clientManager, share, agent, db) {
 				// Add current tag if it exists. All other tags are left behind, because the new document
 				// starts from version 1.
 				if (snapshot.label) {
-					return module.tagDocument(webstrateId, version, snapshot.label, function(err, res) {
+					return module.tagDocument(webstrateId, 1, snapshot.label, function(err, res) {
 						return next && next(err, webstrateId);
 					});
 				}
+
 				return next && next(err, webstrateId);
 			});
 		});
@@ -183,12 +184,6 @@ module.exports = function(clientManager, share, agent, db) {
 		// If no version is defined, all operations will be retrieved.
 		share.getOps(agent, 'webstrates', webstrateId, initialVersion, version, function(err, ops) {
 			if (err) return next && next(err);
-
-			// TODO: Remove. This is probably not necessary.
-			// Sort operations to make sure we apply them in the right order.
-			ops.sort(function(a, b) {
-				return a.v - b.v;
-			});
 
 			if (!db.sessionLog) {
 				return next && next(null, ops);
