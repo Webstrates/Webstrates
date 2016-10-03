@@ -78,7 +78,8 @@
 						if (index.toLowerCase() === "__wid") {
 							continue;
 						}
-						var value = elem[i][index].replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
+						var value = elem[i][index] && elem[i][index]
+							.replace(/&quot;/g, "\"").replace(/&amp;/g, "&");
 						index = webstrates.util.sanitizeString(index);
 						if (xmlNs) {
 							if (index === "href" || index === "xlink:href") {
