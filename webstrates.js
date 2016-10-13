@@ -356,6 +356,7 @@ wss.on('connection', function(client) {
 		// All our custom actions have the wa (webstrates action) property set. If this is not the case,
 		// the message was intended for sharedb.
 		if (!data.wa) {
+			// We do not need to check for permissions here; this happens in the sharedb middleware.
 			stream.push(data);
 			return;
 		}
@@ -363,11 +364,9 @@ wss.on('connection', function(client) {
 		// Handle webstrate actions.
 		var webstrateId = data.d;
 
-		documentManager.getDocument({ webstrateId }, function(err, snapshot) {
+		permissionManager.getPermissions(user.username, user.provider, webstrateId,
+			function(err, permissions) {
 			if (err) return console.error(err);
-
-			var permissions = permissionManager.getPermissionsFromSnapshot(user.username, user.provider,
-				snapshot);
 
 			if (!permissions.includes("r")) {
 				return console.error("Insufficient read permissions in", data.wa, "call");
