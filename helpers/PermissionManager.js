@@ -58,6 +58,10 @@ module.exports = function(documentManager, authConfig) {
 				console.warn("Couldn't parse document permissions for", snapshot.id);
 				// We don't have to do anything. No valid document permissions.
 			}
+
+			if (!Array.isArray(permissionsList)) {
+				permissionsList = undefined;
+			}
 		}
 
 		// If we found no permissions, resort to default permissions.
@@ -143,6 +147,15 @@ module.exports = function(documentManager, authConfig) {
 			documentManager.submitOp(webstrateId, op, source, next);
 		});
 	};
+
+	/**
+	 * Deletes all caches for a specific webstrate.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @public
+	 */
+	module.invalidateCachedPermissions = function(webstrateId) {
+		delete permissionsCache[webstrateId];
+	}
 
 	/**
 	 * Extract a user's permissions from a permissions list

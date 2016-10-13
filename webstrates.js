@@ -258,6 +258,18 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 							return;
 						}
 
+						// Check if the incoming update is an op (and not a create op).
+						if (req.data.a === "op" && req.data.op) {
+							// Check if the update changes the permissions of the document.
+							var permissionsChanged = req.data.op.some(function(op) {
+								return op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === "data-auth";
+							});
+							// And if the permissions have changed, invalidate the permissions cache.
+							if (permissionsChanged) {
+								permissionManager.invalidateCachedPermissions(req.webstrateId);
+							}
+						}
+
 						// Anything but a subscribe request.
 						if (req.data.a !== "s") {
 							return next();
@@ -420,6 +432,10 @@ wss.on('connection', function(client) {
 									}));
 								}
 							} else {
+								// The permissions of the older version of the document may be different than what
+								// they are now, so we should invalidate the cached permissions.
+								permissionManager.invalidateCachedPermissions(req.webstrateId);
+
 								client.send(JSON.stringify({ wa: "reply", reply: newVersion, token: data.token }));
 							}
 						});
