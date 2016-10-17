@@ -173,13 +173,13 @@ module.exports = function(cookieHelper) {
 		// Messages should be sent to everybody listening on the nodeId and the "document". We use a
 		// Set, so we don't send to the same socketId twice.
 		var listeners = new Set([...(nodeIds[webstrateId][nodeId] || []),
-			...nodeIds[webstrateId]["document"]]);
+			...(nodeIds[webstrateId]["document"] || [])]);
 
 		// If recipients is defined, make sure we only send to the recipients, and only the recipients
 		// that are actually listening.
 		if (Array.isArray(recipients)) {
 			recipients = recipients.filter(function(recipientId) {
-				return listeners.includes(recipientId);
+				return listeners.has(recipientId);
 			});
 		} else {
 			recipients = listeners;
