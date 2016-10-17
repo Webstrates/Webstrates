@@ -46,11 +46,6 @@ root.webstrates = (function(webstrates) {
 			characterDataOldValue: true
 		};
 
-		// Whether the webstrate has been loaded or transcluded yet. Used for immediately triggering on
-		// loaded/transcluded events if the action has already occurred.
-		var loaded = false;
-		var transcluded = false;
-
 		// Lists containing callbacks for events that the user may subscribe to.
 		var callbackLists = { // Callbacks are triggered when:
 			loaded: [],         // the document has been loaded.
@@ -367,13 +362,26 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 
-			if (context.webstrate) {
-				if ((event === "loaded" && context.webstrate.loaded) ||
-					(event === "transcluded" && context.webstrate.transcluded)) {
-					callback();
-					return;
-				}
-			}
+			var webstrate = context.webstrate;
+            if (webstrate) {
+                if ((event === "loaded" && webstrate.loaded) ||
+                    (event === "transcluded" && webstrate.transcluded)) {
+                    callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
+                }
+                // Trigger transcluded event on main document webstrate object for those iframes that have
+                // already been transcluded.
+                else if (context === window && webstrate.loaded && event === "transcluded") {
+                    var iframes = document.querySelectorAll("iframe");
+                    Array.from(iframes).forEach(function(iframe) {
+                        var context = iframe.contentWindow;
+                        var webstrate = context.webstrate;
+
+                        if (webstrate && webstrate.transcluded) {
+                            callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
+                        }
+                    });
+                }
+            }
 
 			// The server needs to be informed that we are now subscribed to signaling events, otherwise
 			// we won't recieve the events at all.
@@ -430,6 +438,9 @@ root.webstrates = (function(webstrates) {
 			/*var contentLoadedEvent = document.createEvent("Event");
 			contentLoadedEvent.initEvent("DOMContentLoaded", true, true);
 			document.dispatchEvent(contentLoadedEvent);*/
+
+            // Set webstrate loaded.
+            webstrate.loaded = true;
 
 			// Trigger a loaded event on the document.
 			document.dispatchEvent(new CustomEvent("loaded", {
