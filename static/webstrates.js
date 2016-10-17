@@ -348,6 +348,7 @@ root.webstrates = (function(webstrates) {
 			var scripts = [];
 			webstrates.util.appendChildWithoutScriptExecution(targetElement,
 				jqml(doc.data, undefined, scripts));
+
 			webstrates.util.executeScripts(scripts, callback);
 		};
 
