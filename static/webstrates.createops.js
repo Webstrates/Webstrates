@@ -117,7 +117,6 @@ root.webstrates = (function(webstrates) {
 	var childListMutation = function(mutation, target, targetPathNode, sjsDoc) {
 		var ops = [];
 
-		var previousSibling = mutation.previousSibling;
 		Array.from(mutation.addedNodes).forEach(function(addedNode) {
 			var addedPathNode = webstrates.PathTree.getPathNode(addedNode, target);
 			if (addedPathNode && targetPathNode.id === addedPathNode.parent.id) {
@@ -167,6 +166,17 @@ root.webstrates = (function(webstrates) {
 
 			if (!newPathNode) {
 				return;
+			}
+
+			// We use the previous sibling to insert the new element in the correct position in the path
+			// tree. However, if the previous sibling is a transient element, it won't be in the path
+			// tree, so it will appear that the element has no previous element. Therefore, we traverse
+			// the list of previous siblings until we find one that's not a transient element (if such
+			// exists).
+			var previousSibling = addedNode.previousSibling;
+			while (previousSibling && previousSibling.tagName
+				&& previousSibling.tagName.toLowerCase() === "transient") {
+				previousSibling = previousSibling.previousSibling;
 			}
 
 			if (previousSibling) {

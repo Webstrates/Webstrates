@@ -207,7 +207,7 @@ root.webstrates = (function(webstrates) {
 		});
 
 		return matchingElement;
-	}
+	};
 
 	var jsonml = {
 		TAG_NAME_INDEX: 0,
