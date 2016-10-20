@@ -713,6 +713,8 @@ root.webstrates = (function(webstrates) {
 				var callbackLists = {
 					insertText: [],
 					deleteText: [],
+					nodeAdded: [],
+					nodeRemoved: [],
 					signal: []
 				};
 

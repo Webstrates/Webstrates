@@ -92,7 +92,11 @@ root.webstrates = (function(webstrates) {
 			return;
 		}
 
+		// Insert new element into parent PathTree.
 		parentPathNode.children.splice(childIndex, 0, childPathNode);
+
+		// Notify nodeAdded listeners.
+		parentElement.webstrate.fireEvent("nodeAdded", newElement, false);
 	};
 
 	/**
@@ -113,6 +117,9 @@ root.webstrates = (function(webstrates) {
 
 		// And remove the actual DOM node.
 		childElement.remove();
+
+		// Notify nodeRemoved listeners.
+		parentElement.webstrate.fireEvent("nodeRemoved", childElement, false);
 	};
 
 	/**
@@ -255,7 +262,7 @@ root.webstrates = (function(webstrates) {
 		});
 		parentElement.dispatchEvent(event);
 
-		// Send out new events.
+		// Notify insertText listeners.
 		parentElement.webstrate.fireEvent("insertText", charIndex, value, attributeName);
 	};
 
@@ -308,7 +315,7 @@ root.webstrates = (function(webstrates) {
 		});
 		parentElement.dispatchEvent(event);
 
-		// Send out new events.
+		// Notify deleteText listeners.
 		parentElement.webstrate.fireEvent("deleteText", charIndex, value, attributeName);
 
 		return newString;

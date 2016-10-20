@@ -184,6 +184,22 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 });
 ```
 
+### Added and removed nodes
+
+Listening for added or removed nodes can be done using `nodeAdded` and `nodeRemoved`:
+
+```javascript
+parentElement.webstrate.on("nodeAdded", function(node, local) {
+  // Some node was added.
+});
+
+parentElement.webstrate.on("nodeRemoved", function(node, local) {
+  // Some node was removed
+});
+```
+
+`local` will be true if the change originated in the current browser, or false if it originated elsewhere.
+
 #### Full list of `on` events
 
 | Event         | Arguments                          | Description                                                            |
@@ -194,6 +210,8 @@ elementNode.webstrate.on("deleteText", function(position, value, attributeName) 
 | `clientPart`  | clientId                           | Triggered when a client leaves the document.                           |
 | `insertText`  | position, value [, attributeName]  | Triggered when a text has been inserted into a text node or attribute. |
 | `deleteText`  | position, value [, attributeName]  | Triggered when text has been deleted from a text node or attribute.    |
+| `nodeAdded`   | node, local                        | Triggered when a node has been added to the document.                  |
+| `nodeRemoved` | node, local                        | Triggered when a node has been removed from the document.              |
 | `signal`      | message, senderId, node            | Triggered when a client (senderId) signals on a DOM node.              |
 
 All the events can also be unregistered using `off`, e.g.:
