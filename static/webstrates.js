@@ -715,6 +715,7 @@ root.webstrates = (function(webstrates) {
 					deleteText: [],
 					nodeAdded: [],
 					nodeRemoved: [],
+					attributeChanged: [],
 					signal: []
 				};
 

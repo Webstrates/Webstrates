@@ -41,12 +41,16 @@ root.webstrates = (function(webstrates) {
 	 * @param {string} value          Attribute value.
 	 * @private
 	 */
-	var setAttribute = function(rootElement, path, attributeName, attributeValue) {
+	var setAttribute = function(rootElement, path, attributeName, newValue) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
 
 		var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
-		if (isSvgPath) childElement.__d = attributeValue;
-		childElement.setAttribute(attributeName, attributeValue);
+		if (isSvgPath) childElement.__d = newValue;
+
+		var oldValue = childElement.getAttribute(attributeName);
+		childElement.setAttribute(attributeName, newValue);
+
+		childElement.webstrate.fireEvent("attributeChanged", attributeName, oldValue, newValue, false);
 	};
 
 	/**
@@ -60,7 +64,10 @@ root.webstrates = (function(webstrates) {
 		var [childElement, ] = webstrates.PathTree.elementAtPath(rootElement, path);
 		var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 		if (isSvgPath) delete childElement.__d;
+		var oldValue = childElement.getAttribute(attributeName);
 		childElement.removeAttribute(attributeName);
+
+		childElement.webstrate.fireEvent("attributeChanged", attributeName, oldValue, undefined, false);
 	};
 
 	/**
@@ -236,12 +243,14 @@ root.webstrates = (function(webstrates) {
 					// Attribute value diff.
 					attributeName = path.pop();
 					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
-					var oldString = childElement.getAttribute(attributeName);
-					if (isSvgPath) oldString = childElement.__d;
-					var newString = oldString.substring(0, charIndex)
-						+ value + oldString.substring(charIndex);
-					if (isSvgPath) childElement.__d = newString;
-					childElement.setAttribute(attributeName, newString);
+					var oldValue = childElement.getAttribute(attributeName);
+					if (isSvgPath) oldValue = childElement.__d;
+					var newValue = oldValue.substring(0, charIndex)
+						+ value + oldValue.substring(charIndex);
+					if (isSvgPath) childElement.__d = newValue;
+					childElement.setAttribute(attributeName, newValue);
+					childElement.webstrate.fireEvent("attributeChanged", attributeName, oldValue, newValue,
+						false);
 					break;
 				}
 				// If not an attribute value change: fall-through.
@@ -249,10 +258,10 @@ root.webstrates = (function(webstrates) {
 				// Text node or comment content change.
 				var isComment = parentElement.nodeType === document.COMMENT_NODE;
 				var parentElement = isComment ? parentElement : childElement;
-				var oldString = parentElement.data;
-				var newString = oldString.substring(0, charIndex)
-					+ value + oldString.substring(charIndex);
-				parentElement.data = newString;
+				var oldValue = parentElement.data;
+				var newValue = oldValue.substring(0, charIndex)
+					+ value + oldValue.substring(charIndex);
+				parentElement.data = newValue;
 				break;
 		}
 
@@ -328,6 +337,7 @@ root.webstrates = (function(webstrates) {
 	 * @public
 	 */
 	var applyOp = function(op, rootElement) {
+
 		var path = op.p;
 		if (path.length === 0) {
 			return;
@@ -350,7 +360,6 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 		}
-
 		// Attribute insertion (object insertion). Also catches replace operations, i.e. operations with
 		// both `oi` and `od`.
 		if ("oi" in op) {

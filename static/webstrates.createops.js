@@ -57,6 +57,9 @@ root.webstrates = (function(webstrates) {
 		var oldValue = mutation.oldValue;
 		var newValue = webstrates.util.escape(target.getAttribute(mutation.attributeName));
 
+		mutation.target.webstrate.fireEvent("attributeChanged", mutation.attributeName, oldValue,
+			newValue, true);
+
 		// dmp.patch_make does not accept empty strings, so if we are creating a new attribute (or
 		// setting an attribute's value for the first time), we have to create the operation manually.
 		if (oldValue === null) {
