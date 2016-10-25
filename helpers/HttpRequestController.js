@@ -32,6 +32,8 @@ module.exports = function(documentManager, permissionManager) {
 				return res.status(409).send(String(err));
 			}
 
+			req.user = req.user || {};
+
 			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 
