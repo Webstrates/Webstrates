@@ -363,25 +363,25 @@ root.webstrates = (function(webstrates) {
 			}
 
 			var webstrate = context.webstrate;
-            if (webstrate) {
-                if ((event === "loaded" && webstrate.loaded) ||
-                    (event === "transcluded" && webstrate.transcluded)) {
-                    callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
-                }
-                // Trigger transcluded event on main document webstrate object for those iframes that have
-                // already been transcluded.
-                else if (context === window && webstrate.loaded && event === "transcluded") {
-                    var iframes = document.querySelectorAll("iframe");
-                    Array.from(iframes).forEach(function(iframe) {
-                        var context = iframe.contentWindow;
-                        var webstrate = context.webstrate;
+			if (webstrate) {
+				if ((event === "loaded" && webstrate.loaded) ||
+					(event === "transcluded" && webstrate.transcluded)) {
+					callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
+				}
+				// Trigger transcluded event on main document webstrate object for those iframes that have
+				// already been transcluded.
+				else if (context === window && webstrate.loaded && event === "transcluded") {
+					var iframes = document.querySelectorAll("iframe");
+					Array.from(iframes).forEach(function(iframe) {
+						var context = iframe.contentWindow;
+						var webstrate = context.webstrate;
 
-                        if (webstrate && webstrate.transcluded) {
-                            callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
-                        }
-                    });
-                }
-            }
+						if (webstrate && webstrate.transcluded) {
+							callback(webstrate.webstrateId, webstrate.clientId, webstrate.user);
+						}
+					});
+				}
+			}
 
 			// The server needs to be informed that we are now subscribed to signaling events, otherwise
 			// we won't recieve the events at all.
@@ -439,8 +439,8 @@ root.webstrates = (function(webstrates) {
 			contentLoadedEvent.initEvent("DOMContentLoaded", true, true);
 			document.dispatchEvent(contentLoadedEvent);*/
 
-            // Set webstrate loaded.
-            webstrate.loaded = true;
+			// Set webstrate loaded.
+			webstrate.loaded = true;
 
 			// Trigger a loaded event on the document.
 			document.dispatchEvent(new CustomEvent("loaded", {
@@ -727,7 +727,8 @@ root.webstrates = (function(webstrates) {
 				 */
 				node.webstrate.on = function(event, callback) {
 					// Use iframe's window to trigger event when node is an actual iframe element.
-					var context = node.tagName.toLowerCase() === "iframe" ? node.contentWindow : window;
+					var context = node.tagName.toLowerCase() === "iframe" && node.ContentWindow ?
+						(node.contentWindow || window) : window;
 					addCallbackToEvent(event, callback, callbackLists, context, node);
 				};
 
