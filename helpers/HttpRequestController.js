@@ -1,6 +1,9 @@
 "use strict";
 
 var shortId = require('shortid');
+var jsonml = require('jsonml-tools');
+var SELFCLOSING_TAGS = ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen",
+	"link", "menuitem", "meta", "param", "source", "track", "wbr"];
 
 module.exports = function(documentManager, permissionManager) {
 	var module = {};
@@ -45,6 +48,10 @@ module.exports = function(documentManager, permissionManager) {
 			// If the webstrate does exist, read permissions are required to access it.
 			if (!permissions.includes("r")) {
 				return res.send("Permission denied");
+			}
+
+			if (typeof req.query.static !== "undefined") {
+				return res.send(jsonml.toXML(snapshot.data, SELFCLOSING_TAGS));
 			}
 
 			// If the user is requesting a specific version by calling /<id>?v=<version>, or they are

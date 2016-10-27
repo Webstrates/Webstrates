@@ -59,6 +59,11 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?v=<version>` will create a new webstrate prototyped from `<some_name>` at version `<version>`. (Short-hand for `/new?prototype=<some_name>&version=<version>&id=<some_name>-<version>-<random string>`).
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
+Accessing a static version of a webstrate
+--------------------------------------
+* GET on `http://<server host>/<some_name>?static` will return a static HTML version of the webstrate.
+* GET on `http://<server host>/<some_name>?v=<version>&static` will return a static HTML version of the webstrate at version `<version>`.
+
 Restoring a webstrate
 ------------------------
 * GET on `http://<server host>/<some name>?restore=<version>` restore the document to look like it did in version `<version>` and redirects the user to `/<some name>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.

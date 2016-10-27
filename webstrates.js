@@ -7,7 +7,6 @@ var fs = require("fs");
 var fss = require("fs-sync");
 var http = require('http');
 var httpAuth = require('http-auth');
-var jsonml = require('jsonml-tools');
 var MongoClient = require('mongodb').MongoClient;
 var passport = require('passport');
 var sessions = require("client-sessions");
