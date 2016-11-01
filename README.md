@@ -59,10 +59,16 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?v=<version>` will create a new webstrate prototyped from `<some_name>` at version `<version>`. (Short-hand for `/new?prototype=<some_name>&version=<version>&id=<some_name>-<version>-<random string>`).
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
-Accessing a static version of a webstrate
+Accessing static and raw versions of a webstrate
 --------------------------------------
-* GET on `http://<server host>/<some_name>?static` will return a static HTML version of the webstrate.
-* GET on `http://<server host>/<some_name>?v=<version>&static` will return a static HTML version of the webstrate at version `<version>`.
+* GET on `http://<server host>/<some_name>?raw` will return a raw HTML version of the webstrate.
+* GET on `http://<server host>/<some_name>?v=<versionOrTag>&raw` will return a raw HTML version of the webstrate at version or tag `<versionOrTag>`.
+* GET on `http://<server host>/<some_name>?static` will return a static version of the webstrate.
+* GET on `http://<server host>/<some_name>?v=<versionOrTag>&static` will return a static version of the webstrate at version or tag `<versionOrTag>`.
+
+On normal requests, the Webstrates server serves a static `client.html` with JavaScripts that replace the DOM with the content of the webstrate. When using the `raw` parameter, the Webstrates server instead serves the raw HTML. No JavaScript Webstrates JavaScript is executed on the client side, and no WebSocket connection is established. This also means that DOM elements do not have attached `webstrate` objects, and as a result you cannot listen for Webstrate events.
+
+When using the `static` parameter, Webstrates serves `client.html` as per usual, and the webstrate requested is also generated on the client very close to how it is done for normal requests. Any changes made to the webstrate, however, are not persisted or shared between clients.
 
 Restoring a webstrate
 ------------------------
@@ -78,6 +84,8 @@ webstrate.restore(versionOrTag, function(error, newVersion) {
     // Otherwise, document is not at newVersion.
 });
 ```
+
+When calling `webstrate.restore` in a static webstrate, the static webstrate is restored to the requested version, but the changes are not persisted.
 
 Deletion of a webstrate
 -----------------------

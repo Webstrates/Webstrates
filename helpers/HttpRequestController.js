@@ -24,12 +24,22 @@ module.exports = function(documentManager, permissionManager) {
 	 */
 	module.idRequestHandler = function(req, res) {
 		var webstrateId = req.params.id;
-		var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
+		var tag, version;
+		var tagOrVersion = req.query.v;
+
+		if (tagOrVersion === "") {
+			version = "";
+		} else if (/^\d/.test(tagOrVersion)) {
+			version = Number(req.query.v) || undefined;
+		} else {
+			tag = req.query.v;
+		}
+
 		if (!webstrateId) {
 			return res.redirect('/frontpage');
 		}
 
-		documentManager.getDocument({ webstrateId, version }, function(err, snapshot) {
+		documentManager.getDocument({ webstrateId, version, tag }, function(err, snapshot) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(String(err));
@@ -50,26 +60,27 @@ module.exports = function(documentManager, permissionManager) {
 				return res.send("Permission denied");
 			}
 
-			if (typeof req.query.static !== "undefined") {
+			if (typeof req.query.raw !== "undefined") {
 				return res.send(jsonml.toXML(snapshot.data, SELFCLOSING_TAGS));
 			}
 
 			// If the user is requesting a specific version by calling /<id>?v=<version>, or they are
 			// requesting the current version number by calling /<id>?v.
-			if (typeof version !== "undefined") {
+			if (typeof req.query.static === "undefined" &&
+				(typeof version !== "undefined" || typeof tag !== "undefined")) {
 				// The user is requesting the current version number.
 				if (version === "") {
 					return res.send(String(snapshot.v));
 				}
 
 				// If a specific version is requested, we create a new webstrate from the requested
-				// version with a name of the format /<id>-<version>-<random string> and redirect the
-				// user to it.
-				var newWebstrateId = webstrateId + "-" + version + "-" + shortId.generate();
+				// version with a name of the format /<id>-<version|tag>-<random string> and redirect the
+				// user to it. Only one of `version` and `tag` will be defined.
+				var newWebstrateId = webstrateId + "-" + (version || tag) + "-" + shortId.generate();
 				return documentManager.createNewDocument({
 					webstrateId: newWebstrateId,
 					prototypeId: webstrateId,
-					version
+					version, tag
 				}, function(err, newWebstrateId) {
 					if (err) {
 						console.error(err);
@@ -113,7 +124,7 @@ module.exports = function(documentManager, permissionManager) {
 				}
 
 				var tagOrVersion = req.query.restore;
-				var tag;
+
 
 				if (/^\d/.test(tagOrVersion)) {
 					version = tagOrVersion;

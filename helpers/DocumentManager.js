@@ -358,7 +358,7 @@ module.exports = function(clientManager, share, agent, db) {
 
 			// If after we've applied all updates, we haven't reached the desired version, the user must
 			// be requesting a version that doesn't exist yet.
-			err = version == snapshot.v ? null :
+			err = version === snapshot.v ? null :
 				new Error(`Version ${version} requested, but newest version is ${snapshot.v}.`);
 			next && next(err, snapshot);
 		});
@@ -394,6 +394,7 @@ module.exports = function(clientManager, share, agent, db) {
 	function getDocumentFromTag(webstrateId, label, next) {
 		db.tags.findOne({ webstrateId, label }, function(err, snapshot) {
 			if (err) return next && next(err);
+			if (!snapshot) return next && next(new Error(`Requested tag ${label} does not exist.`));
 			snapshot.tag = label;
 			next && next(null, snapshot);
 		});

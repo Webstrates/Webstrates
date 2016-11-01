@@ -384,6 +384,23 @@ wss.on('connection', function(client) {
 			}
 
 			switch (data.wa) {
+				// Request a snapshot.
+				case "fetchdoc":
+					var version = data.v;
+					var tag = data.l;
+					console.log("data.token", data);
+					if (data.token) {
+						documentManager.getDocument({ webstrateId, tag, version }, function(err, snapshot) {
+							var responseObj = { wa: "reply", token: data.token };
+							if (err) {
+								responseObj.error = err.message;
+							} else {
+								responseObj.reply = snapshot;
+							}
+							client.send(JSON.stringify(responseObj));
+						});
+					}
+					break;
 				// Subscribe to signals.
 				case "subscribe":
 					var nodeId = data.id || "document";
@@ -407,7 +424,7 @@ wss.on('connection', function(client) {
 					var recipients = data.recipients;
 					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
 					break;
-				// restoreing a document to a previous version.
+				// Restoring a document to a previous version.
 				case "restore":
 					if (!permissions.includes("w")) {
 						console.error("Insufficient write permissions in", data.wa, "call");
@@ -424,7 +441,6 @@ wss.on('connection', function(client) {
 						documentManager.restoreDocument({ webstrateId, tag, version }, source,
 							function(err, newVersion) {
 							if (err) {
-								console.error(err);
 								if (data.token) {
 									client.send(JSON.stringify({ wa: "reply", token: data.token,
 										error: err.message
@@ -439,10 +455,10 @@ wss.on('connection', function(client) {
 							}
 						});
 					} else {
-						console.error("Can't restore, need either a tag label or version.");
+						console.error("Can't restore, need either a tag label or version. Not both.");
 						if (data.token) {
 								client.send(JSON.stringify({ wa: "reply", token: data.token,
-									error: "Can't restore, need either a tag label or version."
+									error: "Can't restore, need either a tag label or version. Not both."
 								}));
 							}
 					}

@@ -89,59 +89,28 @@ root.webstrates = (function(webstrates) {
 				event.detail.webstrateId, event.detail.clientId, event.detail.user);
 		});
 
+		// Extrat query string parameters into urlParams.
+		var extractUrlParams = function() {
+			var urlParams = {};
+			var regex =  /([^&=]+)=?([^&]*)/g;
+			var query = window.location.search.substring(1);
+			var match;
+			while (match = regex.exec(query)) {
+				var [pair, key, value] = match;
+				urlParams[key] = decodeURIComponent(value);
+			}
+			return urlParams;
+		};
+
+		// Update urlParams on state change, because new parameters may have been added.
+		window.onpopstate = function() {
+			urlParams = extractUrlParams();
+		};
+
+		var urlParams = extractUrlParams();
+
 		// Element webstrates should work on - uses document as default.
 		var targetElement = targetElement || document;
-
-		// Hand WebSocket connection to ShareDB.
-		var conn = new sharedb.Connection(websocket);
-
-		//////////////////////////////////////////////////////////////
-		// BEGIN keepAlive Handling
-		//////////////////////////////////////////////////////////////
-
-		var keepAliveMessage = JSON.stringify({
-			type: 'alive'
-		});
-
-		var keepAliveInterval;
-
-		var enableKeepAlive = function() {
-			// Make sure to disable any previous keep alive interval.
-			disableKeepAlive();
-
-			keepAliveInterval = setInterval(function() {
-				websocket.send(keepAliveMessage);
-			}, 10000);
-		}
-
-		var disableKeepAlive = function() {
-			if (keepAliveInterval) {
-				clearInterval(keepAliveInterval);
-				keepAliveInterval = null;
-			}
-		}
-
-		var sdbOpenHandler = websocket.onopen;
-		websocket.onopen = function(event) {
-			sdbOpenHandler(event);
-			enableKeepAlive();
-		}
-
-		var sdbCloseHandler = websocket.onclose;
-		websocket.onclose = function(event) {
-			sdbCloseHandler(event);
-			disableKeepAlive();
-		}
-
-		var sdbErrorHandler = websocket.onerror;
-		websocket.onerror = function(event) {
-			sdbErrorHandler(event);
-			disableKeepAlive();
-		}
-
-		//////////////////////////////////////////////////////////////
-		// END keepAlive Handling
-		//////////////////////////////////////////////////////////////
 
 		// Mapping from tokens to callback functions.
 		var tokenCallbackMap = {};
@@ -176,21 +145,15 @@ root.webstrates = (function(webstrates) {
 			}
 			msgObj.d = msgObj.d || module.webstrateId;
 			websocket.send(JSON.stringify(msgObj));
-		}
+		};
 
-		// We want to use ShareDB's websocket connection for emitting our own events, specifically
-		// events for when clients join and leave the webstrate. ShareDB attaches itself as listener on
-		// the websocket, but we need to intercept the messages and filter out our own first. So we save
-		// ShareDB's on-message handler, attach our own, and then forward messages that aren't for us to
-		// ShareDB.
-		var sdbMessageHandler = websocket.onmessage;
-		websocket.onmessage = function(event) {
-			var data = JSON.parse(event.data);
-			if (!data.wa) {
-				sdbMessageHandler(event);
-				return;
-			}
-
+		/**
+		 * Handles websocket messages that we don't want ShareDB to touch. This gets attached to
+		 * `websocket.onmessage` elsewhere.
+		 * @param  {Object} data JavaScript object with request data.
+		 * @private
+		 */
+		var websocketMessageHandler = function(data) {
 			if (data.token) {
 				var callback = tokenCallbackMap[data.token];
 				if (!callback) {
@@ -283,25 +246,129 @@ root.webstrates = (function(webstrates) {
 			}
 		};
 
-		// Get ShareDB document for ID webstrateId.
-		doc = conn.get(COLLECTION_NAME, webstrateId);
-
-		// Subscribe to remote operations (changes to the ShareDB document).
-		doc.subscribe(function(error) {
-			if (error) {
-				throw error;
-			}
-			currentTag = allTags[doc.version];
-			populateElementWithDocument(webstrateId, doc, targetElement, function documentPopulated() {
-				rootElement = targetElement.childNodes[0];
-				pathTree = webstrates.PathTree.create(rootElement, null, true);
-				setupMutationObservers(doc, rootElement, function afterMutationCallback() {
-					pathTree.check();
-				});
-				setupOpListener(doc, rootElement, pathTree);
-				notifyListeners(webstrateId);
+		/**
+		 * Attaches keep alive manager to a websocket connetion.
+		 * @param  {WebSocket} websocket Websocket.
+		 * @private
+		 */
+		var setupKeepAlive = function(websocket) {
+			// To prevent the websocket connection to
+			var keepAliveMessage = JSON.stringify({
+				type: 'alive'
 			});
-		});
+
+			var keepAliveInterval;
+
+			var enableKeepAlive = function() {
+				// Make sure to disable any previous keep alive interval.
+				disableKeepAlive();
+
+				keepAliveInterval = setInterval(function() {
+					websocket.send(keepAliveMessage);
+				}, 10000);
+			};
+
+			var disableKeepAlive = function() {
+				if (keepAliveInterval) {
+					clearInterval(keepAliveInterval);
+					keepAliveInterval = null;
+				}
+			};
+
+			var sdbOpenHandler = websocket.onopen;
+			websocket.onopen = function(event) {
+				sdbOpenHandler(event);
+				enableKeepAlive();
+			};
+
+			var sdbCloseHandler = websocket.onclose;
+			websocket.onclose = function(event) {
+				sdbCloseHandler(event);
+				disableKeepAlive();
+			};
+
+			var sdbErrorHandler = websocket.onerror;
+			websocket.onerror = function(event) {
+				sdbErrorHandler(event);
+				disableKeepAlive();
+			};
+		}
+
+		if (typeof urlParams.static === "undefined") {
+			// Hand WebSocket connection to ShareDB.
+			var conn = new sharedb.Connection(websocket);
+
+			// We want to use ShareDB's websocket connection for emitting our own events, specifically
+			// events for when clients join and leave the webstrate. ShareDB attaches itself as listener
+			// on the websocket, but we need to intercept the messages and filter out our own first. So we
+			// save ShareDB's on-message handler, attach our own, and then forward messages that aren't
+			// for us to ShareDB.
+			var sdbMessageHandler = websocket.onmessage;
+			websocket.onmessage = function(event) {
+				var data = JSON.parse(event.data);
+				if (data.wa) {
+					websocketMessageHandler(data);
+				} else {
+					sdbMessageHandler(event);
+				}
+			};
+
+			// Get ShareDB document for ID webstrateId.
+			doc = conn.get(COLLECTION_NAME, webstrateId);
+
+			// Subscribe to remote operations (changes to the ShareDB document).
+			doc.subscribe(function(error) {
+				if (error) {
+					throw error;
+				}
+				currentTag = allTags[doc.version];
+				populateElementWithDocument(webstrateId, doc, targetElement, function documentPopulated() {
+					rootElement = targetElement.childNodes[0];
+					pathTree = webstrates.PathTree.create(rootElement, null, true);
+					setupMutationObservers(doc, rootElement, function afterMutationCallback() {
+						pathTree.check();
+					});
+					setupOpListener(doc, rootElement, pathTree);
+					notifyListeners(webstrateId);
+				});
+			});
+		} else {
+			// If a static document is requested, ShareDB can't help us, as ShareDB will just give us the
+			// newest version of the document. Instead, we will have to get the document ourselves.
+			websocket.onmessage = function(event) {
+				var data = JSON.parse(event.data);
+				websocketMessageHandler(data);
+			};
+
+			var recWsOpenHandler = websocket.onopen;
+			websocket.onopen = function(event) {
+				var msgObj = {
+					wa: "fetchdoc",
+					d: webstrateId
+				};
+
+				var tag, version;
+				 if (/^\d/.test(urlParams.v) && Number(urlParams.v)) {
+					msgObj.v = Number(urlParams.v);
+				} else {
+					msgObj.l = urlParams.v;
+				}
+
+				websocketSend(msgObj, function(err, snapshot) {
+					doc = snapshot;
+					populateElementWithDocument(webstrateId, doc, targetElement,
+						function documentPopulated() {
+						rootElement = targetElement.childNodes[0];
+						pathTree = webstrates.PathTree.create(rootElement, null, true);
+						notifyListeners(webstrateId);
+					});
+				});
+				websocket.onopen = recWsOpenHandler;
+				recWsOpenHandler(event);
+			}
+		}
+
+		setupKeepAlive(websocket);
 
 		/**
 		 * Populates an element with a document. Empties the element before populating it. If the
@@ -317,25 +384,28 @@ root.webstrates = (function(webstrates) {
 				targetElement.removeChild(targetElement.firstChild);
 			}
 
-			// A typeless document is not a document at all. Let's create one.
-			if (!doc.type || doc.data.length === 0) {
-				if (!doc.type) {
-					console.log(`Creating new sharedb document: "${webstrateId}".`);
-					doc.create('json0');
-				} else {
-					console.log("Document exists, but was empty. Recreating basic document.");
+			// This will normally be the case, but when using the static parameter, the document will just
+			// be a plain JavaScript object, in which case we don't need all this stuff.
+			if (doc instanceof sharedb.Doc) {
+				// A typeless document is not a document at all. Let's create one.
+				if (!doc.type || doc.data.length === 0) {
+					if (!doc.type) {
+						console.log(`Creating new sharedb document: "${webstrateId}".`);
+						doc.create('json0');
+					} else {
+						console.log("Document exists, but was empty. Recreating basic document.");
+					}
+
+					var op = targetElement.parentNode
+							? [{ "p": [], "oi": [ "div", { id: "doc_" + webstrateId, "class": "document" }]}]
+							: [{ "p": [], "oi": [ "html", {}, [ "body", {} ]]}];
+					doc.submitOp(op);
 				}
 
-				// TODO: is causing issues: https://github.com/cklokmose/Webstrates/issues/3
-				var op = targetElement.parentNode
-						? [{ "p": [], "oi": [ "div", { id: "doc_" + webstrateId, "class": "document" }]}]
-						: [{ "p": [], "oi": [ "html", {}, [ "body", {} ]]}];
-				doc.submitOp(op);
-			}
-
-			// All documents are persisted as JsonML, so we only know how to work with JSON documents.
-			if (doc.type.name !== 'json0') {
-				throw `Unsupported document type: ${sjsDocument.type.name}`;
+				// All documents are persisted as JsonML, so we only know how to work with JSON documents.
+				if (doc.type.name !== 'json0') {
+					throw `Unsupported document type: ${sjsDocument.type.name}`;
+				}
 			}
 
 			// In order to execute scripts synchronously, we insert them all without execution, and then
@@ -652,13 +722,13 @@ root.webstrates = (function(webstrates) {
 				});
 				observer.observe(rootElement, observerOptions);
 			});
-		};
 
-		doc.on('del', function onDelete(data) {
-			module.destroy();
-			alert("Document has been deleted.");
-			window.location = "/";
-		});
+			doc.on('del', function onDelete(data) {
+				module.destroy();
+				alert("Document has been deleted.");
+				window.location = "/";
+			});
+		};
 
 		/**
 		 * Runs all callbacks in a list.
@@ -971,7 +1041,24 @@ root.webstrates = (function(webstrates) {
 				msgObj.l = tagOrVersion;
 			}
 
-			websocketSend(msgObj, callback);
+			if (typeof urlParams.static === "undefined") {
+				websocketSend(msgObj, callback);
+				return;
+			}
+
+			msgObj.wa = "fetchdoc";
+			websocketSend(msgObj, function(err, snapshot, ...args) {
+				if (!err) {
+					doc = snapshot;
+					populateElementWithDocument(webstrateId, doc, targetElement,
+						function documentPopulated() {
+						rootElement = targetElement.childNodes[0];
+						pathTree = webstrates.PathTree.create(rootElement, null, true);
+					});
+				};
+								if (callback) callback(err, snapshot, ...args);
+
+			});
 		};
 
 		/**
@@ -1002,7 +1089,10 @@ root.webstrates = (function(webstrates) {
 		 */
 		Object.defineProperty(module, "version", {
 			get: function getVersion() {
-				return doc.version;
+				// If our document is an instance of sharedb.Doc (which it will be, unless we're requesting
+				// a static version of the document), then doc.version is defined. If doc is just a plain
+				// JavaScript object, the doc.version will be undefined, but doc.v will exist.
+				return doc.version || doc.v;
 			},
 			set: function setVersion(v) {
 				throw new Error("Version is read-only");
