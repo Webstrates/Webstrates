@@ -6,11 +6,40 @@
  * @param {int}             authConfig      Auth configurations
  * @constructor
  */
-module.exports = function(documentManager, authConfig) {
+module.exports = function(documentManager, authConfig, pubsub) {
+	var PUBSUB_CHANNEL = "webstratesPermissions";
 	var module = {};
+
 	var permissionsCache = {};
 	var timeToLive = authConfig ? authConfig.permissionTimeout : 300;
 	var defaultPermissionsList = authConfig && authConfig.defaultPermissions;
+
+	// Listen for events happening on other server instances. This is only used when using multi-
+	// threading and Redis.
+	if (pubsub) {
+		pubsub.subscriber.subscribe(PUBSUB_CHANNEL);
+		pubsub.subscriber.on("message", function(channel, message) {
+			// Ignore messages on other channels.
+			if (channel !== PUBSUB_CHANNEL) {
+				return;
+			}
+
+			message = JSON.parse(message);
+
+			// Ignore messages from ourselves.
+			if (message.WORKER_ID === WORKER_ID) {
+				return;
+			}
+
+			switch (message.action) {
+				case "invalidateCachedPermissions":
+					module.invalidateCachedPermissions(message.webstrateId);
+					break;
+				default:
+					console.warn("Unknown action", message);
+			}
+		});
+	}
 
 	/**
 	 * Get a user's permissions for a specific snapshot.
@@ -150,11 +179,22 @@ module.exports = function(documentManager, authConfig) {
 
 	/**
 	 * Deletes all caches for a specific webstrate.
-	 * @param  {string} webstrateId WebstrateId.
+	 * @param {string} webstrateId WebstrateId.
+	 * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
+	 *                             or remotely (on another server instance). We should only forward
+	 *                             local cache invalidation requests, otherwise we end up in a
+	 *                             livelock where we continuously send the same request back and forth
+	 *                             between instances.
 	 * @public
 	 */
-	module.invalidateCachedPermissions = function(webstrateId) {
+	module.invalidateCachedPermissions = function(webstrateId, local) {
 		delete permissionsCache[webstrateId];
+
+		if (local && pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: "invalidateCachedPermissions", webstrateId, WORKER_ID
+			}));
+		}
 	}
 
 	/**

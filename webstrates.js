@@ -1,20 +1,24 @@
 "use strict";
 
-var argv = require('optimist').argv;
-var Duplex = require('stream').Duplex;
-var express = require('express');
+var argv = require("optimist").argv;
+var cluster = require('cluster');
+var Duplex = require("stream").Duplex;
+var express = require("express");
 var fs = require("fs");
 var fss = require("fs-sync");
-var http = require('http');
-var httpAuth = require('http-auth');
-var MongoClient = require('mongodb').MongoClient;
-var passport = require('passport');
+var http = require("http");
+var httpAuth = require("http-auth");
+var MongoClient = require("mongodb").MongoClient;
+var passport = require("passport");
+var redis = require("redis");
 var sessions = require("client-sessions");
-var sharedb = require('sharedb');
-var sharedbMongo = require('sharedb-mongo');
-var shortId = require('shortid');
-var WebSocketServer = require('ws').Server;
+var sharedb = require("sharedb");
+var sharedbMongo = require("sharedb-mongo");
+var sharedbRedisPubSub = require("sharedb-redis-pubsub");
+var shortId = require("shortid");
+var WebSocketServer = require("ws").Server;
 
+global.WORKER_ID = cluster.worker && cluster.worker.id || 0;
 global.APP_PATH = __dirname;
 
 require('console-stamp')(console, {
@@ -28,10 +32,11 @@ require('console-stamp')(console, {
 		metadata: "grey"
 	}
 });
+
 if (!fss.exists(APP_PATH + "/config.json")) {
-	console.warn("No config file present, creating one now.");
+	console.warn("No config file present, creating one now");
 	if (!fss.exists(APP_PATH + "/config-sample.json")) {
-		console.warn("Sample config not present either, creating empty config.")
+		console.warn("Sample config not present either, creating empty config")
 		fss.write(APP_PATH + "/config.json", "{}");
 	} else {
 		fss.copy(APP_PATH + "/config-sample.json", APP_PATH + "/config.json");
@@ -40,15 +45,42 @@ if (!fss.exists(APP_PATH + "/config.json")) {
 
 var config = fss.readJSON(APP_PATH + "/config.json");
 
-var WEBSTRATE_DB = config.db || "mongodb://localhost:27017/webstrate";
+// Setting up multi-threading. If config.threads is 0, a thread for each core is created.
+var threadCount = parseInt(config.threads) || require('os').cpus().length;
+if (typeof config.threads !== "undefined") {
+	if (!config.pubsub) {
+		console.warn("Can't run multithreaded without Redis");
+	} else {
+		if (cluster.isMaster) {
+			for (var i = 0; i < threadCount; ++i) {
+				cluster.fork();
+			}
+			return;
+		}
+	}
+}
+
+var DB_ADDRESS = config.db || "mongodb://localhost:27017/webstrate";
+
+var pubsub;
+if (config.pubsub) {
+	pubsub = {
+		publisher: redis.createClient(config.pubsub),
+		subscriber: redis.createClient(config.pubsub)
+	};
+}
 
 var share = sharedb({
-	db: sharedbMongo(WEBSTRATE_DB)
+	db: sharedbMongo(DB_ADDRESS),
+	pubsub: config.pubsub && sharedbRedisPubSub({
+		client: pubsub.publisher,
+		observer: pubsub.subscriber
+	})
 });
 var agent = share.connect();
 
 var db = {};
-MongoClient.connect(WEBSTRATE_DB, function(err, _db) {
+MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	if (err)
 		throw err;
 	db.sessionLog = _db.collection('sessionLog');
@@ -58,13 +90,13 @@ MongoClient.connect(WEBSTRATE_DB, function(err, _db) {
 });
 
 var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
-var clientManager = require("./helpers/ClientManager.js")(cookieHelper);
+var clientManager = require("./helpers/ClientManager.js")(cookieHelper, pubsub);
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
-var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth);
+var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth,
+	pubsub);
 
 var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,
 	permissionManager);
-
 
 var app = express();
 app.server = http.createServer(app);
@@ -72,7 +104,7 @@ app.use(express.static("build"));
 app.use(express.static("static"));
 
 if (config.basicAuth) {
-	console.log("Basic auth enabled");
+	if (WORKER_ID === 1) console.log("Basic auth enabled");
 	var basic = httpAuth.basic({
 		realm: config.basicAuth.realm
 	}, function(username, password, callback) {
@@ -115,7 +147,7 @@ if (config.auth) {
 		}), function(req, res) {
 			return res.redirect("/");
 		});
-		console.log(provider + "-based authentication enabled");
+		if (WORKER_ID === 1) console.log(provider + "-based authentication enabled");
 	}
 
 	app.get('/auth/logout', function(req, res) {
@@ -241,19 +273,19 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 						console.log("req.action fetch");
 					case "getOps": // Operations request.
 					case "query": // Document request.
-						if (permissions.indexOf("r") !== -1) {
+						if (permissions.includes("r")) {
 							return next();
 						}
 						break;
 					case "submit": // Operation submission.
-						if (permissions.indexOf("w") !== -1) {
+						if (permissions.includes("w")) {
 							return next();
 						}
 						break;
 					case "receive":
 						// u = unsubscribe.
 						if (req.data.a === "u") {
-							clientManager.removeClientFromWebstrate(req.data.socketId, req.webstrateId);
+							clientManager.removeClientFromWebstrate(req.data.socketId, req.webstrateId, true);
 							return;
 						}
 
@@ -265,7 +297,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 							});
 							// And if the permissions have changed, invalidate the permissions cache.
 							if (permissionsChanged) {
-								permissionManager.invalidateCachedPermissions(req.webstrateId);
+								permissionManager.invalidateCachedPermissions(req.webstrateId, true);
 							}
 						}
 
@@ -275,7 +307,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 						}
 
 						// Initial document request (s = subscribe).
-						if (req.data.a === "s" && permissions.indexOf("r") !== -1) {
+						if (req.data.a === "s" && permissions.includes("r")) {
 							return documentManager.getTags(req.data.d, function(err, tags) {
 								if (err) console.error(err);
 								if (tags) {
@@ -285,7 +317,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 										tags: tags
 									});
 								}
-								clientManager.addClientToWebstrate(req.data.socketId, req.webstrateId);
+								clientManager.addClientToWebstrate(req.data.socketId, req.webstrateId, true);
 								next();
 							});
 						}
@@ -384,11 +416,14 @@ wss.on('connection', function(client) {
 			}
 
 			switch (data.wa) {
+				// When the client is ready.
+				case "ready":
+					clientManager.triggerJoin(socketId);
+					break;
 				// Request a snapshot.
 				case "fetchdoc":
 					var version = data.v;
 					var tag = data.l;
-					console.log("data.token", data);
 					if (data.token) {
 						documentManager.getDocument({ webstrateId, tag, version }, function(err, snapshot) {
 							var responseObj = { wa: "reply", token: data.token };
@@ -422,7 +457,7 @@ wss.on('connection', function(client) {
 					var nodeId = data.id || "document";
 					var message = data.m;
 					var recipients = data.recipients;
-					clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
+					clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
 					break;
 				// Restoring a document to a previous version.
 				case "restore":
@@ -528,4 +563,5 @@ wss.on('connection', function(client) {
 
 var port = argv.p || 7007;
 app.server.listen(port);
-console.log("Listening on http://localhost:" + port + "/");
+if (WORKER_ID === 1)
+	console.log(`Listening on http://localhost:${port}/ in ${threadCount} thread(s)`);

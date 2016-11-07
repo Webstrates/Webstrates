@@ -111,7 +111,7 @@ Send messages on `elementNode`:
 elementNode.webstrate.signal(message, [recipients]);
 ```
 
-An optional array of Client IDs (`recipients`) can be passed in. If recipients is not defined, all subscribers will recieve the message, otherwise only the clients in recipients will. Recipients are never aware of who else has received the signal.
+An optional array of Client IDs (`recipients`) can be passed in. If recipients is not defined, all subscribers will recieve the message, otherwise only the clients in `recipients` will. Recipients are never aware of who else has received the signal.
 
 Instead of listening for specific signals on DOM nodes, it is also possible to listen for all events using the webstrate instance.
 

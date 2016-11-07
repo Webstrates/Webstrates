@@ -39,9 +39,11 @@
     "optimist": "^0.6.1",
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
+    "redis": "^2.6.3",
     "serve-static": "^1.6.2",
     "sharedb": "^1.0.0-beta.5",
     "sharedb-mongo": "1.0.0-beta.2",
+    "sharedb-redis-pubsub": "^1.0.0-beta.1",
     "shortid": "^2.0.1",
     "websocket": "^1.0.23",
     "ws": "0.4.32"

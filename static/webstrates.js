@@ -138,7 +138,7 @@ root.webstrates = (function(webstrates) {
 					// If the token still exists in the map, it means the callback function hasn't been
 					// removed.
 					if (tokenCallbackMap[token]) {
-						callback(new Error("Request timed out"));
+						tokenCallbackMap[token](new Error("Request timed out"));
 					}
 				}, 2000);
 
@@ -177,7 +177,6 @@ root.webstrates = (function(webstrates) {
 					module.clientId = clientId;
 					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
-					module.clients.push(clientId);
 					break;
 				case "clientJoin":
 					var clientId = data.id;
@@ -185,7 +184,7 @@ root.webstrates = (function(webstrates) {
 					triggerCallbacks(callbackLists.clientJoin, clientId);
 					break;
 				case "clientPart":
-					var clientId = clientId;
+					var clientId = data.id;
 					module.clients.splice(module.clients.indexOf(clientId), 1);
 					triggerCallbacks(callbackLists.clientPart, clientId);
 					break;
@@ -503,11 +502,6 @@ root.webstrates = (function(webstrates) {
 		 * @private
 		 */
 		var notifyListeners = function(webstrateId) {
-			// Redispatch DOMContentLoaded.
-			// This can cause infinite recursive calls. Bad.
-			/*var contentLoadedEvent = document.createEvent("Event");
-			contentLoadedEvent.initEvent("DOMContentLoaded", true, true);
-			document.dispatchEvent(contentLoadedEvent);*/
 
 			// Set webstrate loaded.
 			webstrate.loaded = true;
@@ -520,6 +514,10 @@ root.webstrates = (function(webstrates) {
 					user: module.user
 				}
 			}));
+
+			// Let the server know that we are ready. This will trigger a `clientJoin` event on other
+			// clients.
+			websocketSend({ wa: "ready", d: webstrateId });
 
 			// If the parent window is this window, we are not contained in an iframe, so we return.
 			if (window === window.parent) {
