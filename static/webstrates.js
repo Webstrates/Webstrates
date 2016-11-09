@@ -2,7 +2,6 @@ var root = typeof module === "object" && module.exports ? module.exports : windo
 
 root.webstrates = (function(webstrates) {
 	"use strict";
-
 	/**
 	 * Webstrate constructor. Creates a webstrate instance.
 	 * @param {WebSocket} websocket   WebSocket for ShareDB to use for transmitting operations.

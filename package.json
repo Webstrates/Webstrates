@@ -49,6 +49,7 @@
     "ws": "0.4.32"
   },
   "devDependencies": {
+    "babel-polyfill": "^6.16.0",
     "selenium-webdriver": "^2.53.2"
   }
 }
