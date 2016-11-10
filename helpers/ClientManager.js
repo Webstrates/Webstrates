@@ -11,11 +11,12 @@ module.exports = function(cookieHelper, pubsub) {
 	var module = {};
 
 	// One-to-one mapping from socketIds to client sockets as well as one-to-many mapping from
-	// socketId to webstrateIds.
+	// socketId to webstrateIds. clients holds all clients connected to this server instance, but not
+	// remote clients.
 	var clients = {};
 
-	// One-to-many mapping from webstrateIds to socketIds. This could be derived from `clients`, but
-	// this is faster.
+	// One-to-many mapping from webstrateIds to socketIds. webstrates holds a list of all clients
+	// connected in all webstrates, including remote clients.
 	var webstrates = {};
 
 	// One-to-many mapping from webstrateIds to nodeIds as well as one-to-many mapping from nodeIds
@@ -197,6 +198,12 @@ module.exports = function(cookieHelper, pubsub) {
 		}
 
 		var partFn = function() {
+			// In case webstrates[webstrateId] still doesn't exist, let's just give up in trying to remove
+			// the client.
+			if (!webstrates[webstrateId]) {
+				return;
+			}
+
 			var socketIdIdx = webstrates[webstrateId].indexOf(socketId);
 			webstrates[webstrateId].splice(socketIdIdx, 1);
 
@@ -317,7 +324,7 @@ module.exports = function(cookieHelper, pubsub) {
 			});
 		});
 
-		if (local && pubsub.publisher) {
+		if (local && pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 				action: "publish", senderSocketId, webstrateId, nodeId, message,
 				recipients: unknownRecipients, WORKER_ID
