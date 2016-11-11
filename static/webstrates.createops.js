@@ -60,9 +60,14 @@ root.webstrates = (function(webstrates) {
 		mutation.target.webstrate.fireEvent("attributeChanged", mutation.attributeName, oldValue,
 			newValue, true);
 
+		var jsonmlAttrs = webstrates.util.elementAtPath(sjsDoc.data,
+			[...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
+
 		// dmp.patch_make does not accept empty strings, so if we are creating a new attribute (or
 		// setting an attribute's value for the first time), we have to create the operation manually.
-		if (oldValue === null) {
+		// The second condition should not be true without the first one, but it will if the changes
+		// happen so rapidly, that the browser skipped a MutationRecord. Or that's my theory, at least.
+		if (oldValue === null || !jsonmlAttrs[mutation.attributeName]) {
 			var op = { oi: newValue, p: path };
 			return [op];
 		}
@@ -74,10 +79,7 @@ root.webstrates = (function(webstrates) {
 			return [op];
 		}
 
-		var pathTreeNode = webstrates.util.elementAtPath(sjsDoc.data,
-			[...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
-
-		var ops = patchesToOps(path, pathTreeNode[mutation.attributeName], newValue);
+		var ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
 		return ops;
 	};
 
@@ -213,15 +215,15 @@ root.webstrates = (function(webstrates) {
 
 			var path = removedPathNode.toPath();
 			removedPathNode.remove();
-			var element = webstrates.util.elementAtPath(sjsDoc.data, path);
-			// If the element doesn't exist in the DOM, we can't create an op for its deletion, and we
+			var jsonmlElement = webstrates.util.elementAtPath(sjsDoc.data, path);
+			// If the element doesn't exist in the JsonML, we can't create an op for its deletion, and we
 			// shouldn't either, so we return. This happens when we replace an unsanitized tag with a
 			// sanitized one.
-			if (!element) {
+			if (!jsonmlElement) {
 				return;
 			}
 
-			var op = { ld: element, p: path };
+			var op = { ld: jsonmlElement, p: path };
 			ops.push(op);
 		});
 
