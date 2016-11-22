@@ -75,7 +75,7 @@ root.webstrates = (function(webstrates) {
 		// If the new value is null, we are removing the attribute. dmp_patch_make is also not needed
 		// here.
 		if (newValue === null) {
-			var op = { od: mutation.attributeName, p: path };
+			var op = { od: oldValue, p: path };
 			return [op];
 		}
 

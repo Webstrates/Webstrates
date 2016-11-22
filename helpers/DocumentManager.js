@@ -28,7 +28,7 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @return {string}                       (async) Name of new webstrate.
 	 * @public
 	 */
-	module.createNewDocument = function({ webstrateId, prototypeId, version }, next) {
+	module.createNewDocument = function({ webstrateId, prototypeId, version, tag }, next) {
 		if (!webstrateId) {
 			webstrateId = shortId.generate();
 		}
@@ -38,7 +38,7 @@ module.exports = function(clientManager, share, agent, db) {
 			return next && next(null, webstrateId);
 		}
 
-		module.getDocument({ webstrateId: prototypeId, version }, function(err, snapshot) {
+		module.getDocument({ webstrateId: prototypeId, version, tag }, function(err, snapshot) {
 			if (err) return next && next(err);
 
 			share.submit(agent, 'webstrates', webstrateId, {

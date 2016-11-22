@@ -30,9 +30,9 @@ module.exports = function(documentManager, permissionManager) {
 		if (tagOrVersion === "") {
 			version = "";
 		} else if (/^\d/.test(tagOrVersion)) {
-			version = Number(req.query.v) || undefined;
+			version = Number(tagOrVersion) || undefined;
 		} else {
-			tag = req.query.v;
+			tag = tagOrVersion;
 		}
 
 		if (!webstrateId) {
@@ -184,7 +184,16 @@ module.exports = function(documentManager, permissionManager) {
 	module.newWebstrateRequestHandler = function(req, res) {
 		var webstrateId = req.query.id;
 		var prototypeId = req.query.prototype;
-		var version = req.query.v === "" ? "" : (Number(req.query.v) || undefined);
+		var tag, version;
+		var tagOrVersion = req.query.version;
+
+		if (tagOrVersion === "") {
+			version = "";
+		} else if (/^\d/.test(tagOrVersion)) {
+			version = Number(tagOrVersion) || undefined;
+		} else {
+			tag = tagOrVersion;
+		}
 
 		var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
 			req.user.provider);
@@ -203,7 +212,7 @@ module.exports = function(documentManager, permissionManager) {
 					return res.send("Permission denied");
 				}
 
-				documentManager.createNewDocument({ webstrateId, prototypeId, version },
+				documentManager.createNewDocument({ webstrateId, prototypeId, version, tag },
 					function(err, webstrateId) {
 					if (err) {
 						console.error(err);
@@ -224,7 +233,7 @@ module.exports = function(documentManager, permissionManager) {
 		}
 
 		// If there's no prototypeId defined, the user is just trying to create a clean new webstrate.
-		documentManager.createNewDocument({ webstrateId, version }, function(err, webstrateId) {
+		documentManager.createNewDocument({ webstrateId, version, tag }, function(err, webstrateId) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(err);
