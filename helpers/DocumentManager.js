@@ -76,15 +76,12 @@ module.exports = function(clientManager, share, agent, db) {
 		if (tag) {
 			return getDocumentFromTag(webstrateId, tag, next);
 		}
-
 		if (version === undefined || version === "" || version === "head") {
 			return share.fetch(agent, 'webstrates', webstrateId, next);
 		}
-
 		if (Number.isNaN(version)) {
 			return next && next(new Error("Version must be a number or 'head'"));
 		}
-
 		getTagBeforeVersion(webstrateId, version, function(err, snapshot) {
 			if (err) return next && next(err);
 			transformDocumentToVersion({ webstrateId, snapshot, version }, next);
@@ -350,12 +347,10 @@ module.exports = function(clientManager, share, agent, db) {
 
 		module.getOps({ webstrateId, initialVersion: snapshot.v, version }, function(err, ops) {
 			if (err) return next && next(err);
-
 			// Apply each operation to rebuild the document.
 			ops.forEach(function(op) {
 				ot.apply(snapshot, op);
 			});
-
 			// If after we've applied all updates, we haven't reached the desired version, the user must
 			// be requesting a version that doesn't exist yet.
 			err = version === snapshot.v ? null :

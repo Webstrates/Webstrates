@@ -235,14 +235,26 @@ var webstrateActivites = {};
 var AUTO_TAGGING_PREFIX = config.tagging && config.tagging.tagPrefix || "Session of ";
 var AUTO_TAGGING_INTERVAL = config.tagging && config.tagging.autotagInterval || 3600;
 share.use('op', function(req, next) {
+	// We are only interested in ops coming from clients here, which all will have a `d` (document)
+	// property.
+	if (!req.op.d) return next();
+
 	var webstrateId = req.op.d;
 	var timestamp = Date.now();
 
 	if (!webstrateActivites[webstrateId] || webstrateActivites[webstrateId] +
 		AUTO_TAGGING_INTERVAL * 1000 < timestamp) {
 		var version = req.op.v;
-		var label = AUTO_TAGGING_PREFIX + new Date(timestamp);
-		documentManager.tagDocument(webstrateId, req.op.v, label);
+		documentManager.getTag(webstrateId, version, function(err, tag) {
+			// If a tag already exists at this version, we don't want to overwrite it with our generic,
+			// auto-tagging one.
+			if (tag) return next();
+
+			var label = AUTO_TAGGING_PREFIX + new Date(timestamp);
+			documentManager.tagDocument(webstrateId, version, label, function(err) {
+				if (err) console.error("Auto-tagging failed", err);
+			});
+		});
 	}
 
 	webstrateActivites[webstrateId] = timestamp;
