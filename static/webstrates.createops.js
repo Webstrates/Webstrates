@@ -196,7 +196,10 @@ root.webstrates = (function(webstrates) {
 				targetPathNode.children.push(newPathNode);
 			}
 
-			mutation.target.webstrate.fireEvent("nodeAdded", addedNode, true);
+			// Text nodes to not have webstrate elements.
+			if (mutation.target.webstrate) {
+				mutation.target.webstrate.fireEvent("nodeAdded", addedNode, true);
+			}
 
 			var path = webstrates.PathTree.getPathNode(addedNode, target).toPath();
 			var op = { li: JsonML.fromHTML(addedNode), p: path };
@@ -211,7 +214,10 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 
-			mutation.target.webstrate.fireEvent("nodeRemoved", removedNode, true);
+			// Text nodes to not have webstrate elements.
+			if (mutation.target.webstrate) {
+				mutation.target.webstrate.fireEvent("nodeRemoved", removedNode, true);
+			}
 
 			var path = removedPathNode.toPath();
 			removedPathNode.remove();
