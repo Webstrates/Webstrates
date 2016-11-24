@@ -239,6 +239,11 @@ root.webstrates = (function(webstrates) {
 					}
 					delete allTags[version];
 					break;
+				case "delete":
+					module.destroy();
+					alert("Document has been deleted.");
+					window.location = "/";
+					break;
 				default:
 					console.warn("Unknown event", data);
 			}
@@ -720,11 +725,6 @@ root.webstrates = (function(webstrates) {
 				observer.observe(rootElement, observerOptions);
 			});
 
-			doc.on('del', function onDelete(data) {
-				module.destroy();
-				alert("Document has been deleted.");
-				window.location = "/";
-			});
 		};
 
 		/**

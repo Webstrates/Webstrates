@@ -159,12 +159,18 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @public
 	 */
 	module.deleteDocument = function(webstrateId, source, next) {
-		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, {
-			del: true,
-			src: source
-		});
-		request.submit(function(err) {
-			if (err) return next && next(new Error(err.message));
+		db.webstrates.remove({ _id: webstrateId }, function(err, res) {
+			if (err) {
+				return next && next(err);
+			}
+
+			clientManager.sendToClients(webstrateId, {
+				wa: "delete",
+				d: webstrateId
+			});
+
+			db.tags.remove({ webstrateId });
+			db.ops.remove({ d: webstrateId });
 			next && next();
 		});
 	};

@@ -83,7 +83,10 @@ var db = {};
 MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	if (err)
 		throw err;
+
 	db.sessionLog = _db.collection('sessionLog');
+	db.webstrates = _db.collection('webstrates');
+	db.ops = _db.collection('ops');
 	db.tags = _db.collection('tags');
 	db.tags.ensureIndex({ webstrateId: 1, label: 1 }, { unique: true });
 	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
