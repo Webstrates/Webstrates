@@ -794,7 +794,8 @@ root.webstrates = (function(webstrates) {
 				 */
 				node.webstrate.on = function(event, callback) {
 					// Use iframe's window to trigger event when node is an actual iframe element.
-					var context = node.tagName.toLowerCase() === "iframe" && node.ContentWindow ?
+					var context = node.nodeType === Node.ELEMENT_NODE &&
+						node.tagName.toLowerCase() === "iframe" && node.ContentWindow ?
 						(node.contentWindow || window) : window;
 					addCallbackToEvent(event, callback, callbackLists, context, node);
 				};
