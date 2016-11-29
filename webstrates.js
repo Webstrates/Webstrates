@@ -18,7 +18,7 @@ var sharedbRedisPubSub = require("sharedb-redis-pubsub");
 var shortId = require("shortid");
 var WebSocketServer = require("ws").Server;
 
-global.WORKER_ID = cluster.worker && cluster.worker.id || 0;
+global.WORKER_ID = cluster.worker && cluster.worker.id || 1;
 global.APP_PATH = __dirname;
 
 require('console-stamp')(console, {
@@ -46,8 +46,9 @@ if (!fss.exists(APP_PATH + "/config.json")) {
 var config = fss.readJSON(APP_PATH + "/config.json");
 
 // Setting up multi-threading. If config.threads is 0, a thread for each core is created.
-var threadCount = parseInt(config.threads) || require('os').cpus().length;
+var threadCount = 1;
 if (typeof config.threads !== "undefined") {
+	threadCount = parseInt(config.threads) || require('os').cpus().length;
 	if (!config.pubsub) {
 		console.warn("Can't run multithreaded without Redis");
 	} else {
