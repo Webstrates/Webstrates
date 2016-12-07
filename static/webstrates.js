@@ -665,15 +665,16 @@ root.webstrates = (function(webstrates) {
 				});
 			};
 
-			// Set up `mutationToOps` mutation observer.
-			observer = new MutationObserver(mutationToOps);
-			observer.observe(rootElement, observerOptions);
-
 			// Set up `documentMaintainer` mutation observer.
 			var maintainerObserver = new MutationObserver(documentMaintainer);
 			maintainerObserver.observe(rootElement, observerOptions);
-			// And run the maintainer on the just-initialized document.
+
+			// Run the maintainer on the just-initialized document.
 			webstrates.util.recursiveForEach(rootElement, maintainElement);
+
+			// And set up `mutationToOps` mutation observer.
+			observer = new MutationObserver(mutationToOps);
+			observer.observe(rootElement, observerOptions);
 		};
 
 		/**
