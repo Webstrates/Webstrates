@@ -64,6 +64,15 @@
 					if (!xmlNs) {
 						xmlNs = getNs(elem[i]);
 					}
+
+					// When loading a website with an SVG element without a namespace attribute, Chrome will
+					// guess the namespace itself. When adding it like we do with Webstrates, it won't. So
+					// to have Webstrates give us a more normal browser experience, we add the namespace
+					// manually.
+					if (!xmlNs && name === "svg") {
+						xmlNs = "http://www.w3.org/2000/svg";
+					}
+
 					if (xmlNs) {
 						selector = document.createElementNS(xmlNs, name);
 					} else {
