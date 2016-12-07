@@ -78,12 +78,10 @@
 					} else {
 						selector = document.createElement(name);
 					}
-					if (selector.tagName.toLowerCase() === "script") {
-						selector.async = false;
-						scripts && scripts.push(selector);
-					}
+
+					// Add attributes to the element.
 					for (var index in elem[i]) {
-						// the __wid attribute is a unique ID assigned each node and should not be in the DOM.
+						// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 						if (index.toLowerCase() === "__wid") {
 							continue;
 						}
@@ -100,6 +98,15 @@
 							selector.__d = value;
 						}
 						selector.setAttribute(index, value);
+					}
+
+					// Add scripts to our scripts list, so we can execute them later synchronously. Only add
+					// JavaScripts, i.e. scripts either without a type attribute, or with "text/javascript" as
+					// the type attribute.
+					if (selector.tagName.toLowerCase() === "script" && (!selector.getAttribute("type") ||
+						selector.getAttribute("type") === "text/javascript")) {
+						selector.async = false;
+						scripts && scripts.push(selector);
 					}
 				}
 
