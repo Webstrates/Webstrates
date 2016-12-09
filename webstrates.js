@@ -162,6 +162,10 @@ if (config.auth) {
 	auth = true;
 }
 
+app.use(function(req, res, next) {
+	sessionMiddleware(req, next);
+});
+
 app.get("/", httpRequestController.rootRequestHandler);
 app.get('/new', httpRequestController.newWebstrateRequestHandler);
 app.get('/favicon.ico', httpRequestController.faviconRequestHandler);
@@ -209,7 +213,6 @@ var sessionMiddleware = function(req, next) {
 			provider = session.passport.user.provider;
 		}
 	}
-
 	if (typeof req.user !== "object") {
 		req.user = {};
 	}
@@ -218,7 +221,6 @@ var sessionMiddleware = function(req, next) {
 	req.user.provider = provider;
 	req.user.userId = username + ":" + provider;
 	req.webstrateId = req.id || req.data && req.data.d;
-
 	next();
 };
 
@@ -227,13 +229,10 @@ share.use(['connect', 'receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'subm
 	sessionMiddleware(req, next);
 });
 
-app.use(function(req, res, next) {
-	sessionMiddleware(req, next);
-});
-
 share.use('connect', function(req, next) {
 	sessionLoggingMiddleware(req, next)
 });
+
 
 var webstrateActivites = {};
 var AUTO_TAGGING_PREFIX = config.tagging && config.tagging.tagPrefix || "Session of ";
