@@ -356,6 +356,20 @@ var wss = new WebSocketServer({
 wss.on('connection', function(client) {
 	var socketId = clientManager.addClient(client);
 
+	// We replace `client.send` with a function that doesn't throw an exception if the message fails.
+	// Instead, it just quietly removes the client.
+	client.__send = client.send;
+	client.send = function(data) {
+		try {
+			client.__send(data);
+		} catch (err) {
+			console.error(err);
+			clientManager.removeClient(socketId);
+			return false;
+		}
+		return true;
+	};
+
 	var stream = new Duplex({
 		objectMode: true
 	});
