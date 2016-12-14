@@ -738,7 +738,7 @@ root.webstrates = (function(webstrates) {
 			// We should use function(callbackList, ...parameters), but Safari will have none of that.
 			var parameters = Array.from(arguments).slice(1);
 			callbackList.forEach(function(callback) {
-				callback(...parameters);
+				setTimeout(callback, 0, ...parameters);
 			})
 		};
 
