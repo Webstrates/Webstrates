@@ -24,7 +24,12 @@ module.exports = function(cookieConfig) {
 		cookie = parseCookie(cookie);
 
 		if (cookie[cookieConfig.cookieName]) {
-			return sessions.util.decode(cookieConfig, cookie[cookieConfig.cookieName]).content;
+			var decodedCookie = sessions.util.decode(cookieConfig, cookie[cookieConfig.cookieName]);
+			if (!decodedCookie) {
+				console.error("Failed to decode cookie", cookie);
+				return null;
+			}
+			return decodedCookie.content;
 		}
 
 		return null;
