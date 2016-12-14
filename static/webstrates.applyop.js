@@ -298,12 +298,14 @@ root.webstrates = (function(webstrates) {
 					// Attribute value diff.
 					attributeName = path.pop();
 					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
-					var oldString = childElement.getAttribute(attributeName);
-					if (isSvgPath) oldString = childElement.__d;
-					var newString = oldString.substring(0, charIndex)
-						+ oldString.substring(charIndex + value.length);
-					if (isSvgPath) childElement.__d = newString;
-					childElement.setAttribute(attributeName, newString);
+					var oldValue = childElement.getAttribute(attributeName);
+					if (isSvgPath) oldValue = childElement.__d;
+					var newValue = oldValue.substring(0, charIndex)
+						+ oldValue.substring(charIndex + value.length);
+					if (isSvgPath) childElement.__d = newValue;
+					childElement.setAttribute(attributeName, newValue);
+					childElement.webstrate.fireEvent("attributeChanged", attributeName, oldValue, newValue,
+						false);
 					break;
 				}
 				// If not an attribute value change: fall-through.
@@ -311,10 +313,10 @@ root.webstrates = (function(webstrates) {
 				// Text node or comment content change.
 				var isComment = parentElement.nodeType === document.COMMENT_NODE;
 				var parentElement = isComment ? parentElement : childElement;
-				var oldString = parentElement.data;
-				var newString = oldString.substring(0, charIndex)
-					+ oldString.substring(charIndex + value.length);
-				parentElement.data = newString;
+				var oldValue = parentElement.data;
+				var newValue = oldValue.substring(0, charIndex)
+					+ oldValue.substring(charIndex + value.length);
+				parentElement.data = newValue;
 				break;
 		}
 
@@ -326,8 +328,6 @@ root.webstrates = (function(webstrates) {
 
 		// Notify deleteText listeners.
 		parentElement.webstrate.fireEvent("deleteText", charIndex, value, attributeName);
-
-		return newString;
 	};
 
 	/**
