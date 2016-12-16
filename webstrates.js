@@ -15,7 +15,6 @@ var sessions = require("client-sessions");
 var sharedb = require("sharedb");
 var sharedbMongo = require("sharedb-mongo");
 var sharedbRedisPubSub = require("sharedb-redis-pubsub");
-var shortId = require("shortid");
 var WebSocketServer = require("ws").Server;
 
 global.WORKER_ID = cluster.worker && cluster.worker.id || 1;
@@ -52,6 +51,7 @@ if (typeof config.threads !== "undefined") {
 	if (!config.pubsub) {
 		console.warn("Can't run multithreaded without Redis");
 	} else {
+		threadCount = parseInt(config.threads) || require('os').cpus().length;
 		if (cluster.isMaster) {
 			for (var i = 0; i < threadCount; ++i) {
 				cluster.fork();
@@ -91,6 +91,8 @@ MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	db.tags = _db.collection('tags');
 	db.tags.ensureIndex({ webstrateId: 1, label: 1 }, { unique: true });
 	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
+	db.assets = _db.collection('assets');
+	db.assets.ensureIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
 });
 
 var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
@@ -98,9 +100,10 @@ var clientManager = require("./helpers/ClientManager.js")(cookieHelper, pubsub);
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth,
 	pubsub);
-
+var assetManager = require("./helpers/AssetManager.js")(permissionManager, clientManager,
+	documentManager, db);
 var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,
-	permissionManager);
+	permissionManager, assetManager);
 
 var app = express();
 app.server = http.createServer(app);
@@ -167,10 +170,34 @@ app.use(function(req, res, next) {
 });
 
 app.get("/", httpRequestController.rootRequestHandler);
-app.get('/new', httpRequestController.newWebstrateRequestHandler);
-app.get('/favicon.ico', httpRequestController.faviconRequestHandler);
-// :id is a catch all, so it must come last.
-app.get('/:id', httpRequestController.idRequestHandler);
+app.get("/new", httpRequestController.newWebstrateRequestHandler);
+app.get("/favicon.ico", httpRequestController.faviconRequestHandler);
+
+// Ensure trailing slash after webstrateId and tag/label.
+app.get(/^\/([A-Z0-9\._-]+)(\/([A-Z0-9_-]+))?$/i,
+	httpRequestController.trailingSlashAppendHandler);
+
+// Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
+app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9_-]+)\/)?(?:([A-Z0-9\._-]+\.[A-Z0-9_-]+))?$/i,
+	httpRequestController.extractQuery,
+	httpRequestController.requestHandler);
+
+// We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
+// of a document.
+app.post(/^\/([A-Z0-9\._-]+)\/$/i,
+	httpRequestController.extractQuery,
+	assetManager.assetUploadHandler
+);
+
+// Catch all for get.
+app.get(function(req, res) {
+	res.send("Invalid request URL.");
+});
+
+// Catch all for post.
+app.post(function(req, res) {
+	res.send("You can only post assets to URLs of the form /<webstrateId>/.");
+});
 
 /**
 	Middleware for logging userIds of connected clients. Makes it possible to map sessionIds to
@@ -203,8 +230,8 @@ var sessionLoggingMiddleware = function(req, next) {
 	and WebSocket requests.
  */
 var sessionMiddleware = function(req, next) {
-	var username = "anonymous",
-		provider = "";
+	var username = "anonymous";
+	var provider = "";
 
 	if (auth) {
 		var session = req.session || (req.agent && req.agent.stream && req.agent.stream.session);
@@ -323,18 +350,33 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 
 						// Initial document request (s = subscribe).
 						if (req.data.a === "s" && permissions.includes("r")) {
-							return documentManager.getTags(req.data.d, function(err, tags) {
+							var webstrateId = req.data.d;
+							// Add client and send "hello" message including client list.
+							clientManager.addClientToWebstrate(req.data.socketId, webstrateId, true);
+
+							// Send list of tags to clients if any.
+							documentManager.getTags(webstrateId, function(err, tags) {
 								if (err) console.error(err);
 								if (tags) {
 									clientManager.sendToClient(req.data.socketId, {
-										wa: "tags",
-										d: req.data.d,
-										tags: tags
+										wa: "tags", d: webstrateId, tags
 									});
 								}
-								clientManager.addClientToWebstrate(req.data.socketId, req.webstrateId, true);
-								next();
 							});
+
+							// Send list of assets to clients if any.
+							assetManager.getAssets(webstrateId, function(err, assets) {
+								if (err) console.error(err);
+								if (assets) {
+									clientManager.sendToClient(req.data.socketId, {
+										wa: "assets", d: webstrateId, assets
+									});
+								}
+							})
+
+							// No reason to lock up the thread by waiting for the tags and assets to be loaded;
+							// they will be sent when they arrive, so we just return now.
+							return next();
 						}
 						break;
 					case "bulk fetch":
@@ -522,10 +564,10 @@ wss.on('connection', function(client) {
 					} else {
 						console.error("Can't restore, need either a tag label or version. Not both.");
 						if (data.token) {
-								client.send(JSON.stringify({ wa: "reply", token: data.token,
-									error: "Can't restore, need either a tag label or version. Not both."
-								}));
-							}
+							client.send(JSON.stringify({ wa: "reply", token: data.token,
+								error: "Can't restore, need either a tag label or version. Not both."
+							}));
+						}
 					}
 					break;
 				// Adding a tag to a document version.

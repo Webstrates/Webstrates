@@ -1,5 +1,5 @@
 Webstrates
-=========
+==========
 
 Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by [Operational Transformation](http://en.wikipedia.org/wiki/Operational_transformation) using [ShareDB](https://github.com/share/sharedb). Webstrates observes changes to the DOM using [MutationObservers](https://developer.mozilla.org/en/docs/Web/API/MutationObserver).
 
@@ -22,7 +22,8 @@ To install:
     * Run `npm start`.
     * Navigate to `http://localhost:7007/` in your browser and start using Webstrates!
 
-Note: If you are updating from the ShareJS version of Webstrates, you may want to [migrate the database](https://github.com/Webstrates/sharedb-migration-tool).  
+Note: If you are updating from the ShareJS version of Webstrates, you may want to [migrate the database](https://github.com/Webstrates/sharedb-migration-tool).
+
 Basic Usage
 ===========
 Webstrates serves (and creates) any named webpage you ask for. Simply navigate your browser* to `http://localhost:7007/<some_name>`.
@@ -48,6 +49,11 @@ Advanced Usage
 
 Advanced creation of webstrates
 -------------------------------
+
+**Legacy operations**
+
+The below operations are still supported, but may disappear at any time.
+
  * GET on `http://<server host>/new` will create a new webstrate with a random id.
  * GET on `http://<server host>/new?prototype=foo` will create a new webstrate with a random id using the webstrate `foo` as prototype.
  * GET on `http://<server host>/new?prototype=foo&id=bar` will create a new webstrate with id `bar` using the webstrate `foo` as prototype.
@@ -60,7 +66,7 @@ Accessing the history of a webstrate
  * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
 
 Accessing static and raw versions of a webstrate
---------------------------------------
+------------------------------------------------
 * GET on `http://<server host>/<some_name>?raw` will return a raw HTML version of the webstrate.
 * GET on `http://<server host>/<some_name>?v=<versionOrTag>&raw` will return a raw HTML version of the webstrate at version or tag `<versionOrTag>`.
 * GET on `http://<server host>/<some_name>?static` will return a static version of the webstrate.
@@ -71,7 +77,7 @@ On normal requests, the Webstrates server serves a static `client.html` with Jav
 When using the `static` parameter, Webstrates serves `client.html` as per usual, and the webstrate requested is also generated on the client very close to how it is done for normal requests. Any changes made to the webstrate, however, are not persisted or shared between clients.
 
 Restoring a webstrate
-------------------------
+---------------------
 * GET on `http://<server host>/<some name>?restore=<version>` restore the document to look like it did in version `<version>` and redirects the user to `/<some name>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
 
 Alternatively, a Webstrate can be restored by calling `webstrate.restore(version, fn)` or `webstrate.restore(tag, fn)`. `fn` is a function callback that takes two arguments, an error and the new version:
@@ -90,6 +96,52 @@ When calling `webstrate.restore` in a static webstrate, the static webstrate is 
 Deletion of a webstrate
 -----------------------
 * GET on `http://<server host>/<some name>?delete` will delete the document and redirect all connected users to the server root. The document data will be deleted, but a record of the document (containing name, version number, creation and modification timestamps) will remain in the database.
+
+
+Assets
+------
+Webstrates supports the attachment of assets (files). Files can be attached to a Webstrate by performing a POST with a file `file` to the Webstrate's address:
+
+```html
+<form action="" method="post" enctype="multipart/form-data">
+  <input type="file" name="file">
+  <input type="submit" value="Upload">
+</form>
+```
+
+The `action` attribute in the above is the empty string (`""`), meaning the form will submit to itself. When adding the above code to a webstrate at `/myWebstrate/`, and submitting the form with a file, the request will be made to `/myWebstrate/` and the file added to myWebstrate. Submitting to another webstrate is also possible by changing the `action` attribute. Note that forms *must* have `enctype="multipart/form-data"` to be accepted.
+
+### Adding an assets
+
+Uploading an asset will attach it to the current version of the document, but may also be accessed by future versions, assuming no other asset has been added with the same name since. For instance, uploading `cow.jpg` at version 1 to myWebstrate will make it possible to access it at `/myWebstrate/cow.jpg`, `/myWebstrate/1/cow.jpg`, `/myWebstrate/2/cow.jpg` etc., assuming those versions exist. If, however, another `cow.jpg` is uploaded at version 3, any requests to `/myWebstrate/3/cow.jpg`, `/myWebstrate/4/cow.jpg` and so forth will refer to the new `cow.jpg`, but any requests to previous versions will still refer to the old `cow.jpg`. Accessing `/myWebstrate/cow.jpg` will naturally always point to the newest version of `cow.jpg`.
+
+Copying and restoring Webstrates will also take the assets into account and perform as expected: Copying a webstrate will also copy over the assets to the new webstrate, so deleting the source webstrate won't result in the assets in the new webstrate disappearing. Restoring a webstrate will bump the version of the older assets (e.g. the first version of `cow.jpg`) to the version of the restored webstrate.
+
+When submitting an asset, the server will return a JSON object representing the asset, e.g.:
+
+```javascript
+{
+  v: 128,
+  fileName: "cow.jpg",
+  fileSize: 138666,
+  mimeType: "image/jpg"
+}
+```
+
+In the above example, we have uploaded an image `cow.jpg` with a size of 135 KB (138666 bytes) to version 128 of the document (the current version). When adding an asset with the same name as a previous asset at the same version, the new asset will have a random string attached to its name. If a `cow.jpg` already existed in the above example, the `fileName` property in the output would have been something like `cow-ryw4o3gVz.jpg`.
+
+Note that an asset is always attached to the newest version of a webstrate, because the philosophy of Webstrates is to never modify the history of a document, but only append to it. For the same reason, restoring a webstrate also doesn't modify the history, but only appends to it. Assets cannot be deleted, except by deleting the entire document.
+
+### Accessing assets
+
+All assets for a webstrate can be listed by making a GET request to `/<webstrateId>/?assets` or by calling `webstrate.assets()`. Additionally, it is possible to get notified whenever an asset is added to the webstrate. This is done by listening for the `asset` event:
+
+```javascript
+webstrate.on("asset", function(asset) {
+  // Asset was added to the webstrate.
+});
+```
+The asset object will be similar to the one shown above.
 
 Signaling
 ---------
@@ -134,6 +186,16 @@ Tagging
 For easier navigation through document revisions, Webstrate includes tagging. A tag is a label applied to a specific version of the document.
 
 All tags for a document can be seen by either accessing `http://<server host>/<some_name>?tags` or calling `webstrate.tags()` in the Webstrate. The current tag can also be seen by calling `webstrate.tag()`.
+
+Listening for tagging and untagging can be done using the two event names "tag" and "untag":
+
+```javascript
+webstrate.on("tag", function(version, label) {
+  // A version has been tagged with a label.
+});
+```
+
+Subscribing to untagging is done in a similar fashion, except only a `version` parameter will be given.
 
 #### Manual tagging
 Tagging can be done by calling `webstrate.tag(label, [version])`. If no version is supplied, the current version will be used. A label can be any text string that does not begin with a number.
@@ -229,18 +291,21 @@ If the attribute has just been added, `oldValue` will be `undefined`. If an attr
 
 #### Full list of `on` events
 
-| Event              | Arguments                                | Description                                                            |
-|--------------------|------------------------------------------|------------------------------------------------------------------------|
-| `loaded`           | webstrateId, clientId, user              | Triggered when the webstrate document has finished loading.            |
-| `transcluded`      | webstrateId, clientId, user              | Triggered if a webstrate is transcluded and has finished loading.      |
-| `clientJoin`       | clientId                                 | Triggered when a client joins the document.                            |
-| `clientPart`       | clientId                                 | Triggered when a client leaves the document.                           |
-| `insertText`       | position, value [, attributeName]        | Triggered when a text has been inserted into a text node or attribute. |
-| `deleteText`       | position, value [, attributeName]        | Triggered when text has been deleted from a text node or attribute.    |
-| `nodeAdded`        | node, local                              | Triggered when a node has been added to the document.                  |
-| `nodeRemoved`      | node, local                              | Triggered when a node has been removed from the document.              |
-| `attributeChanged` | attributeName, newValue, oldValue, local | Triggered when an attribute has added/modified/removed on an element.  |
-| `signal`           | message, senderId, node                  | Triggered when a client (senderId) signals on a DOM node.              |
+| Event              | Arguments                                | Triggered when:                                               |
+|--------------------|------------------------------------------|---------------------------------------------------------------|
+| `loaded`           | webstrateId, clientId, user              | The document has finished loading.                            |
+| `transcluded`      | webstrateId, clientId, user              | The document  has been transcluded and has finished loading.  |
+| `clientJoin`       | clientId                                 | A client joins the document.                                  |
+| `clientPart`       | clientId                                 | A client leaves the document.                                 |
+| `insertText`       | position, value [, attributeName]        | A text has been inserted into a text node or attribute.       |
+| `deleteText`       | position, value [, attributeName]        | A text has been deleted from a text node or attribute.        |
+| `nodeAdded`        | node, local                              | A node has been added to the document.                        |
+| `nodeRemoved`      | node, local                              | A node has been removed from the document.                    |
+| `attributeChanged` | attributeName, newValue, oldValue, local | An attribute has added/modified/removed on an element.        |
+| `signal`           | message, senderId, node                  | A client (senderId) signals on a DOM node.                    |
+| `tag`              | version, label                           | A tag has been added to the webstrate.                        |
+| `untag`            | version                                  | A tag has been removed from the webstrate.                    |
+| `asset`            | asset object (version, file name, etc.)  | An asset has been added to the webstrate.                     |
 
 All the events can also be unregistered using `off`, e.g.:
 

@@ -24,42 +24,55 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @param {string}   options.webstrateId WebstrateId (name of new document).
 	 * @param {string}   options.prototypeId Name of the webstrate document to base the prototype on.
 	 * @param {string}   options.version     Version of the prototype to base the new document on.
+	 * @param {string}   options.tag         Tag of the prototype to base the new document on. Either
+	 *                                       a tag or version may be set, but not both.
+	 * @param {Snapshot} options.snapshot    Snapshot to base the prototype off. Optional, but will be
+	 *                                       retrieved from prototypeId and version/tag if not
+	 *                                       provided.
 	 * @param {Function} next                Callback (optional).
-	 * @return {string}                       (async) Name of new webstrate.
+	 * @return {string}                      (async) Name of new webstrate.
 	 * @public
 	 */
-	module.createNewDocument = function({ webstrateId, prototypeId, version, tag }, next) {
+	module.createNewDocument = function({ webstrateId, prototypeId, version, tag, snapshot }, next) {
 		if (!webstrateId) {
 			webstrateId = shortId.generate();
 		}
 
-		// If we're not prototyping, we can just return a new id. We don't have to build anything.
-		if (!prototypeId) {
+		// If we're not prototyping (or creating from a snapshot), we can just return a new id. We don't
+		// have to build anything.
+		if (!prototypeId && !snapshot) {
 			return next && next(null, webstrateId);
 		}
 
-		module.getDocument({ webstrateId: prototypeId, version, tag }, function(err, snapshot) {
-			if (err) return next && next(err);
-
-			share.submit(agent, 'webstrates', webstrateId, {
-				v: 0,
-				create: snapshot
-			}, null, function(err) {
-				if (err) {
-					err = new Error(err.message === "Document created remotely" ?
-						"Webstrate already exists" : err.message);
-				}
-
-				// Add current tag if it exists. All other tags are left behind, because the new document
-				// starts from version 1.
-				if (snapshot.label) {
-					return module.tagDocument(webstrateId, 1, snapshot.label, function(err, res) {
-						return next && next(err, webstrateId);
-					});
-				}
-
-				return next && next(err, webstrateId);
+		// The snapshot is an optional parameter, so if it's not set, let's fetch it from the database
+		// and call createNewdocument again with it.
+		if (!snapshot) {
+			return module.getDocument({ webstrateId: prototypeId, version, tag },
+				function(err, snapshot) {
+				if (err) return next && next(err);
+				module.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot }, next);
 			});
+		}
+
+		// Let ShareDB handle the creation of the document.
+		share.submit(agent, 'webstrates', webstrateId, {
+			v: 0,
+			create: snapshot
+		}, null, function(err) {
+			if (err) {
+				err = new Error(err.message === "Document created remotely" ?
+					"Webstrate already exists." : err.message);
+			}
+
+			// Add current tag if it exists. All other tags are left behind, because the new document
+			// starts from version 1.
+			if (snapshot.label) {
+				return module.tagDocument(webstrateId, 1, snapshot.label, function(err, res) {
+					return next && next(err, webstrateId);
+				});
+			}
+
+			return next && next(err, webstrateId);
 		});
 	};
 
@@ -68,7 +81,7 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @param  {string}   options.webstrateId WebstrateId.
 	 * @param  {string}   options.version     Desired document version (tag or version is required).
 	 * @param  {string}   options.tag         Desired document tag. (tag or version is required)
-	 * @param  {Function} next                Callback (optional).
+	 * @param  {Function} next                Callback.
 	 * @return {Snapshot}                     (async) Document snapshot.
 	 * @public
 	 */
@@ -80,13 +93,27 @@ module.exports = function(clientManager, share, agent, db) {
 			return share.fetch(agent, 'webstrates', webstrateId, next);
 		}
 		if (Number.isNaN(version)) {
-			return next && next(new Error("Version must be a number or 'head'"));
+			return next(new Error("Version must be a number or 'head'"));
 		}
 		getTagBeforeVersion(webstrateId, version, function(err, snapshot) {
-			if (err) return next && next(err);
+			if (err) return next(err);
 			transformDocumentToVersion({ webstrateId, snapshot, version }, next);
 		});
 	};
+
+	/**
+	 * Checks whether a document exists. This is faster than retriving the full document.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {Function} next        Callback.
+	 * @return {bool}                 Whether docuemnt exists.
+	 * @publicKey()
+	 */
+	module.documentExists = function(webstrateId, next) {
+		db.webstrates.findOne({ _id: webstrateId }, { _id: 1}, function(err, doc) {
+			if (err) return next(err);
+			return next(null, !!doc);
+		});
+	}
 
 	/**
 	 * Submit op to a document.
@@ -153,7 +180,7 @@ module.exports = function(clientManager, share, agent, db) {
 	};
 
 	/**
-	 * Delete a diocument.
+	 * Delete a document.
 	 * @param  {string}   webstrateId WebstrateId.
 	 * @param  {Function} next        Callback (optional).
 	 * @public
@@ -173,6 +200,26 @@ module.exports = function(clientManager, share, agent, db) {
 			db.ops.remove({ d: webstrateId });
 			next && next();
 		});
+	};
+
+	/**
+	 * Retrieves the current version of the document.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {Function} next        Callback.
+	 * @return {int}                  (async) Document version.
+	 */
+	module.getDocumentVersion = function(webstrateId, next) {
+		db.webstrates.findOne({ _id: webstrateId }, { _v: 1}, function(err, doc) {
+			if (err) return next && next(err);
+			return next && next(null, Number(doc._v));
+		});
+	}
+
+	module.getVersionFromTag = function(webstrateId, tag, next) {
+		db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }, function(doc) {
+			if (err) return next && next(err);
+			return next && next(null, Number(doc.v));
+		})
 	};
 
 	/**

@@ -17,10 +17,26 @@ limitations under the License.
 	"use strict";
 	document.addEventListener("DOMContentLoaded", function(event) {
 		// Get the Webstrates ID from the URL path.
-		var webstrateId = location.pathname.substring(1);
+		var regexMatch = /^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9_-]+)\/)?/i.exec(location.pathname);
+		var [match, webstrateId, tagOrVersion] = regexMatch;
 		if (!webstrateId) {
 			throw "Error: No webstrate ID provided.";
 		}
+
+		// Extrat query string parameters into urlParams.
+		var extractUrlParams = function() {
+			var urlParams = {};
+			var regex =  /([^&=]+)=?([^&]*)/g;
+			var query = window.location.search.substring(1);
+			var match;
+			while (match = regex.exec(query)) {
+				var [pair, key, value] = match;
+				urlParams[key] = decodeURIComponent(value);
+			}
+			return urlParams;
+		};
+
+		var staticMode = !!tagOrVersion || "static" in extractUrlParams();
 
 		// Determine websocket protocol based on http/https protocol.
 		var protocol = location.protocol;
@@ -30,6 +46,6 @@ limitations under the License.
 		var websocket = new ReconnectingWebSocket(`${wsProtocol}//${location.host}/ws/`);
 
 		// Set up a webstrate.
-		window.webstrate = new webstrates.Webstrate(websocket, webstrateId);
+		window.webstrate = new webstrates.Webstrate(websocket, webstrateId, staticMode, tagOrVersion);
 	});
 })();

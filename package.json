@@ -1,6 +1,6 @@
 {
   "name": "webstrate",
-  "version": "1.3.0",
+  "version": "1.4.0",
   "description": "Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrates observes changes to the DOM using MutationObservers.",
   "keywords": [
     "Operational Transformation",
@@ -36,6 +36,7 @@
     "json0-ot-diff": "^1.0.1",
     "jsonml-tools": "git+http://github.com/cklokmose/jsonml-tools.git#master",
     "mongodb": "^2.1.19",
+    "multer": "^1.2.0",
     "optimist": "^0.6.1",
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",

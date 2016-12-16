@@ -6,10 +6,12 @@ root.webstrates = (function(webstrates) {
 	 * Webstrate constructor. Creates a webstrate instance.
 	 * @param {WebSocket} websocket   WebSocket for ShareDB to use for transmitting operations.
 	 * @param {string} webstrateId    Name of ShareDB document.
-	 * @param {DOMNode} targetElement Element that the current webstrate should bind to.
+	 * @param {bool} staticMode       Whether the webstrate should be served statically or not.
+	 * @param {string} tagOrVersion   If being served statically, a specific tag or version may have
+	 *                                been requested.
 	 * @constructor
 	 */
-	var Webstrate = function(websocket, webstrateId, targetElement) {
+	var Webstrate = function(websocket, webstrateId, staticMode, tagOrVersion) {
 		var module = {};
 
 		module.webstrateId = webstrateId;
@@ -23,13 +25,16 @@ root.webstrates = (function(webstrates) {
 		// One-to-one mapping from nodeIds to their nodes.
 		var nodeIds = {};
 
-		// Holds current tag label if it exists.
+		// Current tag label if it exists.
 		var currentTag;
 
-		// Holds a list of all tags.
+		// Object of all tags, indexed by version number.
 		var allTags;
 
-		// Holds a list of future tags in case we have received tags before our own document has been
+		// List of all asset objects.
+		var allAssets;
+
+		// List of future tags in case we have received tags before our own document has been
 		// synchronized to this version.
 		var futureTags = {};
 
@@ -49,11 +54,12 @@ root.webstrates = (function(webstrates) {
 		var callbackLists = { // Callbacks are triggered when:
 			loaded: [],         // the document has been loaded.
 			transcluded: [],    // the document has been transcluded.
-			clientJoin: [],     // a client connects to the webstrate.
-			clientPart: [],     // a client disconnects from the webstrate.
-			signal: [],         // a client sends a signal.
-			tag: [],            // a new tag has been set.
-			untag: []           // a tag has been removed.
+			clientJoin: [],     // client connects to the webstrate.
+			clientPart: [],     // client disconnects from the webstrate.
+			signal: [],         // client sends a signal.
+			tag: [],            // new tag has been set.
+			untag: [],          // tag has been removed.
+			asset: []           // new asset has been added.
 		};
 
 		// All elements get a Webstrate object attached after they enter the DOM. It may, however, be
@@ -88,28 +94,8 @@ root.webstrates = (function(webstrates) {
 				event.detail.webstrateId, event.detail.clientId, event.detail.user);
 		});
 
-		// Extrat query string parameters into urlParams.
-		var extractUrlParams = function() {
-			var urlParams = {};
-			var regex =  /([^&=]+)=?([^&]*)/g;
-			var query = window.location.search.substring(1);
-			var match;
-			while (match = regex.exec(query)) {
-				var [pair, key, value] = match;
-				urlParams[key] = decodeURIComponent(value);
-			}
-			return urlParams;
-		};
-
-		// Update urlParams on state change, because new parameters may have been added.
-		window.onpopstate = function() {
-			urlParams = extractUrlParams();
-		};
-
-		var urlParams = extractUrlParams();
-
 		// Element webstrates should work on - uses document as default.
-		var targetElement = targetElement || document;
+		var targetElement = document;
 
 		// Mapping from tokens to callback functions.
 		var tokenCallbackMap = {};
@@ -177,16 +163,19 @@ root.webstrates = (function(webstrates) {
 					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
 					break;
+
 				case "clientJoin":
 					var clientId = data.id;
 					module.clients.push(clientId);
 					triggerCallbacks(callbackLists.clientJoin, clientId);
 					break;
+
 				case "clientPart":
 					var clientId = data.id;
 					module.clients.splice(module.clients.indexOf(clientId), 1);
 					triggerCallbacks(callbackLists.clientPart, clientId);
 					break;
+
 				case "publish":
 					var nodeId = data.id;
 					var node = nodeIds[nodeId];
@@ -200,6 +189,7 @@ root.webstrates = (function(webstrates) {
 						node.webstrate.fireEvent("signal", message, senderId, node);
 					}
 					break;
+
 				case "tags":
 					allTags = {};
 					data.tags.forEach(function(tag) {
@@ -209,6 +199,7 @@ root.webstrates = (function(webstrates) {
 						allTags[tag.v] = tag.label;
 					});
 					break;
+
 				case "tag":
 					var label = data.l;
 					var version = data.v;
@@ -229,6 +220,7 @@ root.webstrates = (function(webstrates) {
 					}
 					triggerCallbacks(callbackLists.tag, version, label);
 					break;
+
 				case "untag":
 					var label = data.l;
 					var version = data.v;
@@ -238,7 +230,18 @@ root.webstrates = (function(webstrates) {
 						});
 					}
 					delete allTags[version];
+					triggerCallbacks(callbackLists.untag, version);
 					break;
+
+				case "assets":
+					allAssets = data.assets;
+					break;
+
+				case "asset":
+					allAssets.push(data.asset);
+					triggerCallbacks(callbackLists.asset, data.asset);
+					break;
+
 				case "delete":
 					module.destroy();
 					alert("Document has been deleted.");
@@ -297,7 +300,7 @@ root.webstrates = (function(webstrates) {
 			};
 		}
 
-		if (typeof urlParams.static === "undefined") {
+		if (!staticMode) {
 			// Hand WebSocket connection to ShareDB.
 			var conn = new sharedb.Connection(websocket);
 
@@ -316,7 +319,7 @@ root.webstrates = (function(webstrates) {
 				}
 			};
 
-			// Get ShareDB document for ID webstrateId.
+			// Get ShareDB document for webstrateId.
 			doc = conn.get(COLLECTION_NAME, webstrateId);
 
 			// Subscribe to remote operations (changes to the ShareDB document).
@@ -351,10 +354,10 @@ root.webstrates = (function(webstrates) {
 				};
 
 				var tag, version;
-				 if (/^\d/.test(urlParams.v) && Number(urlParams.v)) {
-					msgObj.v = Number(urlParams.v);
+				 if (/^\d/.test(tagOrVersion) && Number(tagOrVersion)) {
+					msgObj.v = Number(tagOrVersion);
 				} else {
-					msgObj.l = urlParams.v;
+					msgObj.l = tagOrVersion;
 				}
 
 				websocketSend(msgObj, function(err, snapshot) {
@@ -1040,7 +1043,7 @@ root.webstrates = (function(webstrates) {
 				msgObj.l = tagOrVersion;
 			}
 
-			if (typeof urlParams.static === "undefined") {
+			if (!staticMode) {
 				websocketSend(msgObj, callback);
 				return;
 			}
@@ -1073,13 +1076,32 @@ root.webstrates = (function(webstrates) {
 			tagDocument(label, version);
 		};
 
+		/**
+		 * Untag a document with a tag or version
+		 * @param  {[type]} tagOrVersion Tag or version.
+		 * @public
+		 */
 		module.untag = function(tagOrVersion) {
 			untagDocument(tagOrVersion)
 		};
 
+		/**
+		 * Get a object of all tags. Returns a copy, so users won't (accidentally) modify it.
+		 * @return {obj} Object with tags, indexed by version number.
+		 * @public
+		 */
 		module.tags = function() {
-			return allTags;
-		}
+			return webstrates.util.cloneObject(allTags);
+		};
+
+		/**
+		 * Get a list of all asset objects. Returns a copy, so users won't (accidentally) modify it.
+		 * @return {obj} List of all asset objects.
+		 * @public
+		 */
+		module.assets = function() {
+			return webstrates.util.cloneObject(allAssets);
+		};
 
 		/**
 		 * Exposes document version through getter.

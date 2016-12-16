@@ -149,7 +149,7 @@ root.webstrates = (function(webstrates) {
 		if (executeImmediately) {
 			util.executeScripts(scripts, callback);
 		}
-	}
+	};
 
 	/**
 	 * Removes characters that are illegal in attributes and tag names.
@@ -219,6 +219,16 @@ root.webstrates = (function(webstrates) {
 			str += alphabet[random(0, len)];
 		}
 		return str;
+	};
+
+	/**
+	 * Clone an object by exploiting JSON parse/stringify.
+	 * @param  {obj} obj Object to be cloned.
+	 * @return {obj}     Cloned object.
+	 * @public
+	 */
+	util.cloneObject = function(obj) {
+		return JSON.parse(JSON.stringify(obj));
 	};
 
 	webstrates.util = util;
