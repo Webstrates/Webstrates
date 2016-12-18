@@ -327,7 +327,6 @@ root.webstrates = (function(webstrates) {
 				if (error) {
 					throw error;
 				}
-				currentTag = allTags[doc.version];
 				populateElementWithDocument(webstrateId, doc, targetElement, function documentPopulated() {
 					rootElement = targetElement.childNodes[0];
 					pathTree = webstrates.PathTree.create(rootElement, null, true);
