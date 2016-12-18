@@ -25,7 +25,9 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @public
 	 */
 	module.trailingSlashAppendHandler = function(req, res) {
-		res.redirect(req.url + "/");
+		var queryIndex = req.url.indexOf("?");
+		var query = queryIndex !== -1? req.url.substring(queryIndex) : "";
+		res.redirect(req.path + "/" + query);
 	};
 
 	/**
