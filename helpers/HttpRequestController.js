@@ -70,6 +70,12 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @public
 	 */
 	module.requestHandler = function(req, res) {
+		// Support for legacy syntax: /<webstrateId>?v=<versionOrtag>, which is equivalent to
+		// /<webstrateId>/<versionOrTag>/?copy.
+		if (req.query.v && !req.versionOrTag) {
+			return res.redirect(`/${req.webstrateId}/${req.query.v}/?copy`);
+		}
+
 		return documentManager.getDocument({
 			webstrateId: req.webstrateId,
 			version: req.version,
@@ -364,7 +370,8 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @public
 	 */
 	module.newWebstrateRequestHandler = function(req, res) {
-		// Support for the old /new syntax for prototyping/copying.
+		// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
+		// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
 		if (req.query.prototype) {
 			var path = `/${req.query.prototype}/`;
 			if (req.query.v) {
