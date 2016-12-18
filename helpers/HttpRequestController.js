@@ -208,7 +208,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @private
 	 */
 	function serveTags(req, res) {
-		documentManager.getTags(webstrateId, function(err, tags) {
+		documentManager.getTags(req.webstrateId, function(err, tags) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(String(err));
