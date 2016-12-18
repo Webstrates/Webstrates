@@ -101,6 +101,10 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 		db.assets.find(query, { _id: 0 }).toArray(function(err, assets) {
 			if (err) return next && next(err);
 			assets = filterNewestAssets(assets);
+
+			// If there are no assets, we can terminate.
+			if (assets.length === 0) return next();
+
 			// When prototyping a new document, we always start from version 0, so we are going to reset
 			// all asset versions to version 0 as well. Also, we need to replace the prototype webstrateId
 			// (fromWebstrateId) with target webstrateId (toWebstrateId).
