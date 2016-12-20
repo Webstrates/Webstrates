@@ -127,6 +127,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 	 * @param  {string}   options.tag         Tag to deduce version from if no version is provided.
 	 * @param  {int}      options.newVersion  Version to bump assets to.
 	 * @param  {Function} next                Callback.
+	 * @public
 	 */
 	module.restoreAssets = function({ webstrateId, version, tag, newVersion }, next) {
 		// We need the version, so if it's not defined, we fetch it, and then call ourselves again,
@@ -140,8 +141,13 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 
 		var query = { webstrateId, v: { $lte: version } };
 		db.assets.find(query, { _id: 0 }).toArray(function(err, assets) {
+
+			// If there are no assets, we can terminate.
+			if (assets.length === 0) return next();
+
 			if (err) return next && next(err);
 			assets = filterNewestAssets(assets);
+			// Bump the version of all copied assets.
 			assets.forEach(function(asset) {
 				asset.v = newVersion;
 			});

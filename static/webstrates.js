@@ -705,6 +705,17 @@ root.webstrates = (function(webstrates) {
 					return;
 				}
 
+				// Received an empty object (a no-op).
+				if (typeof ops === "object" && Object.keys(ops).length === 0) {
+					return;
+				}
+
+				// Invalid ops received.
+				if (!Array.isArray(ops)) {
+					console.warn("Invalid ops received", ops);
+					return;
+				}
+
 				// We disable the mutation observers before applying the operations. Otherwise, applying the
 				// operations would cause new mutations to be created, which in turn would cause the
 				// creation of new operations, leading to a livelock for all clients.

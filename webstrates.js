@@ -332,7 +332,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 						}
 
 						// Check if the incoming update is an op (and not a create op).
-						if (req.data.a === "op" && req.data.op) {
+						if (req.data.a === "op" && Array.isArray(req.data.op)) {
 							// Check if the update changes the permissions of the document.
 							var permissionsChanged = req.data.op.some(function(op) {
 								return op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === "data-auth";
