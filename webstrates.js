@@ -244,6 +244,9 @@ var sessionMiddleware = function(req, next) {
 		req.user = {};
 	}
 
+	req.remoteAddr = (req.headers && (req.headers['X-Forwarded-For'] ||
+		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
+
 	req.user.username = username;
 	req.user.provider = provider;
 	req.user.userId = username + ":" + provider;
@@ -544,7 +547,7 @@ wss.on('connection', function(client) {
 					// Only one of these should be defined. We can't restore to a version and a tag.
 					// version xor tag.
 					if (!!version ^ !!tag) {
-						var source = user.userId;
+						var source = `${user.userId} (${stream.remoteAddress})`;
 						documentManager.restoreDocument({ webstrateId, tag, version }, source,
 							function(err, newVersion) {
 							if (err) {

@@ -121,6 +121,11 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				});
 			}
 
+			// Requesting current document version number by calling `/<id>?v` or `/<id>?version`.
+			if ("v" in req.query || "version" in req.query) {
+				return serveVersion(req, res, snapshot);
+			}
+
 			// Requesting a list of operations by calling `/<id>?ops`.
 			if ("ops" in req.query) {
 				return serveOps(req, res);
@@ -191,7 +196,18 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Requesting a list of operations by calling: /<id>?ops.
+	 * Requesting current document version number by calling `/<id>?v`.
+	 * @param {obj}      req      Express request object.
+	 * @param {obj}      res      Express response object.
+	 * @param {snapshot} snapshot Document snapshot.
+	 * @private
+	 */
+	function serveVersion(req, res, snapshot) {
+		res.json({ version: snapshot.v });
+	}
+
+	/**
+	 * Requesting a list of operations by calling: `/<id>?ops`.
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
 	 * @private
@@ -210,7 +226,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 		}
 
 	/**
-	 * Requesting a list of tags by calling /<id>?tags.
+	 * Requesting a list of tags by calling `/<id>?tags`.
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
 	 * @private
@@ -226,7 +242,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Requesting a list of assets by calling /<id>?assets.
+	 * Requesting a list of assets by calling `/<id>?assets`.
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
 	 * @private
@@ -242,7 +258,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Requesting a webstrate by calling /<id>?raw.
+	 * Requesting a webstrate by calling `/<id>?raw`.
 	 * @param {obj}      req      Express request object.
 	 * @param {obj}      res      Express response object.
 	 * @param {snapshot} snapshot Document snapshot.
@@ -253,7 +269,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Copy a webstrate by calling /<id>?copy=[newWebstrate].
+	 * Copy a webstrate by calling `/<id>?copy=[newWebstrate]`.
 	 * @param {obj}      req      Express request object.
 	 * @param {obj}      res      Express response object.
 	 * @param {snapshot} snapshot Document snapshot.

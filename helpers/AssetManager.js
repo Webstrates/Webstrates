@@ -38,7 +38,8 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				return res.status(422).send("Parameter missing from request. No 'file' found.");
 			}
 
-			addAsset(req.webstrateId, asset, function(err, assetRecord) {
+			var source = `${req.user.userId} (${req.remoteAddr})`;
+			addAsset(req.webstrateId, asset, source, function(err, assetRecord) {
 				if (err) {
 					console.error(err);
 					return res.status(409).send(String(err));
@@ -239,47 +240,37 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 	 * @param {Function} next        Callback.
 	 * @private
 	 */
-	function addAsset(webstrateId, asset, next) {
-		return documentManager.getDocumentVersion(webstrateId, function(err, version) {
-			db.assets.insert({
-				webstrateId,
-				v: version,
-				fileName: asset.filename,
-				originalFileName: asset.originalname,
-				fileSize: asset.size,
-				mimeType: asset.mimetype
-			}, function(err) {
-				if (err) {
-					// E11000 is a "duplicate key error collection", occuring if the user is trying to attach
-					// an asset with the same name as an asset that already exists at the given version. When
-					// this is the case, we just append a random ID to the name and try again.
-					if (err.code === 11000) {
-						var extIdx = asset.originalname.lastIndexOf(".");
-						var filename = asset.originalname.substring(0, extIdx);
-						var ext = asset.originalname.substring(extIdx);
-						asset.originalname = `${filename}-${shortId.generate()}${ext}`;
-						return addAsset(webstrateId, asset, next);
-					}
-					return next && next(err);
-				}
+	function addAsset(webstrateId, asset, source, next) {
+		return documentManager.sendNoOp(webstrateId, "assetAdded", source, function() {
+			return documentManager.getDocumentVersion(webstrateId, function(err, version) {
+				db.assets.insert({
+					webstrateId,
+					v: version,
+					fileName: asset.filename,
+					originalFileName: asset.originalname,
+					fileSize: asset.size,
+					mimeType: asset.mimetype
+				}, function(err) {
+					if (err) return next && next(err);
 
-				// Inform all clients of the newly added asset.
-				clientManager.sendToClients(webstrateId, {
-					wa: "asset",
-					d: webstrateId,
-					asset: {
+					// Inform all clients of the newly added asset.
+					clientManager.sendToClients(webstrateId, {
+						wa: "asset",
+						d: webstrateId,
+						asset: {
+							v: version,
+							fileName: asset.originalname,
+							fileSize: asset.size,
+							mimeType: asset.mimetype
+						}
+					});
+
+					return next && next(null, {
 						v: version,
 						fileName: asset.originalname,
 						fileSize: asset.size,
 						mimeType: asset.mimetype
-					}
-				});
-
-				return next && next(null, {
-					v: version,
-					fileName: asset.originalname,
-					fileSize: asset.size,
-					mimeType: asset.mimetype
+					});
 				});
 			});
 		});

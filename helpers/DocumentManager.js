@@ -113,24 +113,52 @@ module.exports = function(clientManager, share, agent, db) {
 			if (err) return next(err);
 			return next(null, !!doc);
 		});
-	}
+	};
 
 	/**
-	 * Submit op to a document.
-	 * @param  {string} webstrateId WebstrateId.
-	 * @param  {Op}     op          Op to be applied.
-	 * @param  {Function} next      Callback (optional).
-	 * @public
+	 * Submit raw op to a document.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {Op}       op          Op to be sent.
+	 * @param  {Function} next        Callback (optional).
+	 * @private
 	 */
-	module.submitOp = function(webstrateId, op, source, next) {
-		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, {
-			op: [op],
-			src: source
-		});
+	function submitRawOp (webstrateId, op, next) {
+		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, op);
 		request.submit(function(err) {
 			if (err) return next && next(new Error(err.message));
 			next && next();
 		});
+	}
+
+	/**
+	 * Submit no-op to a document. Useful when we want to bump the version of a document, which
+	 * happens when we add an asset to avoid file name conflicts.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {string}   reason      Reason for the no-op (something like "assetAdded").
+	 * @param  {string}   source      Source of the operation (clientId usually).
+	 * @param  {Function} next        [description]
+	 * @return {[type]}               [description]
+	 */
+	module.sendNoOp = function(webstrateId, reason, source, next) {
+		submitRawOp(webstrateId, {
+			noop: reason,
+			src: source
+		}, next);
+	};
+
+	/**
+	 * Submit op to a document.
+	 * @param  {string}   webstrateId WebstrateId.
+	 * @param  {Op}       op          Op to be applied.
+	 * @param  {string}   source      Source of the operation (clientId usually).
+	 * @param  {Function} next        Callback (optional).
+	 * @public
+	 */
+	module.submitOp = function(webstrateId, op, source, next) {
+		submitRawOp(webstrateId, {
+			op: [op],
+			src: source
+		}, next);
 	};
 
 	/**
@@ -162,18 +190,22 @@ module.exports = function(clientManager, share, agent, db) {
 	 */
 	module.restoreDocument = function({ webstrateId, version, tag }, source, next) {
 		module.getDocument({ webstrateId, version, tag }, function(err, oldVersion) {
-			var tag = oldVersion.label;
 			if (err) return next && next(err);
-			module.getDocument({ webstrateId, version: "head" }, function(err, currentVersion) {
-				if (err) return next && next(err);
-				var ops = jsondiff(currentVersion.data, oldVersion.data);
-				if (ops.length === 0) {
-					return module.tagDocument(webstrateId, currentVersion.v, tag + " (restored)", next);
-				}
-				module.submitOps(webstrateId, ops, source, function(err) {
+			var tag = oldVersion.label;
+			// Send a no-op so we can see when the document was restored, but also to make sure the
+			// restore command bumps the document version by at least one to avoid asset name conflicts.
+			return module.sendNoOp(webstrateId, "documentRestore", source, function(err) {
+				module.getDocument({ webstrateId, version: "head" }, function(err, currentVersion) {
 					if (err) return next && next(err);
-					var newVersion = currentVersion.v + ops.length + 1;
-					module.tagDocument(webstrateId, newVersion, tag + " (restored)", next);
+					var ops = jsondiff(currentVersion.data, oldVersion.data);
+					if (ops.length === 0) {
+						return module.tagDocument(webstrateId, currentVersion.v, tag + " (restored)", next);
+					}
+					module.submitOps(webstrateId, ops, source, function(err) {
+						if (err) return next && next(err);
+						var newVersion = currentVersion.v + ops.length + 1;
+						module.tagDocument(webstrateId, newVersion, tag + " (restored)", next);
+					});
 				});
 			});
 		});
@@ -187,9 +219,7 @@ module.exports = function(clientManager, share, agent, db) {
 	 */
 	module.deleteDocument = function(webstrateId, source, next) {
 		db.webstrates.remove({ _id: webstrateId }, function(err, res) {
-			if (err) {
-				return next && next(err);
-			}
+			if (err) return next && next(err);
 
 			clientManager.sendToClients(webstrateId, {
 				wa: "delete",
@@ -234,10 +264,7 @@ module.exports = function(clientManager, share, agent, db) {
 		// If no version is defined, all operations will be retrieved.
 		share.getOps(agent, 'webstrates', webstrateId, initialVersion, version, function(err, ops) {
 			if (err) return next && next(err);
-
-			if (!db.sessionLog) {
-				return next && next(null, ops);
-			}
+			if (!db.sessionLog) return next && next(null, ops);
 
 			// If we have access to a session log, we attach session entries to operations before
 			// returning them.
