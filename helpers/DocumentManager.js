@@ -106,10 +106,10 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @param  {string}   webstrateId WebstrateId.
 	 * @param  {Function} next        Callback.
 	 * @return {bool}                 Whether docuemnt exists.
-	 * @publicKey()
+	 * @public
 	 */
 	module.documentExists = function(webstrateId, next) {
-		db.webstrates.findOne({ _id: webstrateId }, { _id: 1}, function(err, doc) {
+		db.webstrates.findOne({ _id: webstrateId }, { _id: 1 }, function(err, doc) {
 			if (err) return next(err);
 			return next(null, !!doc);
 		});
@@ -136,8 +136,8 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @param  {string}   webstrateId WebstrateId.
 	 * @param  {string}   reason      Reason for the no-op (something like "assetAdded").
 	 * @param  {string}   source      Source of the operation (clientId usually).
-	 * @param  {Function} next        [description]
-	 * @return {[type]}               [description]
+	 * @param  {Function} next        Callback (optional).
+	 * @public
 	 */
 	module.sendNoOp = function(webstrateId, reason, source, next) {
 		submitRawOp(webstrateId, {
@@ -246,7 +246,7 @@ module.exports = function(clientManager, share, agent, db) {
 	}
 
 	module.getVersionFromTag = function(webstrateId, tag, next) {
-		db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }, function(doc) {
+		db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }, function(err, doc) {
 			if (err) return next && next(err);
 			return next && next(null, Number(doc.v));
 		})

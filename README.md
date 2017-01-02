@@ -26,9 +26,9 @@ Note: If you are updating from the ShareJS version of Webstrates, you may want t
 
 Basic Usage
 ===========
-Webstrates serves (and creates) any named webpage you ask for. Simply navigate your browser* to `http://localhost:7007/<some_name>`.
+Webstrates serves (and creates) any named webpage you ask for. Simply navigate your browser* to `http://localhost:7007/<webstrateId>`. To have the server generate a webstrate with a random id, instead navigate to `http://<localhost:7007>/new`.
 
-Now, any changes you apply to the DOM, either through JavaScript or the developer tools, will be persisted and distributed to any other clients that have the page open.
+Now, any changes you apply to the DOM, either through JavaScript or the developer tools, will be persisted on the server and distributed to any other clients that have the page open.
 
 See the [tutorial](docs/tutorial) for an introduction to developing with Webstrates.
 
@@ -50,44 +50,46 @@ Advanced Usage
 Advanced creation of webstrates
 -------------------------------
 
+* GET on `http://<hostname>/<webstrateId>/?copy` will create a new webstrate with a random id using the webstrate `<webstrateId>` as prototype.
+* GET on `http://<hostname>/<webstrateId>?copy=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using the webstrate `<webstrateId>` as prototype.
+* GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using version or tag `<versionOrTag>` of the webstrate `<webstrateId>` as prototype. If the `?copy` value is left out, a random id will be generated.
+
 **Legacy operations**
 
 The below operations are still supported, but may disappear at any time.
 
- * GET on `http://<server host>/new` will create a new webstrate with a random id.
- * GET on `http://<server host>/new?prototype=foo` will create a new webstrate with a random id using the webstrate `foo` as prototype.
- * GET on `http://<server host>/new?prototype=foo&id=bar` will create a new webstrate with id `bar` using the webstrate `foo` as prototype.
- * GET on `http://<server host>/new?prototype=foo&v=10&id=bar` will create a new webstrate with id `bar` using version 10 of the webstrate `foo` as prototype.
+* GET on `http://<hostname>/new?prototype=<webstrateId>` will create a new webstrate with a random id using the webstrate `<webstrateId>` as prototype.
+* GET on `http://<hostname>/new?prototype=<webstrateId>&id=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using the webstrate `<webstrateId>` as prototype.
+* GET on `http://<hostname>/new?prototype=<webstrateId>&v=<version>&id=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using version `<version>` of the webstrate `<webstrateId>` as prototype. If the `?id` value is left out, a random id will be generated.
 
 Accessing the history of a webstrate
 ------------------------------------
- * GET on `http://<server host>/<some_name>?v` will return the version number of `<some_name>`.
- * GET on `http://<server host>/<some_name>?v=<versionOrTag>` will create a new webstrate prototyped from `<some_name>` at version or tag `<versionOrTag>`. (Short-hand for `/new?prototype=<some_name>&version=<versionOrTag>&id=<some_name>-<versionOrTag>-<random string>`).
- * GET on `http://<server host>/<some_name>?ops` will return a list of all operations applied to `<some_name>` (Beware: this can be a huge list).
+* GET on `http://<hostname>/<webstrateId>/?v` will return the version number of `<webstrateId>`.
+* GET on `http://<hostname>/<webstrateId>?tags` will return a list of tags associated with `<webstrateId>`.
+* GET on `http://<hostname>/<webstrateId>?ops` will return a list of all operations applied to `<webstrateId>` (Beware: this can be a huge list).
+* GET on `http://<hostname>/<webstrateId>/?static` will return a static version of webstrate `<webstrateId>`.
+* GET on `http://<hostname>/<webstrateId>/<versionOrTag>/` will return a static version of webstrate `<webstrateId>` at version or tag `<versionOrTag>`.
+* GET on `http://<hostname>/<webstrateId>/?raw` will return a raw version of webstrate `<webstrateId>`.
+* GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?raw` will return a raw version of webstrate `<webstrateId>` at version or tag `<versionOrTag>`.
 
-Accessing static and raw versions of a webstrate
-------------------------------------------------
-* GET on `http://<server host>/<some_name>?raw` will return a raw HTML version of the webstrate.
-* GET on `http://<server host>/<some_name>?v=<versionOrTag>&raw` will return a raw HTML version of the webstrate at version or tag `<versionOrTag>`.
-* GET on `http://<server host>/<some_name>?static` will return a static version of the webstrate.
-* GET on `http://<server host>/<some_name>?v=<versionOrTag>&static` will return a static version of the webstrate at version or tag `<versionOrTag>`.
+**A note on static and raw**
 
 On normal requests, the Webstrates server serves a static `client.html` with JavaScripts that replace the DOM with the content of the webstrate. When using the `raw` parameter, the Webstrates server instead serves the raw HTML. No JavaScript Webstrates JavaScript is executed on the client side, and no WebSocket connection is established. This also means that DOM elements do not have attached `webstrate` objects, and as a result you cannot listen for Webstrate events.
 
-When using the `static` parameter, Webstrates serves `client.html` as per usual, and the webstrate requested is also generated on the client very close to how it is done for normal requests. Any changes made to the webstrate, however, are not persisted or shared between clients.
+When accessing a `static` version of a document, Webstrates serves `client.html` as per usual, and the webstrate requested is also generated on the client similar to how it is done for normal requests. Any changes made to the webstrate, however, are not persisted or shared between clients.
 
 Restoring a webstrate
 ---------------------
-* GET on `http://<server host>/<some name>?restore=<version>` restore the document to look like it did in version `<version>` and redirects the user to `/<some name>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
+* GET on `http://<hostname>/<webstrateId>?restore=<versionOrTag>` restores the document to look like it did in version or tag `<versionOrTag>` and redirects the user to `/<webstrateId>`. This will apply operations on the current verison until the desired version is reached and will therefore not break the operations log or remove from it, but only add additional operations.
 
-Alternatively, a Webstrate can be restored by calling `webstrate.restore(version, fn)` or `webstrate.restore(tag, fn)`. `fn` is a function callback that takes two arguments, an error and the new version:
+Alternatively, a Webstrate can be restored by calling `webstrate.restore(versionOrTag, fn)`. `fn` is a function callback that takes two arguments, a potential error (or null) and the new version:
 
 ```javascript
 webstrate.restore(versionOrTag, function(error, newVersion) {
   if (error) {
     // Handle error.
   } else {
-    // Otherwise, document is not at newVersion.
+    // Otherwise, document is now at newVersion, identical to the document at versionOrTag.
 });
 ```
 
@@ -95,9 +97,8 @@ When calling `webstrate.restore` in a static webstrate, the static webstrate is 
 
 Deletion of a webstrate
 -----------------------
-* GET on `http://<server host>/<some name>?delete` will delete the document and redirect all connected users to the server root. The document data will be deleted, but a record of the document (containing name, version number, creation and modification timestamps) will remain in the database.
-
-
+* GET on `http://<hostname>/<webstrateId>?delete` will delete the document and redirect all connected users to the server root. The document data including all assets will be cometeply removed from the server.
+ 
 Assets
 ------
 Webstrates supports the attachment of assets (files). Files can be attached to a Webstrate by performing a POST with a file `file` to the Webstrate's address:
@@ -111,7 +112,7 @@ Webstrates supports the attachment of assets (files). Files can be attached to a
 
 The `action` attribute in the above is the empty string (`""`), meaning the form will submit to itself. When adding the above code to a webstrate at `/myWebstrate/`, and submitting the form with a file, the request will be made to `/myWebstrate/` and the file added to myWebstrate. Submitting to another webstrate is also possible by changing the `action` attribute. Note that forms *must* have `enctype="multipart/form-data"` to be accepted.
 
-### Adding an assets
+### Adding assets
 
 Uploading an asset will attach it to the current version of the document, but may also be accessed by future versions, assuming no other asset has been added with the same name since. For instance, uploading `cow.jpg` at version 1 to myWebstrate will make it possible to access it at `/myWebstrate/cow.jpg`, `/myWebstrate/1/cow.jpg`, `/myWebstrate/2/cow.jpg` etc., assuming those versions exist. If, however, another `cow.jpg` is uploaded at version 3, any requests to `/myWebstrate/3/cow.jpg`, `/myWebstrate/4/cow.jpg` and so forth will refer to the new `cow.jpg`, but any requests to previous versions will still refer to the old `cow.jpg`. Accessing `/myWebstrate/cow.jpg` will naturally always point to the newest version of `cow.jpg`.
 
@@ -128,7 +129,7 @@ When submitting an asset, the server will return a JSON object representing the 
 }
 ```
 
-In the above example, we have uploaded an image `cow.jpg` with a size of 135 KB (138666 bytes) to version 128 of the document (the current version). When adding an asset with the same name as a previous asset at the same version, the new asset will have a random string attached to its name. If a `cow.jpg` already existed in the above example, the `fileName` property in the output would have been something like `cow-ryw4o3gVz.jpg`.
+In the above example, we have uploaded an image `cow.jpg` with a size of 135 KB (138666 bytes) to version 128 of the document (the current version).
 
 Note that an asset is always attached to the newest version of a webstrate, because the philosophy of Webstrates is to never modify the history of a document, but only append to it. For the same reason, restoring a webstrate also doesn't modify the history, but only appends to it. Assets cannot be deleted, except by deleting the entire document.
 
@@ -185,7 +186,7 @@ Tagging
 -------
 For easier navigation through document revisions, Webstrate includes tagging. A tag is a label applied to a specific version of the document.
 
-All tags for a document can be seen by either accessing `http://<server host>/<some_name>?tags` or calling `webstrate.tags()` in the Webstrate. The current tag can also be seen by calling `webstrate.tag()`.
+All tags for a document can be seen by either accessing `http://<hostname>/<webstrateId>?tags` or calling `webstrate.tags()` in the Webstrate. The current tag can also be seen by calling `webstrate.tag()`.
 
 Listening for tagging and untagging can be done using the two event names "tag" and "untag":
 
@@ -363,7 +364,7 @@ Add the following to your `config.json`:
       "config": {
         "clientID": "<github client id>",
         "clientSecret": "<github secret>",
-        "callbackURL": "http://<server host>/auth/github/callback"
+        "callbackURL": "http://<hostname>/auth/github/callback"
       }
     }
   }
@@ -381,7 +382,7 @@ Access rights are added to a webstrate as a `data-auth` attribute on the `<html>
 
 The above example provides the user with GitHub username *cklokmose* permissions to read and write (modify the webstrate), while anonymous users only have read access.
 
-Users can log in by accessing `http://<server host>/auth/github`.
+Users can log in by accessing `http://<hostname>/auth/github`.
 
 In the future, more authentication providers will be supported.
 
