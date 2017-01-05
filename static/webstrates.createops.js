@@ -173,27 +173,21 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 
-			// Occasionally, we will be unable to insert something after the previous sibling in the
-			// path tree, because the element doesn't exist in the path tree, even though the previous
-			// sibling is defined on addedNode. This can happen for one of two reasons:
-			// 1) The previous element is a transient tag, which aren't supposed to be in the path tree.
-			// 2) The mutation record gives us a previous sibling that doesn't exist yet. This can happen
-			//    when inserting an element C in a text node using insertNode on a Range, in which case
-			//    the text node gets broken into two text nodes (A and B), and the mutation record tells
-			//    us to insert the new text node B after the new element C, even though we are yet to
-			//    receive the mutation record for the insertion of C.
-			// When this happens, we traverse the list of previous siblings until we find one that exists
-			// in the path tree.
-			var previousSibling = addedNode.previousSibling;
-			var previousSiblingPathNode = webstrates.PathTree.getPathNode(previousSibling, target);
-			var previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
-			while (previousSibling && previousSiblingIndex === -1) {
+			// We use the previous sibling to insert the new element in the correct position in the path
+			// tree. However, if the previous sibling is a transient element, it won't be in the path
+			// tree, so it will appear that the element has no previous element. Therefore, we traverse
+			// the list of previous siblings until we find one that's not a transient element (if such
+			// exists).
+			var previousSibling = mutation.previousSibling;
+			while (previousSibling && previousSibling.tagName
+				&& previousSibling.tagName.toLowerCase() === "transient") {
 				previousSibling = previousSibling.previousSibling;
-				previousSiblingPathNode = webstrates.PathTree.getPathNode(previousSibling, target);
-				previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
 			}
 
 			if (previousSibling) {
+				var previousSiblingPathNode = webstrates.PathTree.getPathNode(previousSibling,
+					target);
+				var previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
 				targetPathNode.children.splice(previousSiblingIndex + 1, 0, newPathNode);
 			} else if (mutation.nextSibling) {
 				targetPathNode.children.unshift(newPathNode);
