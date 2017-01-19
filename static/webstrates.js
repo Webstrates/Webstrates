@@ -171,7 +171,7 @@ root.webstrates = (function(webstrates) {
 					module.clientId = clientId;
 					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
-					cookies = data.cookies;
+					cookies = data.cookies || { here: {}, anywhere: {} };
 
 					// Only allow cookies if the user object exists, i.e. is logged in with OAuth. Otherwise,
 					if (module.user) {
@@ -1185,7 +1185,21 @@ root.webstrates = (function(webstrates) {
 				return doc.version || doc.v;
 			},
 			set: function setVersion(v) {
-				throw new Error("Version is read-only");
+				throw new Error("version is read-only");
+			}
+		});
+
+		/**
+		 * Exposes staticMode through getter.
+		 * @return {bool} Whether document is is being served as static or not.
+		 * @public
+		 */
+		Object.defineProperty(module, "isStatic", {
+			get: function getIsStatic() {
+				return staticMode;
+			},
+			set: function setVersion(b) {
+				throw new Error("isStatic is read-only");
 			}
 		});
 

@@ -156,20 +156,28 @@ module.exports = function(cookieHelper, db, pubsub) {
 		var userId = clients[socketId].user.userId;
 		db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { "$exists": false } } ] })
 		.toArray(function(err, res) {
-			if (err) return console.error(err);
-			// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
-			// structure into a regular object.
-			var documentCookies = res.find(cookie => cookie.webstrateId === webstrateId) || {};
-			var documentCookiesObj = {};
-			if (documentCookies.cookies) {
-				documentCookies.cookies.forEach(({ key, value }) => documentCookiesObj[key] = value);
-			}
+			var cookies;
+			// Let's recover. If something goes bad, we'll send out the "hello" message anyway. Otherwise,
+			// the Webstrates client will be very displeased.
+			if (err) {
+				console.error(err);
+			} else {
+				cookies = {};
+				// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
+				// structure into a regular object.
+				var documentCookies = res.find(cookie => cookie.webstrateId === webstrateId) || {};
+				if (documentCookies.cookies) {
+					cookies.here = {};
+					documentCookies.cookies.forEach(({ key, value }) => cookies.here[key] = value);
+				}
 
-			// Rinse and repeat for "anywhere" (global) cookies.
-			var globalCookies = res.find(cookie => typeof cookie.webstrateId === "undefined") || {};
-			var globalCookiesObj = {};
-			if (globalCookies.cookies) {
-				globalCookies.cookies.forEach(({ key, value }) => globalCookiesObj[key] = value);
+				// Rinse and repeat for "anywhere" (global) cookies.
+				var globalCookies = res.find(cookie => typeof cookie.webstrateId === "undefined") || {};
+
+				if (globalCookies.cookies) {
+					cookies.anywhere = {};
+					globalCookies.cookies.forEach(({ key, value }) => cookies.anywhere[key] = value);
+				}
 			}
 
 			module.sendToClient(socketId, {
@@ -178,11 +186,9 @@ module.exports = function(cookieHelper, db, pubsub) {
 				d: webstrateId,
 				user: clients[socketId].user,
 				clients: webstrates[webstrateId],
-				cookies: {
-					anywhere: globalCookiesObj,
-					here: documentCookiesObj
-				}
+				cookies
 			});
+
 		});
 
 		clients[socketId].webstrates[webstrateId] = [];
