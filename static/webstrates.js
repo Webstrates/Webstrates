@@ -34,6 +34,12 @@ root.webstrates = (function(webstrates) {
 		// List of all asset objects.
 		var allAssets;
 
+		// Cookie object assumed with user. This is not HTTP cookies.
+		var cookies = {
+			anywhere: {},
+			here: {}
+		};
+
 		// List of future tags in case we have received tags before our own document has been
 		// synchronized to this version.
 		var futureTags = {};
@@ -51,15 +57,17 @@ root.webstrates = (function(webstrates) {
 		};
 
 		// Lists containing callbacks for events that the user may subscribe to.
-		var callbackLists = { // Callbacks are triggered when:
-			loaded: [],         // the document has been loaded.
-			transcluded: [],    // the document has been transcluded.
-			clientJoin: [],     // client connects to the webstrate.
-			clientPart: [],     // client disconnects from the webstrate.
-			signal: [],         // client sends a signal.
-			tag: [],            // new tag has been set.
-			untag: [],          // tag has been removed.
-			asset: []           // new asset has been added.
+		var callbackLists = {       // Callbacks are triggered when:
+			loaded: [],               // the document has been loaded.
+			transcluded: [],          // the document has been transcluded.
+			clientJoin: [],           // client connects to the webstrate.
+			clientPart: [],           // client disconnects from the webstrate.
+			cookieUpdateHere: [],     // The cookie accessible only from this document has been updated.
+			cookieUpdateAnywhere: [], // The cookie accessible from every document has been updated.
+			signal: [],               // client sends a signal.
+			tag: [],                  // new tag has been set.
+			untag: [],                // tag has been removed.
+			asset: []                 // new asset has been added.
 		};
 
 		// All elements get a Webstrate object attached after they enter the DOM. It may, however, be
@@ -128,7 +136,6 @@ root.webstrates = (function(webstrates) {
 				}, 2000);
 
 			}
-			msgObj.d = msgObj.d || module.webstrateId;
 			websocket.send(JSON.stringify(msgObj));
 		};
 
@@ -151,8 +158,10 @@ root.webstrates = (function(webstrates) {
 
 			// The websocket may be used for other webstrates. We want to make sure that the message is
 			// intended for this particular webstrate by verifying that the message was addressed to the
-			// current collection (c) and webstrate document (d).
-			if (data.c !== COLLECTION_NAME || data.d !== webstrateId) {
+			// current collection (c) and webstrate document (d). However, some messages (namely
+			// "anywhere" cookies) will not be addressed to a particular webstrate, but should still
+			// make it through. Therefore, we also allow undefined d properties.
+			if (data.c !== COLLECTION_NAME || (data.d && data.d !== webstrateId)) {
 				return;
 			}
 
@@ -162,6 +171,33 @@ root.webstrates = (function(webstrates) {
 					module.clientId = clientId;
 					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
 					module.clients = data.clients;
+					cookies = data.cookies;
+
+					// Only allow cookies if the user object exists, i.e. is logged in with OAuth. Otherwise,
+					if (module.user) {
+						module.user.cookies = {
+							anywhere: {
+								get: function(key) {
+									if (!key) return cookies.anywhere;
+									return cookies.anywhere[key];
+								},
+								set: function(key, value) {
+									cookies.anywhere[key] = value;
+									updateCookie(key, value, true);
+								}
+							},
+							here: {
+								get: function(key) {
+									if (!key) return cookies.here;
+									return cookies.here[key];
+								},
+								set: function(key, value, callback) {
+									cookies.here[key] = value;
+									updateCookie(key, value, false);
+								}
+							}
+						}
+					}
 					break;
 
 				case "clientJoin":
@@ -174,6 +210,18 @@ root.webstrates = (function(webstrates) {
 					var clientId = data.id;
 					module.clients.splice(module.clients.indexOf(clientId), 1);
 					triggerCallbacks(callbackLists.clientPart, clientId);
+					break;
+
+				case "cookieUpdate":
+					if (data.d) {
+						cookies.here[data.update.key] = data.update.value;
+						triggerCallbacks(callbackLists.cookieUpdateHere, data.update.key,
+							data.update.value);
+					} else {
+						cookies.anywhere[data.update.key] = data.update.value;
+						triggerCallbacks(callbackLists.cookieUpdateAnywhere, data.update.key,
+							data.update.value);
+					}
 					break;
 
 				case "publish":
@@ -873,10 +921,10 @@ root.webstrates = (function(webstrates) {
 			};
 
 			var pathNode = webstrates.PathTree.getPathNode(node);
-			// Create a unique ID for each element.
-			// If the node doesn't have a path node, it either hasn't been added to the DOM yet, so we
-			// can't create an op for other clients, or the element isn't being tracked by Webstrates.
-			// Either way, we don't care about adding a unique ID.
+			// Create a unique ID for each element if the element has a path node. If the node doesn't
+			// have a path node, it either hasn't been added to the DOM yet, so we can't create an op for
+			// the other clients, or the element isn't being tracked by Webstrates (this is the case with
+			// transient elements and their descendants). Either way, we don't need to add a unique ID.
 			if (!node.webstrate.id && node.nodeType === Node.ELEMENT_NODE && pathNode) {
 				var nodePath = pathNode.toPath();
 				var jml = webstrates.util.elementAtPath(doc.data, nodePath);
@@ -1029,6 +1077,17 @@ root.webstrates = (function(webstrates) {
 		 */
 		module.signal = function(msg, recipients) {
 			sendSignal(module.id, msg, recipients);
+		};
+
+		var updateCookie = function(key, value, isGlobal) {
+			var updateObj = {
+				wa: "cookieUpdate",
+				update: { key, value }
+			};
+			if (!isGlobal) {
+				updateObj.d = webstrateId;
+			}
+			websocketSend(updateObj);
 		};
 
 		/**

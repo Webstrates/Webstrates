@@ -93,10 +93,12 @@ MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
 	db.assets = _db.collection('assets');
 	db.assets.ensureIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
+	db.cookies = _db.collection('cookies');
+	db.cookies.ensureIndex({ userId: 1, webstrateId: 1 }, { unique: true });
 });
 
 var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
-var clientManager = require("./helpers/ClientManager.js")(cookieHelper, pubsub);
+var clientManager = require("./helpers/ClientManager.js")(cookieHelper, db, pubsub);
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth,
 	pubsub);
@@ -399,6 +401,10 @@ var wss = new WebSocketServer({
 });
 
 wss.on('connection', function(client) {
+	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
+	var user = (cookie && cookie.passport.user) || {};
+	client.user = user;
+
 	var socketId = clientManager.addClient(client);
 
 	// We replace `client.send` with a function that doesn't throw an exception if the message fails.
@@ -419,8 +425,6 @@ wss.on('connection', function(client) {
 		objectMode: true
 	});
 
-	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
-	var user = (cookie && cookie.passport.user) || {};
 	stream.session = cookie;
 	stream.headers = client.upgradeReq.headers;
 	stream.remoteAddress = client.upgradeReq.connection.remoteAddress ||
@@ -533,6 +537,12 @@ wss.on('connection', function(client) {
 					var message = data.m;
 					var recipients = data.recipients;
 					clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
+					break;
+				case "cookieUpdate":
+					if (data.update && user.userId !== "anonymous") {
+						clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,
+						true);
+					}
 					break;
 				// Restoring a document to a previous version.
 				case "restore":

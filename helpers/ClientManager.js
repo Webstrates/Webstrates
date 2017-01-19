@@ -6,7 +6,7 @@ var shortId = require('shortid');
  * ClientManager constructor.
  * @constructor
  */
-module.exports = function(cookieHelper, pubsub) {
+module.exports = function(cookieHelper, db, pubsub) {
 	var PUBSUB_CHANNEL = "webstratesClients";
 	var module = {};
 
@@ -26,6 +26,9 @@ module.exports = function(cookieHelper, pubsub) {
 	// One-to-one mapping from socketIds to `clientJoin` trigger function and its associated
 	// setTimeout id.
 	var joinTimeouts = {};
+
+	// One-to-many mapping from userId to socketIds. Used for communicating cookie updates.
+	var userIds = {}
 
 	// Listen for events happening on other server instances. This is only used when using multi-
 	// threading and Redis.
@@ -56,6 +59,10 @@ module.exports = function(cookieHelper, pubsub) {
 					module.publish(message.senderSocketId, message.webstrateId, message.nodeId,
 						message.message, message.recipients);
 					break;
+				case "cookieUpdate":
+					module.updateCookie(message.userId, message.webstrateId, message.update.key,
+						message.update.value);
+					break;
 				default:
 					console.warn("Unknown action", message);
 			}
@@ -65,21 +72,23 @@ module.exports = function(cookieHelper, pubsub) {
 	/**
 	 * Add client to ClientManager.
 	 * @param  {Socket} client Client socket.
+	 * @param  {obj}    user   User object (OAuth credentials).
 	 * @return {string}        Generated socketId.
 	 * @public
 	 */
 	module.addClient = function(client) {
 		var socketId = shortId.generate();
-		var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
-		var user = (cookie && cookie.passport.user) || {};
+
+		if (!userIds[client.user.userId]) userIds[client.user.userId] = [];
+		userIds[client.user.userId].push(socketId);
 
 		clients[socketId] = {
 			socket: client,
 			user: {
-				userId: user.userId,
-				username: user.username,
-				provider: user.provider,
-				displayName: user.displayName
+				userId: client.user.userId,
+				username: client.user.username,
+				provider: client.user.provider,
+				displayName: client.user.displayName
 			},
 			webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 		};
@@ -144,12 +153,36 @@ module.exports = function(cookieHelper, pubsub) {
 			return;
 		}
 
-		module.sendToClient(socketId, {
-			wa: "hello",
-			id: socketId,
-			d: webstrateId,
-			user: clients[socketId].user,
-			clients: webstrates[webstrateId]
+		var userId = clients[socketId].user.userId;
+		db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { "$exists": false } } ] })
+		.toArray(function(err, res) {
+			if (err) return console.error(err);
+			// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
+			// structure into a regular object.
+			var documentCookies = res.find(cookie => cookie.webstrateId === webstrateId) || {};
+			var documentCookiesObj = {};
+			if (documentCookies.cookies) {
+				documentCookies.cookies.forEach(({ key, value }) => documentCookiesObj[key] = value);
+			}
+
+			// Rinse and repeat for "anywhere" (global) cookies.
+			var globalCookies = res.find(cookie => typeof cookie.webstrateId === "undefined") || {};
+			var globalCookiesObj = {};
+			if (globalCookies.cookies) {
+				globalCookies.cookies.forEach(({ key, value }) => globalCookiesObj[key] = value);
+			}
+
+			module.sendToClient(socketId, {
+				wa: "hello",
+				id: socketId,
+				d: webstrateId,
+				user: clients[socketId].user,
+				clients: webstrates[webstrateId],
+				cookies: {
+					anywhere: globalCookiesObj,
+					here: documentCookiesObj
+				}
+			});
 		});
 
 		clients[socketId].webstrates[webstrateId] = [];
@@ -332,6 +365,48 @@ module.exports = function(cookieHelper, pubsub) {
 		}
 	};
 
+	module.updateCookie = function(userId, webstrateId, key, value, local) {
+		var updateObj = {
+			wa: "cookieUpdate",
+			update: { key, value }
+		};
+
+		if (webstrateId) {
+			updateObj.d = webstrateId;
+			broadcastToUserClientsInWebstrate(webstrateId, userId, updateObj);
+		} else {
+			broadcastToUserClients(userId, updateObj);
+		}
+
+		if (local && pubsub) {
+			var webstrateIdQuery = webstrateId || { "$exists": false };
+			db.cookies.update({ userId, webstrateId: webstrateIdQuery, cookies: { key } },
+			{ $set: { "cookies.$.value": value } }, function(err, res) {
+				if (err) return console.error(err);
+				// If our update didn't update anything, we have to add it first. Maybe this could be done
+				// in one query, but as this point, I've given up trying to get clever with MongoDB.
+				if (res.result.nModified === 0) {
+					db.cookies.update({ userId, webstrateId: webstrateIdQuery },
+					// We still have to upsert, because even though the particular cookie key from above
+					// doesn't exist, the document may still exist.
+					{ $push: { cookies: { key, value } } }, { upsert: true }, function(err, res) {
+						if (err) return console.error(err);
+						pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+							action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
+						}));
+					});
+				}
+				else {
+					// Actually, I've stopped trying to be clever altogether. Yes, this is the same as
+					// above.
+					pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+						action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
+					}));
+				}
+			});
+		}
+	};
+
 	/**
 	 * Send message to clients in a webstrate.
 	 * @param  {string} webstrateId WebstrateId.
@@ -360,6 +435,10 @@ module.exports = function(cookieHelper, pubsub) {
 	module.sendToClient = function(socketId, message) {
 		message.c = "webstrates";
 
+		// If we don't have the client's socket, we can't send the message, and that's fine. The client
+		// will be connected to another server instance that will also have been told to send the
+		// message to the client. In essence, we tell all server instances to send the same message,
+		// knowing that only one of them will get past this conditional (and thus send it).
 		if (!clients[socketId]) {
 			return false;
 		}
@@ -377,7 +456,7 @@ module.exports = function(cookieHelper, pubsub) {
 	/**
 	 * Send message to all clients currently connected to a webstrate.
 	 * @param  {string} webstrateId WebstrateId.
-	 * @param  {string} message     Message.
+	 * @param  {obj}    message     Message object.
 	 * @private
 	 */
 	function broadcastToWebstrateClients(webstrateId, message) {
@@ -386,6 +465,34 @@ module.exports = function(cookieHelper, pubsub) {
 		}
 
 		webstrates[webstrateId].forEach(function(socketId) {
+			module.sendToClient(socketId, message);
+		});
+	}
+
+	function broadcastToUserClientsInWebstrate(webstrateId, userId, message) {
+		if (!webstrates[webstrateId] || !userIds[userId]) {
+			return;
+		}
+
+		userIds[userId].forEach(function(socketId) {
+			if (webstrates[webstrateId].includes(socketId)) {
+				module.sendToClient(socketId, message);
+			}
+		});
+	}
+
+	/**
+	 * Send message to all clients currently connected and logged in as userId.
+	 * @param  {string} userId  User Id (of the format <username>:<provider, e.g. kbadk:github).
+	 * @param  {obj}    message     Message object.
+	 * @private
+	 */
+	function broadcastToUserClients(userId, message) {
+		if (!userIds[userId]) {
+			return;
+		}
+
+		userIds[userId].forEach(function(socketId) {
 			module.sendToClient(socketId, message);
 		});
 	}

@@ -89,7 +89,8 @@ webstrate.restore(versionOrTag, function(error, newVersion) {
   if (error) {
     // Handle error.
   } else {
-    // Otherwise, document is now at newVersion, identical to the document at versionOrTag.
+    // Otherwise, document is now at newVersion, identical to
+    // the document at versionOrTag.
 });
 ```
 
@@ -98,7 +99,153 @@ When calling `webstrate.restore` in a static webstrate, the static webstrate is 
 Deletion of a webstrate
 -----------------------
 * GET on `http://<hostname>/<webstrateId>?delete` will delete the document and redirect all connected users to the server root. The document data including all assets will be cometeply removed from the server.
- 
+
+Events
+------
+The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)` (the webstrate instance) or `DOMElement.webstrate.on(event, function)` (the webstrate object attached to every DOM element). When an event occurs, the attached function will be triggered with potential arguments.
+
+### Trigger event when a webstrate has finished loading
+
+When the Webstrates client has finished loading a webstrate, it will trigger a `loaded` event on the Webstrate instance. Using the default `client.html` and `client.js`,  the webstrate instance will be attached to the window element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
+
+```javascript
+webstrate.on("loaded", function(webstrateId, clientId, user) {
+  // The Webstrates client has now finished loading.
+});
+```
+
+If a webstrate has been transcluded (i.e. loaded in an iframe), a `transcluded` event will be triggered, both within the transcluded iframe, but also on the iframe element itself:
+
+```javascript
+var myIframe = document.createElement("iframe");
+myIframe.src = "/some_webstrate";
+myIframe.webstrate.on("transcluded", function(webstrateId, clientId, user) {
+  // The webstrate client in the iframe has now finished loading.
+});
+document.body.appendChild(myIframe);
+```
+
+If the client is logged in using a passport provider (like GitHub), `user` will be an object containinig a `userId`, `username`, `provider` and `displayName`. This object is also available on the global `webstrate` instance as `webstrate.user`.
+
+### Events on text nodes
+
+Webstrates does fine-grained synchronization on text nodes and attributes, however, to update a text node or attribute in the browser, the whole text is replaced. To allow more fine-grained interaction with text, Webstrates also dispatches text insertion and deletion events on text nodes and element nodes:
+
+```javascript
+textNode.webstrate.on("insertText", function(position, value) {
+  // Some text has just been inserted into textNode.
+});
+
+textNode.webstrate.on("deleteText", function(position, value) {
+  // Some text has just been deleted from textNode.
+});
+
+elementNode.webstrate.on("insertText", function(position, value, attributeName) {
+  // Some text has just been inserted into an attribute on elementNode.
+});
+
+elementNode.webstrate.on("deleteText", function(position, value, attributeName) {
+  // Some text has just been deleted from an attribute on textNode.
+});
+```
+
+### Added and removed nodes
+
+Listening for added or removed nodes can be done using `nodeAdded` and `nodeRemoved`:
+
+```javascript
+parentElement.webstrate.on("nodeAdded", function(node, local) {
+  // Some node was added.
+});
+
+parentElement.webstrate.on("nodeRemoved", function(node, local) {
+  // Some node was removed
+});
+```
+
+`local` will be true if the change originated in the current browser, or false if it originated elsewhere.
+
+### Changing attributes
+
+Attribute changes will trigger `attributeChanged`:
+
+```javascript
+childElement.webstrate.on("attributeChanged", function(attributeName, oldValue, newValue, local) {
+  // Some attribute changed.
+});
+```
+
+If the attribute has just been added, `oldValue` will be `undefined`. If an attribute has just been removed, `newValue` will be `undefined`. If an attribute has just been updated, `oldValue` and `newValue` will contain what you'd expect.
+
+`local` will be true if the change originated in the current browser, or false if it originated elsewhere.
+
+#### Full list of `on` events
+
+| Event                  | Arguments                                | Triggered when:                                               |
+|------------------------|------------------------------------------|---------------------------------------------------------------|
+| `loaded`               | webstrateId, clientId, user              | The document has finished loading.                            |
+| `transcluded`          | webstrateId, clientId, user              | The document  has been transcluded and has finished loading.  |
+| `clientJoin`           | clientId                                 | A client joins the document.                                  |
+| `clientPart`           | clientId                                 | A client leaves the document.                                 |
+| `insertText`           | position, value [, attributeName]        | A text has been inserted into a text node or attribute.       |
+| `deleteText`           | position, value [, attributeName]        | A text has been deleted from a text node or attribute.        |
+| `nodeAdded`            | node, local                              | A node has been added to the document.                        |
+| `nodeRemoved`          | node, local                              | A node has been removed from the document.                    |
+| `attributeChanged`     | attributeName, newValue, oldValue, local | An attribute has added/modified/removed on an element.        |
+| `cookieUpdateHere`     | key, value                               | A "here" cookie has been added/modified.                      |
+| `cookieUpdateAnywhere` | key, value                               | An "anywhere" cookie has been added/modified.                 |
+| `signal`               | message, senderId, node                  | A client (senderId) signals on a DOM node.                    |
+| `tag`                  | version, label                           | A tag has been added to the webstrate.                        |
+| `untag`                | version                                  | A tag has been removed from the webstrate.                    |
+| `asset`                | asset object (version, file name, etc.)  | An asset has been added to the webstrate.                     |
+
+All the events can also be unregistered using `off`, e.g.:
+
+```javascript
+webstrate.on("loaded", function loadedFunction() {
+  // Work here...
+  webstrate.off("loaded", loadedFunction);
+});
+```
+For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
+
+All the events can also be unregistered using `off`, e.g.:
+
+```javascript
+webstrate.on("loaded", function loadedFunction() {
+  // Work here...
+  webstrate.off("loaded", loadedFunction);
+});
+```
+For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
+
+
+Cookies
+-------
+Webstrates has a built-in cookie mechanism that allows logged in users to persist JavaScript objects across devices. There are two kinds of cookies: "anywhere" cookies, which may be accessed and modified from any webstrate the user is accessing, and document-bound cookies ("here"), only available from the webstrate they were created in.
+
+The cookies are simple key-value stores persisted on the server and distributed to the user's connected clients. Any serializable JavaScript object can be stored in cookies. To set an "anywhere" cookie `foo` with the value `bar`, call:
+
+    webstrate.user.cookies.anywhere.set("foo", "bar");
+
+To retrieve it again (possibly in another webstrate, from another device the user is logged in to), the application/user may call:
+
+    webstrate.user.cookies.anywhere.get("foo");
+
+and get back `bar`. "here" cookies are managed in a similar fashion through `webstrate.cookies.here.set()` and `webstrate.cookies.here.get()`.
+
+To retrieve all cookies, call `get()` without any parameters on the appropriate object.
+
+Cookies can only be saved for logged-in users, hence their placement on the `webstrate.user` object, which won't exist for non-logged in users.
+
+Listening for cookie updates can be done by subscribing to `cookieUpdateHere` and `cookieUpdateAnywhere` events, e.g.:
+
+    webstrate.on("cookieUpdateHere", function(key, value) {
+      // A cookie key-value pair was added/updated.
+    });
+
+Note that contrary to HTTP cookies, the cookies' contents are stored on the server; only the session token (the user's credentials) are stored in an actual HTTP cookie. Setting a value on one client will therefore be persisted to all of the user's other connected clients.
+
 Assets
 ------
 Webstrates supports the attachment of assets (files). Files can be attached to a Webstrate by performing a POST with a file `file` to the Webstrate's address:
@@ -188,7 +335,7 @@ For easier navigation through document revisions, Webstrate includes tagging. A 
 
 All tags for a document can be seen by either accessing `http://<hostname>/<webstrateId>?tags` or calling `webstrate.tags()` in the Webstrate. The current tag can also be seen by calling `webstrate.tag()`.
 
-Listening for tagging and untagging can be done using the two event names "tag" and "untag":
+Listening for tagging and untagging can be done using the two events `tag` and `untag`:
 
 ```javascript
 webstrate.on("tag", function(version, label) {
@@ -211,112 +358,6 @@ All labels are unique for each Webstrate (i.e. no two versions of the same docum
 
 In addition to manual tagging, Webstrates also automatically creates tags when a user starts modifying a document after a set period of inactivity. By default, the inactivity period is defined to be 3600 seconds (60 minutes). This can be modified by changing `autotagInterval` in `config.json`. Tags are labeled with the current timestamp, making it easy to track when changes were made to a document.
 
-Events
-------
-The user may subscribe to certain events triggered by Webstrates using `webstrate.on(event, function)` (the webstrate instance) or `DOMElement.webstrate.on(event, function)` (the webstrate object attached to every DOM element). When an event occurs, the attached function will be triggered with potential arguments.
-
-### Trigger event when a webstrate has finished loading
-
-When the Webstrates client has finished loading a webstrate, it will trigger a `loaded` event on the Webstrate instance. Using the default `client.html` and `client.js`,  the webstrate instance will be attached to the window element as `window.webstrate`. Thus, a user may attach events to `webstrate.on`:
-
-```javascript
-webstrate.on("loaded", function(webstrateId, clientId, user) {
-  // The Webstrates client has now finished loading.
-});
-```
-
-If a webstrate has been transcluded (i.e. loaded in an iframe), a `transcluded` event will be triggered, both within the transcluded iframe, but also on the iframe element itself:
-
-```javascript
-var myIframe = document.createElement("iframe");
-myIframe.src = "/some_webstrate";
-myIframe.webstrate.on("transcluded", function(webstrateId, clientId, user) {
-  // The webstrate client in the iframe has now finished loading.
-});
-document.body.appendChild(myIframe);
-```
-
-If the client is logged in using a passport provider (like GitHub), `user` will be an object containinig a `userId`, `username`, `provider` and `displayName`. This object is also available on the global `webstrate` instance as `webstrate.user`.
-
-### Events on text nodes
-
-Webstrates does fine-grained synchronization on text nodes and attributes, however, to update a text node or attribute in the browser, the whole text is replaced. To allow more fine-grained interaction with text, Webstrates also dispatches text insertion and deletion events on text nodes and element nodes:
-
-```javascript
-textNode.webstrate.on("insertText", function(position, value) {
-  // Some text has just been inserted into textNode.
-});
-
-textNode.webstrate.on("deleteText", function(position, value) {
-  // Some text has just been deleted from textNode.
-});
-
-elementNode.webstrate.on("insertText", function(position, value, attributeName) {
-  // Some text has just been inserted into an attribute on elementNode.
-});
-
-elementNode.webstrate.on("deleteText", function(position, value, attributeName) {
-  // Some text has just been deleted from an attribute on textNode.
-});
-```
-
-### Added and removed nodes
-
-Listening for added or removed nodes can be done using `nodeAdded` and `nodeRemoved`:
-
-```javascript
-parentElement.webstrate.on("nodeAdded", function(node, local) {
-  // Some node was added.
-});
-
-parentElement.webstrate.on("nodeRemoved", function(node, local) {
-  // Some node was removed
-});
-```
-
-`local` will be true if the change originated in the current browser, or false if it originated elsewhere.
-
-### Changing attributes
-
-Attribute changes will trigger `attributeChanged`:
-
-```javascript
-childElement.webstrate.on("attributeChanged", function(attributeName, oldValue, newValue, local) {
-  // Some attribute changed.
-});
-```
-
-If the attribute has just been added, `oldValue` will be `undefined`. If an attribute has just been removed, `newValue` will be `undefined`. If an attribute has just been updated, `oldValue` and `newValue` will contain what you'd expect.
-
-`local` will be true if the change originated in the current browser, or false if it originated elsewhere.
-
-#### Full list of `on` events
-
-| Event              | Arguments                                | Triggered when:                                               |
-|--------------------|------------------------------------------|---------------------------------------------------------------|
-| `loaded`           | webstrateId, clientId, user              | The document has finished loading.                            |
-| `transcluded`      | webstrateId, clientId, user              | The document  has been transcluded and has finished loading.  |
-| `clientJoin`       | clientId                                 | A client joins the document.                                  |
-| `clientPart`       | clientId                                 | A client leaves the document.                                 |
-| `insertText`       | position, value [, attributeName]        | A text has been inserted into a text node or attribute.       |
-| `deleteText`       | position, value [, attributeName]        | A text has been deleted from a text node or attribute.        |
-| `nodeAdded`        | node, local                              | A node has been added to the document.                        |
-| `nodeRemoved`      | node, local                              | A node has been removed from the document.                    |
-| `attributeChanged` | attributeName, newValue, oldValue, local | An attribute has added/modified/removed on an element.        |
-| `signal`           | message, senderId, node                  | A client (senderId) signals on a DOM node.                    |
-| `tag`              | version, label                           | A tag has been added to the webstrate.                        |
-| `untag`            | version                                  | A tag has been removed from the webstrate.                    |
-| `asset`            | asset object (version, file name, etc.)  | An asset has been added to the webstrate.                     |
-
-All the events can also be unregistered using `off`, e.g.:
-
-```javascript
-webstrate.on("loaded", function loadedFunction() {
-  // Work here...
-  webstrate.off("loaded", loadedFunction);
-});
-```
-For backwards compatibility, `loaded` and `transcluded` events are also fired as regular DOM events on `document`, and likewise, `insertText` and `deleteText` events are being fired on the appropriate text nodes.
 
 Transient data
 --------------
@@ -403,8 +444,8 @@ Previous versions of Webstrates have run in [Quirks Mode](http://www.quirksmode.
 
 Disclaimer
 ==========
-Webstrates is a work-in-progress and the mapping between the DOM to a ShareDB document is not perfectly bulletproof.
-After each set of DOM manipulations, Webstrate checks the integrity of the mapping between DOM and ShareDB document, and may throw an exception if something is off. If this happens just reload the page.
+Webstrates is a work-in-progress and the mapping between the DOM and the ShareDB document may not be perfect.
+After each set of DOM manipulations, Webstrates checks the integrity of the mapping between the DOM and the ShareDB document, and may throw an exception if something is off. If this happens, just reload the page.
 
 License
 =======
