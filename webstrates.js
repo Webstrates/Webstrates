@@ -427,8 +427,8 @@ wss.on('connection', function(client) {
 
 	stream.session = cookie;
 	stream.headers = client.upgradeReq.headers;
-	stream.remoteAddress = client.upgradeReq.connection.remoteAddress ||
-		client.upgradeReq.headers['X-Forwarded-For'] || client.upgradeReq.headers['x-forwarded-for'];
+	stream.remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
+		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
 
 	stream._write = function(chunk, encoding, callback) {
 		try {
