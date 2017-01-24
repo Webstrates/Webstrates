@@ -232,9 +232,9 @@ root.webstrates = (function(webstrates) {
 
 		var jsonmlIndex = path[0];
 		if (jsonmlIndex === jsonml.ATTRIBUTE_INDEX) {
-			// We could calculate childIndex and parentElement here, but since we won't be needing them,
-			// let's not waste resources.
-			return [parentElement, ];
+			// An attribute's parent could arguably be the element it's defined on, so the childElement
+			// and parentElement are the same. Therefore, there also can't be a childIndex.
+			return [parentElement, undefined, parentElement, jsonmlIndex];
 		}
 
 		var childIndex = jsonmlIndex - jsonml.ELEMENT_LIST_OFFSET;

@@ -242,6 +242,8 @@ root.webstrates = (function(webstrates) {
 				if (attributeName) {
 					// Attribute value diff.
 					attributeName = path.pop();
+					// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
+					// which messes up our attribute diffing. We also do this in deleteInText below.
 					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 					var oldValue = childElement.getAttribute(attributeName);
 					if (isSvgPath) oldValue = childElement.__d;
@@ -297,6 +299,8 @@ root.webstrates = (function(webstrates) {
 				if (attributeName) {
 					// Attribute value diff.
 					attributeName = path.pop();
+					// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
+					// which messes up our attribute diffing. We also do this in insertInText above.
 					var isSvgPath = childElement.tagName.toLowerCase() === "path" && attributeName === "d";
 					var oldValue = childElement.getAttribute(attributeName);
 					if (isSvgPath) oldValue = childElement.__d;
