@@ -132,9 +132,10 @@
 			// actually be added instead. To prevent this, we add the children to the `content` property
 			// if it exists.
 			if (selector.content && selector.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-				selector = selector.content;
+				selector.content.appendChild(fragment);
+			} else {
+				selector.appendChild(fragment);
 			}
-			selector.appendChild(fragment);
 			return selector;
 		}
 
