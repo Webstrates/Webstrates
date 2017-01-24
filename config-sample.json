@@ -1,4 +1,6 @@
 {
+	"listeningAddress": "0.0.0.0",
+	"listeningPort": 7007,
 	"db": "mongodb://127.0.0.1:27017/webstrate",
 	"auth": {
 		"cookie": {

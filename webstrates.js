@@ -646,7 +646,8 @@ wss.on('connection', function(client) {
 	share.listen(stream);
 });
 
-var port = argv.p || 7007;
-app.server.listen(port);
+var port = argv.p || config.listeningPort || 7007;
+var address = argv.h || config.listeningAddress;
+app.server.listen(port, address);
 if (WORKER_ID === 1)
 	console.log(`Listening on http://localhost:${port}/ in ${threadCount} thread(s)`);
