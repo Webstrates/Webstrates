@@ -71,7 +71,9 @@ root.webstrates = (function(webstrates) {
 			signal: [],               //   client sends a signal.
 			tag: [],                  //   new tag has been set.
 			untag: [],                //   tag has been removed.
-			asset: []                 //   new asset has been added.
+			asset: [],                 //   new asset has been added.
+			disconnect: [],           //   the user disconnects.
+			reconnect: []             //   the user reconnects after having been disconnected.
 		};
 
 		// All elements get a Webstrate object attached after they enter the DOM. It may, however, be
@@ -308,16 +310,52 @@ root.webstrates = (function(webstrates) {
 		};
 
 		/**
-		 * Attaches keep alive manager to a websocket connetion.
+		 * Attaches listeners to the websocket connection that trigger disconnect and reconnect events.
+		 * @param  {WebSocket} websocket Websocket.
+		 * @private
+		 */
+		var setupWebsocketListeners = function(websocket) {
+			module.connectionState = websocket.readyState;
+			var previouslyConnected = websocket.readyState === WebSocket.OPEN;
+
+			var existingOpenHandler = websocket.onopen;
+			websocket.onopen = function(event) {
+				// Only trigger reconnect if we've previously been connected.
+				if (previouslyConnected) {
+					module.connectionState = websocket.readyState;
+					triggerCallbacks(callbackLists.reconnect);
+				}
+				previouslyConnected = true;
+				existingOpenHandler(event);
+			};
+
+			var existingCloseHandler = websocket.onclose;
+			websocket.onclose = function(event) {
+				module.connectionState = websocket.readyState;
+				triggerCallbacks(callbackLists.disconnect);
+				existingCloseHandler(event);
+			};
+
+			var existingErrorHandler = websocket.onerror;
+			websocket.onerror = function(event) {
+				module.connectionState = websocket.readyState;
+				existingErrorHandler(event);
+			};
+		};
+
+		/**
+		 * Attaches keep alive manager to a websocket connetion that continuously sends messages to the
+		 * server to ensure that the websocket connection isn't being terminated for inactivity.
 		 * @param  {WebSocket} websocket Websocket.
 		 * @private
 		 */
 		var setupKeepAlive = function(websocket) {
-			// To prevent the websocket connection to
+			// Keep alive message.
 			var keepAliveMessage = JSON.stringify({
 				type: 'alive'
 			});
 
+			var KEEP_ALIVE_TIMER = 45 * 1000; // 45 seconds between keep alive messages.
 			var keepAliveInterval;
 
 			var enableKeepAlive = function() {
@@ -326,7 +364,7 @@ root.webstrates = (function(webstrates) {
 
 				keepAliveInterval = setInterval(function() {
 					websocket.send(keepAliveMessage);
-				}, 10000);
+				}, KEEP_ALIVE_TIMER);
 			};
 
 			var disableKeepAlive = function() {
@@ -336,21 +374,21 @@ root.webstrates = (function(webstrates) {
 				}
 			};
 
-			var sdbOpenHandler = websocket.onopen;
+			var existingOpenHandler = websocket.onopen;
 			websocket.onopen = function(event) {
-				sdbOpenHandler(event);
+				existingOpenHandler(event);
 				enableKeepAlive();
 			};
 
-			var sdbCloseHandler = websocket.onclose;
+			var existingCloseHandler = websocket.onclose;
 			websocket.onclose = function(event) {
-				sdbCloseHandler(event);
+				existingCloseHandler(event);
 				disableKeepAlive();
 			};
 
-			var sdbErrorHandler = websocket.onerror;
+			var existingErrorHandler = websocket.onerror;
 			websocket.onerror = function(event) {
-				sdbErrorHandler(event);
+				existingErrorHandler(event);
 				disableKeepAlive();
 			};
 		};
@@ -428,6 +466,10 @@ root.webstrates = (function(webstrates) {
 			}
 		}
 
+		// Attaches listeners to the websocket connection that trigger disconnect and reconnect events.
+		setupWebsocketListeners(websocket);
+
+		// Attaches keep alive manager to the websocket.
 		setupKeepAlive(websocket);
 
 		/**

@@ -199,6 +199,8 @@ If the attribute has just been added, `oldValue` will be `undefined`. If an attr
 | `untag`                | version                                  | A tag has been removed from the webstrate.                    |
 | `asset`                | asset object (version, file name, etc.)  | An asset has been added to the webstrate.                     |
 | `permissionsChanged`   | newPermissions, oldPermissions           | The user's document permissions has changed.                  |
+| `disconnect`           |                                          | The user has been disconnected from the Webstrates server.    |
+| `reconnect `           |                                          | The user reconnects after having been disconnected.           |
 
 All the events can also be unregistered using `off`, e.g.:
 
@@ -377,6 +379,19 @@ Disclaimer: If a user reloads a webstrate in which they had transient data, the 
 Connected clients
 -----------------
 Other than detecting when clients connect and disconnect through the `clientJoin` and `clientPart` events described previously, the webstrate instance also holds a list of client IDs of connected clients access through `webstrate.clients`.
+
+Handling user connection
+------------------------
+The user's current connection status is stored in `webstrate.connectionState`. The variable holds the [Websocket ready state constant](https://developer.mozilla.org/en-US/docs/Web/API/WebSocket#Ready_state_constants):
+
+| Constant     | Value | Description                                      |
+|--------------|-------|--------------------------------------------------|
+| `CONNECTING` | 0     | The connection is not yet open.                  |
+| `OPEN`       | 1     | The connection is open and ready to communicate. |
+| `CLOSING`    | 2     | The connection is in the process of closing.     |
+| `CLOSED`     | 3     | The connection is closed or couldn't be opened.  |
+
+Listening for disconnects and reconnects can be dong using the two events `disconnect` and `reconnect`. `reconnect` does not trigger on the initial connection, but only followed by a `disconnect`. For the initial connection, the `loaded` event should be used.
 
 Authentication
 --------------
