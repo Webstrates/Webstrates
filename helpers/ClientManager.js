@@ -157,6 +157,7 @@ module.exports = function(cookieHelper, db, pubsub) {
 			wa: "hello",
 			id: socketId,
 			d: webstrateId,
+			defaultPermissions: global.config.auth && global.config.auth.defaultPermissions,
 			user: clients[socketId].user,
 			clients: webstrates[webstrateId],
 		};

@@ -12,6 +12,71 @@ root.webstrates = (function(webstrates) {
 	var util = {};
 
 	/**
+	 * Extract a user's permissions from a permissions list.
+	 * @param  {string} username        Username.
+	 * @param  {string} provider        Login provider (Github, Facebook, OAuth, ...).
+	 * @param  {list} permissionsList   Permissions List.
+	 * @return {string}                 Docuemnt permissions (r, rw).
+	 * @private
+	 */
+	function getUserPermissionsFromPermissionsList(username, provider, permissionsList) {
+		var user = permissionsList.find(function(user) {
+			return user.username === username
+			    && user.provider === provider;
+		});
+
+		if (user) {
+			return user.permissions;
+		}
+
+		var anonymous = permissionsList.find(function(user) {
+			return user.username === "anonymous"
+			    && user.provider === "";
+		});
+	};
+
+	/**
+	 * Get a user's permissions for a specific snapshot.
+	 * @param  {string} username               Username.
+	 * @param  {string} provider               Login provider (GitHub, Facebook, OAuth, ...).
+	 * @param  {JsonML} snapshot               ShareDB document snapshot.
+	 * @param  {obj}    defaultPermissionsList List of default permissions.
+	 * @return {string}                        Document permissions (r, rw).
+	 * @public
+	 */
+	util.getPermissionsFromSnapshot = function(username, provider, snapshot, defaultPermissionsList) {
+		var permissionsList;
+
+		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === "html" &&
+			snapshot.data[1] && snapshot.data[1]['data-auth']) {
+			try {
+				permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
+					.replace(/&quot;/g, "\"").replace(/&amp;/g, "&"));
+			} catch (err) {
+				console.warn("Couldn't parse document permissions for", snapshot.id);
+				// We don't have to do anything. No valid document permissions.
+			}
+
+			if (!Array.isArray(permissionsList)) {
+				permissionsList = undefined;
+			}
+		}
+
+		// If we found no permissions, resort to default permissions.
+		if (!permissionsList || Object.keys(permissionsList).length === 0) {
+			// If there's also no default permissions, we pretend every user has read-write permissions
+			// lest we lock everybody out. We append a question mark to let the system know that these are
+			// last-resort permissions.
+			if (!defaultPermissionsList) {
+				return "rw?";
+			}
+			permissionsList = defaultPermissionsList;
+		}
+
+		return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
+	};
+
+	/**
 	 * Get the element at a given path in a JsonML document.
 	 * @param  {JsonML} snapshot ShareJS Context (a JsonML document).
 	 * @param  {JsonMLPath} path Path to follow in snapshot.
@@ -200,7 +265,7 @@ root.webstrates = (function(webstrates) {
 	 * @return {int}     Random number in interval [min, max);
 	 * @private
 	 */
-	var random = function(min, max) {
+	function random(min, max) {
 		return Math.floor(Math.random() * (max - min) + min);
 	};
 

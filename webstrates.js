@@ -42,16 +42,16 @@ if (!fss.exists(APP_PATH + "/config.json")) {
 	}
 }
 
-var config = fss.readJSON(APP_PATH + "/config.json");
+global.config = fss.readJSON(APP_PATH + "/config.json");
 
 // Setting up multi-threading. If config.threads is 0, a thread for each core is created.
 var threadCount = 1;
-if (typeof config.threads !== "undefined") {
-	threadCount = parseInt(config.threads) || require('os').cpus().length;
-	if (!config.pubsub) {
+if (typeof global.config.threads !== "undefined") {
+	threadCount = parseInt(global.config.threads) || require('os').cpus().length;
+	if (!global.config.pubsub) {
 		console.warn("Can't run multithreaded without Redis");
 	} else {
-		threadCount = parseInt(config.threads) || require('os').cpus().length;
+		threadCount = parseInt(global.config.threads) || require('os').cpus().length;
 		if (cluster.isMaster) {
 			for (var i = 0; i < threadCount; ++i) {
 				cluster.fork();
@@ -61,19 +61,19 @@ if (typeof config.threads !== "undefined") {
 	}
 }
 
-var DB_ADDRESS = config.db || "mongodb://localhost:27017/webstrate";
+var DB_ADDRESS = global.config.db || "mongodb://localhost:27017/webstrate";
 
 var pubsub;
-if (config.pubsub) {
+if (global.config.pubsub) {
 	pubsub = {
-		publisher: redis.createClient(config.pubsub),
-		subscriber: redis.createClient(config.pubsub)
+		publisher: redis.createClient(global.config.pubsub),
+		subscriber: redis.createClient(global.config.pubsub)
 	};
 }
 
 var share = sharedb({
 	db: sharedbMongo(DB_ADDRESS),
-	pubsub: config.pubsub && sharedbRedisPubSub({
+	pubsub: global.config.pubsub && sharedbRedisPubSub({
 		client: pubsub.publisher,
 		observer: pubsub.subscriber
 	})
@@ -97,11 +97,10 @@ MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	db.cookies.ensureIndex({ userId: 1, webstrateId: 1 }, { unique: true });
 });
 
-var cookieHelper = require("./helpers/CookieHelper.js")(config.auth ? config.auth.cookie : {});
+var cookieHelper = require("./helpers/CookieHelper.js")();
 var clientManager = require("./helpers/ClientManager.js")(cookieHelper, db, pubsub);
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
-var permissionManager = require("./helpers/PermissionManager.js")(documentManager, config.auth,
-	pubsub);
+var permissionManager = require("./helpers/PermissionManager.js")(documentManager, pubsub);
 var assetManager = require("./helpers/AssetManager.js")(permissionManager, clientManager,
 	documentManager, db);
 var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,

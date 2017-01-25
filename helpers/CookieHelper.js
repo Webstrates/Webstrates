@@ -4,11 +4,12 @@ var sessions = require('client-sessions');
 
 /**
  * CookieHelper constructor.
- * @param {json} cookieConfig
  * @constructor
  */
-module.exports = function(cookieConfig) {
+module.exports = function() {
 	var module = {};
+
+	var cookieConfig = global.config.auth ? config.auth.cookie : {};
 
 	/**
 	 * Decode cookie.

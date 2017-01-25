@@ -22,6 +22,9 @@ root.webstrates = (function(webstrates) {
 
 		var COLLECTION_NAME = "webstrates";
 
+		// Default permissions for all webstrates.
+		var defaultPermissionsList;
+
 		// One-to-one mapping from nodeIds to their nodes.
 		var nodeIds = {};
 
@@ -58,16 +61,17 @@ root.webstrates = (function(webstrates) {
 
 		// Lists containing callbacks for events that the user may subscribe to.
 		var callbackLists = {       // Callbacks are triggered when:
-			loaded: [],               // the document has been loaded.
-			transcluded: [],          // the document has been transcluded.
-			clientJoin: [],           // client connects to the webstrate.
-			clientPart: [],           // client disconnects from the webstrate.
-			cookieUpdateHere: [],     // The cookie accessible only from this document has been updated.
-			cookieUpdateAnywhere: [], // The cookie accessible from every document has been updated.
-			signal: [],               // client sends a signal.
-			tag: [],                  // new tag has been set.
-			untag: [],                // tag has been removed.
-			asset: []                 // new asset has been added.
+			loaded: [],               //   the document has been loaded.
+			transcluded: [],          //   the document has been transcluded.
+			clientJoin: [],           //   client connects to the webstrate.
+			clientPart: [],           //   client disconnects from the webstrate.
+			cookieUpdateHere: [],     //   the cookie accessible only from this document has been updated.
+			cookieUpdateAnywhere: [], //   the cookie accessible from every document has been updated.
+			permissionsChanged: [],   //   the user's read/write permissions have changed.
+			signal: [],               //   client sends a signal.
+			tag: [],                  //   new tag has been set.
+			untag: [],                //   tag has been removed.
+			asset: []                 //   new asset has been added.
 		};
 
 		// All elements get a Webstrate object attached after they enter the DOM. It may, however, be
@@ -169,12 +173,15 @@ root.webstrates = (function(webstrates) {
 				case "hello":
 					var clientId = data.id;
 					module.clientId = clientId;
-					module.user = Object.keys(data.user).length > 0 ? data.user : undefined;
+					module.user = data.user || {};
+					defaultPermissionsList = data.defaultPermissions;
+					module.user.permissions = webstrates.util.getPermissionsFromSnapshot(module.user.username,
+						module.user.provider, doc, defaultPermissionsList);
 					module.clients = data.clients;
 					cookies = data.cookies || { here: {}, anywhere: {} };
 
-					// Only allow cookies if the user object exists, i.e. is logged in with OAuth. Otherwise,
-					if (module.user) {
+					// Only allow cookies if the user object exists, i.e. is logged in with OAuth.
+					if (module.user.userId) {
 						module.user.cookies = {
 							anywhere: {
 								get: function(key) {
@@ -346,7 +353,7 @@ root.webstrates = (function(webstrates) {
 				sdbErrorHandler(event);
 				disableKeepAlive();
 			};
-		}
+		};
 
 		if (!staticMode) {
 			// Hand WebSocket connection to ShareDB.
@@ -735,6 +742,22 @@ root.webstrates = (function(webstrates) {
 		 */
 		var setupOpListener = function(doc, rootElement, pathTree) {
 			doc.on('op', function onOp(ops, source) {
+
+				var permissionsChanged = ops.some(function(op) {
+					return op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === "data-auth";
+				});
+
+				// If permissions have changed, we need to recalculate the user's permissions.
+				if (permissionsChanged) {
+					var newPermissions = webstrates.util.getPermissionsFromSnapshot(module.user.username,
+						module.user.provider, doc, defaultPermissionsList);
+					if (module.user.permissions !== newPermissions) {
+						module.user.permissions = newPermissions;
+						triggerCallbacks(callbackLists.permissionsChanged, newPermissions,
+							module.user.permissions);
+					}
+				}
+
 				// When an op comes in, the document version changes and so does the tag. In rare cases, we
 				// may have received a tag for a version we were yet to be in at the time, in which case we
 				// may already know the tag of the new version, but most likely, this will set currentTag

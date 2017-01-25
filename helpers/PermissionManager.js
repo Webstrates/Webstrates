@@ -3,12 +3,12 @@
 /**
  * PermissionManager constructor.
  * @param {DocumentManager} documentManager DocumentManager instance.
- * @param {int}             authConfig      Auth configurations
  * @constructor
  */
-module.exports = function(documentManager, authConfig, pubsub) {
+module.exports = function(documentManager, pubsub) {
 	var PUBSUB_CHANNEL = "webstratesPermissions";
 	var module = {};
+	var authConfig = global.config.auth;
 
 	var permissionsCache = {};
 	var timeToLive = authConfig ? authConfig.permissionTimeout : 300;
@@ -71,7 +71,7 @@ module.exports = function(documentManager, authConfig, pubsub) {
 	 * Get a user's permissions for a specific snapshot.
 	 * @param  {string} username Username.
 	 * @param  {string} provider Login provider (GitHub, Facebook, OAuth, ...).
-	 * @param  {JsonML} snapshot ShareDB docuemnt snapshot.
+	 * @param  {JsonML} snapshot ShareDB document snapshot.
 	 * @return {string}          Document permissions (r, rw).
 	 * @public
 	 */
@@ -198,11 +198,11 @@ module.exports = function(documentManager, authConfig, pubsub) {
 	}
 
 	/**
-	 * Extract a user's permissions from a permissions list
+	 * Extract a user's permissions from a permissions list.
 	 * @param  {string} username        Username.
 	 * @param  {string} provider        Login provider (Github, Facebook, OAuth, ...).
 	 * @param  {list} permissionsList   Permissions List.
-	 * @return {string}                 Docuemnt permissions (r, rw).
+	 * @return {string}                 Document permissions (r, rw).
 	 * @private
 	 */
 	function getUserPermissionsFromPermissionsList(username, provider, permissionsList) {

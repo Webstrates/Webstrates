@@ -184,7 +184,7 @@ If the attribute has just been added, `oldValue` will be `undefined`. If an attr
 | Event                  | Arguments                                | Triggered when:                                               |
 |------------------------|------------------------------------------|---------------------------------------------------------------|
 | `loaded`               | webstrateId, clientId, user              | The document has finished loading.                            |
-| `transcluded`          | webstrateId, clientId, user              | The document  has been transcluded and has finished loading.  |
+| `transcluded`          | webstrateId, clientId, user              | The document has been transcluded and has finished loading.   |
 | `clientJoin`           | clientId                                 | A client joins the document.                                  |
 | `clientPart`           | clientId                                 | A client leaves the document.                                 |
 | `insertText`           | position, value [, attributeName]        | A text has been inserted into a text node or attribute.       |
@@ -198,6 +198,7 @@ If the attribute has just been added, `oldValue` will be `undefined`. If an attr
 | `tag`                  | version, label                           | A tag has been added to the webstrate.                        |
 | `untag`                | version                                  | A tag has been removed from the webstrate.                    |
 | `asset`                | asset object (version, file name, etc.)  | An asset has been added to the webstrate.                     |
+| `permissionsChanged`   | newPermissions, oldPermissions           | The user's document permissions has changed.                  |
 
 All the events can also be unregistered using `off`, e.g.:
 
@@ -421,7 +422,7 @@ Access rights are added to a webstrate as a `data-auth` attribute on the `<html>
 </html>
 ```
 
-The above example provides the user with GitHub username *cklokmose* permissions to read and write (modify the webstrate), while anonymous users only have read access.
+The above example provides the user with GitHub username *cklokmose* permissions to read and write (`rw`), while anonymous users only have read `r` access.
 
 Users can log in by accessing `http://<hostname>/auth/github`.
 
@@ -429,13 +430,25 @@ In the future, more authentication providers will be supported.
 
 #### Default permissions
 
-It is also possible to set default permissions. Adding the following under the `auth` section in `config.json` will apply the same permissions as above to all webstrates with a `data-auth` property.
+It is also possible to set default permissions. Adding the following under the `auth` section in `config.json` will apply the same permissions as above to all webstrates without a `data-auth` property.
 
 ```javascript
 "defaultPermissions": [
   {"username": "cklokmose", "provider": "github", "permissions": "rw"}
   {"username": "anonymous", "provider": "", "permissions": "r"}
 ]
+```
+
+#### Accessing permissions in a webstrate
+
+The user's permissions (defined by `data-auth` or default permissions) is accessible on `webstrate.user.permissions`. Calling `webstrate.user.permissions` as *cklokmose*, for instance, will return `rw`.
+
+Listening for changes to the user's permissions can be done using the `permissionsChanged` event:
+
+```javascript
+webstrate.on("permissionsChanged", function(newPermissions, oldPermissions) {
+  // Permissions have changed.
+});
 ```
 
 ### A note on Quirks Mode and Standards Mode
