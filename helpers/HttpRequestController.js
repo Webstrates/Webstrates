@@ -141,7 +141,13 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				return serveAssets(req, res);
 			}
 
-			// Requesting a raw version of the webstrate, i.e. a server-generated HTML file.
+			// Requesting a JsonML version of the webstrate by calling `/<id>?json`.
+			if ("json" in req.query) {
+				return serveJsonMLWebstrate(req, res, snapshot);
+			}
+
+			// Requesting a raw version of the webstrate (i.e. a server-generated HTML file) by calling
+			// `/<id>?raw`.
 			if ("raw" in req.query) {
 				return serveRawWebstrate(req, res, snapshot);
 			}
@@ -257,6 +263,10 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 		});
 	}
 
+	function serveJsonMLWebstrate(req, res, snapshot) {
+		res.send(snapshot.data);
+	}
+
 	/**
 	 * Requesting a webstrate by calling `/<id>?raw`.
 	 * @param {obj}      req      Express request object.
@@ -265,7 +275,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @private
 	 */
 	function serveRawWebstrate(req, res, snapshot) {
-		return res.send(jsonml.toXML(snapshot.data, SELFCLOSING_TAGS));
+		res.send("<!doctype html>\n" + jsonml.toXML(snapshot.data, SELFCLOSING_TAGS));
 	}
 
 	/**
