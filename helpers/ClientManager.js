@@ -142,18 +142,18 @@ module.exports = function(cookieHelper, db, pubsub) {
 
 		webstrates[webstrateId].push(socketId);
 
-		var msgObj = {
+		var clientJoinMsgObj = {
 			wa: "clientJoin",
 			id: socketId,
 			d: webstrateId
 		};
 
 		if (!local) {
-			broadcastToWebstrateClients(webstrateId, msgObj);
+			broadcastToWebstrateClients(webstrateId, clientJoinMsgObj);
 			return;
 		}
 
-		msgObj = {
+		var helloMsgObj = {
 			wa: "hello",
 			id: socketId,
 			d: webstrateId,
@@ -167,28 +167,28 @@ module.exports = function(cookieHelper, db, pubsub) {
 		// If no userId is defined, the user isn't logged in and therefore can't have cookies attached,
 		// so let's not waste time looking for them.
 		if (!userId) {
-			module.sendToClient(socketId, msgObj);
+			module.sendToClient(socketId, helloMsgObj);
 		} else {
 			db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { "$exists": false } } ] })
 			.toArray(function(err, res) {
 				if (err) return console.error(err);
 
-				msgObj.cookies = { here: {}, anywhere: {} };
+				helloMsgObj.cookies = { here: {}, anywhere: {} };
 				// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
 				// structure into a regular object.
 				var documentCookies = res.find(cookie => cookie.webstrateId === webstrateId) || {};
 				if (documentCookies.cookies) {
-					documentCookies.cookies.forEach(({ key, value }) => msgObj.cookies.here[key] = value);
+					documentCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.here[key] = value);
 				}
 
 				// Rinse and repeat for "anywhere" (global) cookies.
 				var globalCookies = res.find(cookie => typeof cookie.webstrateId === "undefined") || {};
 
 				if (globalCookies.cookies) {
-					globalCookies.cookies.forEach(({ key, value }) => msgObj.cookies.anywhere[key] = value);
+					globalCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.anywhere[key] = value);
 				}
 
-				module.sendToClient(socketId, msgObj);
+				module.sendToClient(socketId, helloMsgObj);
 			});
 		}
 
@@ -201,7 +201,7 @@ module.exports = function(cookieHelper, db, pubsub) {
 				return;
 			}
 
-			broadcastToWebstrateClients(webstrateId, msgObj);
+			broadcastToWebstrateClients(webstrateId, clientJoinMsgObj);
 
 			if (pubsub) {
 				pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
