@@ -210,15 +210,18 @@ root.webstrates = (function(webstrates) {
 					break;
 
 				case "clientJoin":
-					var clientId = data.id;
-					module.clients.push(clientId);
-					triggerCallbacks(callbackLists.clientJoin, clientId);
+					var joiningClientId = data.id;
+					// Don't add our own clientId to clients; it's already there.
+					if (joiningClientId !== module.clientId) {
+						module.clients.push(joiningClientId);
+					}
+					triggerCallbacks(callbackLists.clientJoin, joiningClientId);
 					break;
 
 				case "clientPart":
-					var clientId = data.id;
-					module.clients.splice(module.clients.indexOf(clientId), 1);
-					triggerCallbacks(callbackLists.clientPart, clientId);
+					var partingClientId = data.id;
+					module.clients.splice(module.clients.indexOf(partingClientId), 1);
+					triggerCallbacks(callbackLists.clientPart, partingClientId);
 					break;
 
 				case "cookieUpdate":
