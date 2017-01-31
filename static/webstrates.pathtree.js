@@ -64,6 +64,19 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
+	 * Check whether an element is a descendant of a template tag (or actually a documentFragment).
+	 * One might assume this could be done with `element.closest("template")`, but that won't be the
+	 * case, because a documentFragment technically isn't a parent (and also doesn't have any parent),
+	 * so there will be no tree to search upwards through after we reach the documentFragment.
+	 * @param  {DOMNode} element Element to check.
+	 * @return {boolean}         True if the element is a descendant of a template.
+	 * @private
+	 */
+	var elementIsTemplateDescendant = function(element) {
+		return document.body.ownerDocument !== element.ownerDocument;
+	};
+
+	/**
 	 * Add PathNode to node if the node isn't a <transient> element.
 	 * @param  {[type]} DOMNode        [description]
 	 * @param  {[type]} parentPathTree [description]
@@ -72,8 +85,9 @@ root.webstrates = (function(webstrates) {
 	 */
 	PathTree.create = function(DOMNode, parentPathTree, overwrite) {
 		// Transient elements are not supposed to be persisted, and should thus not be part of the
-		// PathTree.
-		if (DOMNode.tagName && DOMNode.tagName.toLowerCase() === "transient") {
+		// PathTree. Unless the transient element is in a <template>.
+		if (DOMNode.tagName && DOMNode.tagName.toLowerCase() === "transient" &&
+			!elementIsTemplateDescendant(DOMNode)) {
 			return;
 		}
 
@@ -168,7 +182,8 @@ root.webstrates = (function(webstrates) {
 		var childNodes = this.DOMNode.hasChildNodes() ? this.DOMNode.childNodes
 				: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
 		var childNodes = Array.from(childNodes).filter(function(childNode) {
-			return !childNode.tagName || childNode.tagName.toLowerCase() !== "transient";
+			return !childNode.tagName || childNode.tagName.toLowerCase() !== "transient"
+				|| elementIsTemplateDescendant(childNode);
 		});
 		if (definedChildNodesInDom.length !== childNodes.length) {
 			console.log(definedChildNodesInDom, childNodes);

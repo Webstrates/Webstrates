@@ -168,19 +168,18 @@ root.webstrates = (function(webstrates) {
 			}
 
 			var newPathNode = webstrates.PathTree.create(addedNode, targetPathNode);
-
 			if (!newPathNode) {
 				return;
 			}
 
 			// We use the previous sibling to insert the new element in the correct position in the path
-			// tree. However, if the previous sibling is a transient element, it won't be in the path
-			// tree, so it will appear that the element has no previous element. Therefore, we traverse
-			// the list of previous siblings until we find one that's not a transient element (if such
-			// exists).
+			// tree. However, if the previous sibling doesn't have a webstrate object, it won't be in the
+			// path tree, so it will appear that the element has no previous element. Therefore, we
+			// traverse the list of previous siblings until we find one that does have a webstrate object.
+			// Transient elements (outside of template tags) will righfully be absent from the pathtree,
+			// and thus not have webstrate objects.
 			var previousSibling = mutation.previousSibling;
-			while (previousSibling && previousSibling.tagName
-				&& previousSibling.tagName.toLowerCase() === "transient") {
+			while (previousSibling && previousSibling.webstrate) {
 				previousSibling = previousSibling.previousSibling;
 			}
 
@@ -195,7 +194,11 @@ root.webstrates = (function(webstrates) {
 				targetPathNode.children.push(newPathNode);
 			}
 
-			mutation.target.webstrate.fireEvent("nodeAdded", addedNode, true);
+			// If no webstrate object exists, we fire the event on the parent instead. This will be the
+			// case when changes are applied to a <template>'s documentFragment (in which case we fire the
+			// event on the containing <template>).
+			(mutation.target.webstrate || newPathNode.parent.DOMNode.webstrate)
+				.fireEvent("nodeAdded", addedNode, true);
 
 			var path = webstrates.PathTree.getPathNode(addedNode, target).toPath();
 			var op = { li: JsonML.fromHTML(addedNode), p: path };
@@ -210,7 +213,11 @@ root.webstrates = (function(webstrates) {
 				return;
 			}
 
-			mutation.target.webstrate.fireEvent("nodeRemoved", removedNode, true);
+			// If no webstrate object exists, we fire the event on the parent instead. This will be the
+			// case when changes are applied to a <template>'s documentFragment (in which case we fire the
+			// event on the containing <template>).
+			(mutation.target.webstrate || removedPathNode.parent.DOMNode.webstrate)
+				.fireEvent("nodeRemoved", removedNode, true);
 
 			var path = removedPathNode.toPath();
 			removedPathNode.remove();

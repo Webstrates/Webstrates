@@ -170,7 +170,8 @@ root.webstrates = (function(webstrates) {
 			// If parentElement.content exists, parentElement contains a documentFragment, and we should
 			// be adding the content to this documentFragment instead. This happens when parentElement is
 			// a <template>.
-			if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
+			if (parentElement.content &&
+				parentElement.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
 				parentElement = parentElement.content;
 			}
 			parentElement.insertBefore(childElement, referenceNode || null);

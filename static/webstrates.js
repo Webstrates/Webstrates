@@ -708,6 +708,7 @@ root.webstrates = (function(webstrates) {
 			 * @private
 			 */
 			var mutationToOps = function(mutations) {
+
 				mutations.forEach(function forEachMutation(mutation) {
 					var ops = webstrates.createOps(mutation, doc, fragmentParentMap);
 					// In rare cases, what happens doesn't amount to an operation, so we ignore it. See the
