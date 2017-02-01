@@ -30,7 +30,7 @@ Webstrates serves (and creates) any named webpage you ask for. Simply navigate y
 
 Now, any changes you apply to the DOM, either through JavaScript or the developer tools, will be persisted on the server and distributed to any other clients that have the page open.
 
-See the [tutorial](docs/tutorial) for an introduction to developing with Webstrates.
+See the [tutorial](https://github.com/Webstrates/tutorials) for an introduction to developing with Webstrates.
 
 ### Compatibility table
 
