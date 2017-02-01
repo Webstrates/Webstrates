@@ -179,7 +179,7 @@ app.get(/^\/([A-Z0-9\._-]+)(\/([A-Z0-9_-]+))?$/i,
 	httpRequestController.trailingSlashAppendHandler);
 
 // Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
-app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9_-]+)\/)?(?:([A-Z0-9\._-]+\.[A-Z0-9_-]+))?$/i,
+app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%\._-]+\.[A-Z0-9_-]+))?$/i,
 	httpRequestController.extractQuery,
 	httpRequestController.requestHandler);
 
