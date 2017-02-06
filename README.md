@@ -393,9 +393,24 @@ The user's current connection status is stored in `webstrate.connectionState`. T
 
 Listening for disconnects and reconnects can be dong using the two events `disconnect` and `reconnect`. `reconnect` does not trigger on the initial connection, but only followed by a `disconnect`. For the initial connection, the `loaded` event should be used.
 
+Rate limiting
+-------------
+To avoid having clients DoS'ing the server unintentionally by having faulty Webstrates application code, sending thousands of operations to the server per second, Webstrates allows for rate limiting the number of requests.
+
+By adding the rate limit second to the config file, clients will be disconnected if and banned temporarily if they exceed the alloted amount of messags.
+
+```javascript
+"rateLimit": {
+  "messagesPerInterval": 1000,
+  "intervalLength": 15000,
+  "banDuration": 60000
+},
+```
+
+By adding the above section to `config.json`, the server will disconnect and ban clients (by IP) for 60 seconds if they send more than 1000 messages over a 15 second interval (by default).
+
 Authentication
 --------------
-
 #### Server level basic authentication
 To enable basic HTTP authentication on the Webstrates server, add the following to `config.json`:
 

@@ -399,7 +399,49 @@ var wss = new WebSocketServer({
 	server: app.server
 });
 
+
+var addressBanList = {};
+var BANLIST_CHANNEL = "webstratesBans";
+
+if (config.rateLimit) {
+	setInterval(function() {
+		var currentTime = Date.now();
+		for (var remoteAddress in addressBanList) {
+			if (addressBanList[remoteAddress] + config.rateLimit.banDuration < currentTime) {
+				console.log("Removing", remoteAddress, "from blacklist");
+				delete addressBanList[remoteAddress];
+			}
+		}
+	}, config.rateLimit.banDuration / 10);
+
+	if (pubsub) {
+		pubsub.subscriber.subscribe(BANLIST_CHANNEL);
+		pubsub.subscriber.on("message", function(channel, message) {
+			// Ignore messages on other channels.
+			if (channel !== BANLIST_CHANNEL) {
+				return;
+			}
+
+			message = JSON.parse(message);
+
+			// Ignore messages from ourselves.
+			if (message.WORKER_ID === WORKER_ID) {
+				return;
+			}
+
+			addressBanList[message.remoteAddress] = message.timestamp;
+		});
+	}
+}
+
 wss.on('connection', function(client) {
+	var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
+		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
+
+	if (config.rateLimit && addressBanList[remoteAddress]) {
+		client.close();
+	}
+
 	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
 	var user = (cookie && cookie.passport.user) || {};
 	client.user = user;
@@ -413,7 +455,6 @@ wss.on('connection', function(client) {
 		try {
 			client.__send(data);
 		} catch (err) {
-			console.error(err);
 			clientManager.removeClient(socketId);
 			return false;
 		}
@@ -426,8 +467,7 @@ wss.on('connection', function(client) {
 
 	stream.session = cookie;
 	stream.headers = client.upgradeReq.headers;
-	stream.remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
-		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
+	stream.remoteAddress = remoteAddress;
 
 	stream._write = function(chunk, encoding, callback) {
 		try {
@@ -456,7 +496,35 @@ wss.on('connection', function(client) {
 		}
 	});
 
+	if (config.rateLimit) {
+		var messageCount = 0;
+		setInterval(function() {
+			messageCount = 0;
+		}, config.rateLimit.intervalLength);
+	}
+
 	client.on('message', function(data) {
+		// Rate limiting. Limits the number of messages per interval to avoid clients that have run
+		// haywire from DoS'ing the server.
+		if (config.rateLimit) {
+			if (++messageCount > config.rateLimit.messagesPerInterval) {
+				console.log("Blacklisting", remoteAddress, "for exceeding rate limitation.");
+				var timestamp = Date.now();
+				addressBanList[remoteAddress] = timestamp;
+				if (pubsub) {
+					pubsub.publisher.publish(BANLIST_CHANNEL, JSON.stringify({
+						WORKER_ID, remoteAddress, timestamp
+					}));
+				}
+			}
+
+			if (addressBanList[remoteAddress]) {
+				client.send(JSON.stringify({error: "Rate-limited"}));
+				client.close();
+				return;
+			}
+		}
+
 		try {
 			data = JSON.parse(data);
 		} catch (err) {
