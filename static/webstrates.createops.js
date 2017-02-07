@@ -179,7 +179,7 @@ root.webstrates = (function(webstrates) {
 			// Transient elements (outside of template tags) will righfully be absent from the pathtree,
 			// and thus not have webstrate objects.
 			var previousSibling = mutation.previousSibling;
-			while (previousSibling && previousSibling.webstrate) {
+			while (previousSibling && !previousSibling.webstrate) {
 				previousSibling = previousSibling.previousSibling;
 			}
 
