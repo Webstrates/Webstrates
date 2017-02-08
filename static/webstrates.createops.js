@@ -63,19 +63,20 @@ root.webstrates = (function(webstrates) {
 		var jsonmlAttrs = webstrates.util.elementAtPath(sjsDoc.data,
 			[...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
 
+		// If the new value is null, we are removing the attribute.
+		if (newValue === null) {
+			var op = { od: oldValue, p: path };
+			return [op];
+		}
+
 		// dmp.patch_make does not accept empty strings, so if we are creating a new attribute (or
 		// setting an attribute's value for the first time), we have to create the operation manually.
 		// The second condition should not be true without the first one, but it will if the changes
 		// happen so rapidly, that the browser skipped a MutationRecord. Or that's my theory, at least.
+		// We are lose about checking jsonmlAttrs[mutation.attributeName], because we don't want to
+		// diff, regardless of whether it's an empty string or it's null.
 		if (oldValue === null || !jsonmlAttrs[mutation.attributeName]) {
 			var op = { oi: newValue, p: path };
-			return [op];
-		}
-
-		// If the new value is null, we are removing the attribute. dmp_patch_make is also not needed
-		// here.
-		if (newValue === null) {
-			var op = { od: oldValue, p: path };
 			return [op];
 		}
 
