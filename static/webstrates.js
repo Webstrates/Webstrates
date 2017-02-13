@@ -307,6 +307,7 @@ root.webstrates = (function(webstrates) {
 					alert("Document has been deleted.");
 					window.location = "/";
 					break;
+
 				default:
 					console.warn("Unknown event", data);
 			}

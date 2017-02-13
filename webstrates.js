@@ -395,13 +395,23 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			});
 	});
 
-var wss = new WebSocketServer({
-	server: app.server
-});
-
 
 var addressBanList = {};
 var BANLIST_CHANNEL = "webstratesBans";
+
+var wss = new WebSocketServer({
+	server: app.server,
+	verifyClient: function(info, next) {
+		var remoteAddress = info.req.headers['X-Forwarded-For'] ||
+		info.req.headers['x-forwarded-for'] || info.req.connection.remoteAddress;
+
+		if (config.rateLimit && addressBanList[remoteAddress]) {
+			return next(false, 429);
+		}
+
+		next(true);
+	}
+});
 
 if (config.rateLimit) {
 	setInterval(function() {
@@ -435,13 +445,6 @@ if (config.rateLimit) {
 }
 
 wss.on('connection', function(client) {
-	var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
-		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
-
-	if (config.rateLimit && addressBanList[remoteAddress]) {
-		client.close();
-	}
-
 	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
 	var user = (cookie && cookie.passport.user) || {};
 	client.user = user;
@@ -464,6 +467,9 @@ wss.on('connection', function(client) {
 	var stream = new Duplex({
 		objectMode: true
 	});
+
+	var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
+		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
 
 	stream.session = cookie;
 	stream.headers = client.upgradeReq.headers;
@@ -519,7 +525,6 @@ wss.on('connection', function(client) {
 			}
 
 			if (addressBanList[remoteAddress]) {
-				client.send(JSON.stringify({error: "Rate-limited"}));
 				client.close();
 				return;
 			}
