@@ -34,6 +34,7 @@
     "fs-sync": "^1.0.2",
     "http-auth": "^2.2.0",
     "json0-ot-diff": "^1.0.1",
+    "jsonml-parse": "git+https://github.com/kbadk/jsonml-parse#master",
     "jsonml-tools": "git+http://github.com/cklokmose/jsonml-tools.git#master",
     "mongodb": "^2.1.19",
     "multer": "^1.2.0",

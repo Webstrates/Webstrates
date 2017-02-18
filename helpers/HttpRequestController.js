@@ -1,7 +1,9 @@
 "use strict";
 
+var request = require('request');
 var shortId = require('shortid');
 var jsonml = require('jsonml-tools');
+var jsonmlParse = require('jsonml-parse');
 var SELFCLOSING_TAGS = ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen",
 	"link", "menuitem", "meta", "param", "source", "track", "wbr"];
 
@@ -390,6 +392,37 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
+	 * Applies callback recursively to every string in a nested data structure.
+	 * @param  {list}   xs         List to recurse.
+	 * @param  {Function} callback Function to apply to each string.
+	 * @return {list}              Resulting data structure.
+	 */
+	function recurse(xs, callback) {
+		return xs.map(function(x) {
+			if (typeof x === "string") return callback(x, xs);
+			if (Array.isArray(x)) return recurse(x, callback);
+			return x;
+		});
+	}
+
+	/**
+	 * Convert HTML string to JsonML structure.
+	 * @param  {string}   html     HTML string.
+	 * @param  {Function} callback Callback.
+	 * @return {jsonml}            (Async) JsonML object.
+	 */
+	function htmlToJson(html, callback) {
+		jsonmlParse(html.trim(), function(err, jsonml) {
+			if (err) return callback(err);
+			jsonml = recurse(jsonml, function(str, parent) {
+				if (["script", "style"].includes(parent[0].toLowerCase())) { return str; }
+				return str.replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+			});
+			callback(null, jsonml);
+		}, { preserveEntities: true });
+	}
+
+	/**
 	 * Handles requests to "/new".
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
@@ -398,6 +431,42 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	module.newWebstrateRequestHandler = function(req, res) {
 		// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
 		// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
+
+		if ("prototypeUrl" in req.query) {
+			console.log(req.query.prorotypeUrl);
+			return request({url: req.query.prototypeUrl }, function(err, response, body) {
+				if (!err && response.statusCode !== 200) {
+					err = new Error("Invalid request. Received: " +
+						response.statusCode + " " + response.statusMessage);
+				}
+				if (err) {
+					console.error(err);
+					return res.status(409).send(String(err));
+				}
+
+				htmlToJson(body, function(err, jsonml) {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					documentManager.createNewDocument({
+						webstrateId: req.query.id,
+						snapshot: {
+							type: 'http://sharejs.org/types/JSONv0',
+							data: jsonml
+						}
+					}, function(err, webstrateId) {
+						if (err) {
+							console.error(err);
+							return res.status(409).send(String(err));
+						}
+						console.log("Redirecting", webstrateId);
+						res.redirect(`/${webstrateId}/`);
+					})
+				})
+			});
+		}
+
 		if (req.query.prototype) {
 			var path = `/${req.query.prototype}/`;
 			if (req.query.v) {

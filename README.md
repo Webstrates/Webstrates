@@ -53,6 +53,9 @@ Advanced creation of webstrates
 * GET on `http://<hostname>/<webstrateId>/?copy` will create a new webstrate with a random id using the webstrate `<webstrateId>` as prototype.
 * GET on `http://<hostname>/<webstrateId>?copy=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using the webstrate `<webstrateId>` as prototype.
 * GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using version or tag `<versionOrTag>` of the webstrate `<webstrateId>` as prototype. If the `?copy` value is left out, a random id will be generated.
+* GET on `http://<hostname>/new?prototypeUrl=<someURL>&id=<newWebstrateId>` will create a new webstrate (either with a random id or `<nweWebstrateId>` if provided), containing the contents of `<someURL>`. `<someURL>` must be a fully qualified URL.
+
+>**Note:** When using `prototypeUrl`, it is the _source code_ returned from the server that is being copied, not the DOM. Therefore, when naively prototyping from another Webstrates server, the resulting webstrate created would contain the Webstrates server's `client.html`, not the actual webstrate. To overcome this, use the `?raw` parameter.
 
 **Legacy operations**
 
