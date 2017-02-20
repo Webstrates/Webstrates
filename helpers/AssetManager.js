@@ -296,7 +296,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 			}
 
 			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
-				req.userprovider, snapshot);
+				req.user.provider, snapshot);
 
 			if (!permissions.includes("w")) {
 				return next(new Error("Insufficient permissions."));
