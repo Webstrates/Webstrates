@@ -33,6 +33,8 @@ root.webstrates = (function(webstrates) {
 			return user.username === "anonymous"
 			    && user.provider === "";
 		});
+
+		return anonymous ? anonymous.permissions : "";
 	};
 
 	/**
