@@ -610,6 +610,12 @@ wss.on('connection', function(client) {
 					var recipients = data.recipients;
 					clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
 					break;
+				// Signaling on user object.
+				case "signalUserObject":
+					var message = data.m;
+					clientManager.signalUserObject(user.userId, socketId, message, true);
+					break;
+				// Received cookie update.
 				case "cookieUpdate":
 					if (data.update && user.userId !== "anonymous") {
 						clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,

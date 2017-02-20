@@ -59,7 +59,8 @@ root.webstrates = (function(webstrates) {
 			characterDataOldValue: true
 		};
 
-		// Lists containing callbacks for events that the user may subscribe to.
+		// Lists containing callbacks for events that the user may subscribe to on the global webstrate
+		// object.
 		var callbackLists = {       // Callbacks are triggered when:
 			loaded: [],               //   the document has been loaded.
 			transcluded: [],          //   the document has been transcluded.
@@ -71,10 +72,15 @@ root.webstrates = (function(webstrates) {
 			signal: [],               //   client sends a signal.
 			tag: [],                  //   new tag has been set.
 			untag: [],                //   tag has been removed.
-			asset: [],                 //   new asset has been added.
+			asset: [],                //   new asset has been added.
 			disconnect: [],           //   the user disconnects.
 			reconnect: []             //   the user reconnects after having been disconnected.
 		};
+
+		// Lists containing callbacks for events that the user may subscribe to the user obejct.
+		var userObjectCallbackLists = { // Callbacks are triggered when:
+			signal: []                //   a signal is received on the user object.
+		}
 
 		// All elements get a Webstrate object attached after they enter the DOM. It may, however, be
 		// useful to access the Webstrate object before the element has been added to the DOM.
@@ -207,6 +213,34 @@ root.webstrates = (function(webstrates) {
 							}
 						}
 					}
+
+					/**
+					 * Signal on user object.
+					 * @public
+					 */
+					module.user.signal = function(msg) {
+						var msgObj = {
+							wa: "signalUserObject",
+							m: msg
+						};
+						websocketSend(msgObj);
+					};
+
+					/**
+					 * Attach event listener on user object. Currently only supports "signal" events.
+					 * @param  {string}   event    Event name. Currently only "signal".
+					 * @param  {Function} callback Callback.
+					 * @public
+					 */
+					module.user.on = function(event, callback) {
+						if (!userObjectCallbackLists[event]) {
+							console.error("On-event '" + event + "' does not exist");
+							return;
+						}
+
+						userObjectCallbackLists[event].push(callback);
+					};
+
 					break;
 
 				case "clientJoin":
@@ -222,6 +256,12 @@ root.webstrates = (function(webstrates) {
 					var partingClientId = data.id;
 					module.clients.splice(module.clients.indexOf(partingClientId), 1);
 					triggerCallbacks(callbackLists.clientPart, partingClientId);
+					break;
+
+				case "signalUserObject":
+					var senderId = data.s;
+					var message = data.m;
+					triggerCallbacks(userObjectCallbackLists.signal, message, senderId);
 					break;
 
 				case "cookieUpdate":
@@ -909,6 +949,8 @@ root.webstrates = (function(webstrates) {
 			if (!node.webstrate) {
 				node.webstrate = {};
 
+				// Lists containing callbacks for events that the user may subscribe to on this specific
+				// DOM node.
 				var callbackLists = {
 					insertText: [],
 					deleteText: [],

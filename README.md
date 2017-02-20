@@ -335,6 +335,22 @@ If the signal was sent on the webstrate instance (`webstrate.signal(message, [re
 
 Listening on the webstrate instance does not circumvent the recipients mechanism -- subscribers will still not recieve signals specifically addressed to other clients.
 
+#### Signaling on user object
+
+In addition to signaling on DOM elements, it is also possible to signal on the user object, allowing users to send signals/messages to any of the user's other connected clients across different webstrates:
+
+```javascript
+webstrate.user.on("signal", function(message, senderId) {
+  // A message was received from client with senderId.
+));
+```
+
+When sending a signal, no `recipients` are specified, because all user object signals automatically are sent to all connected clients, regardless of which webstrate the client is connected to.
+
+```javascript
+webstrate.user.signal(message);
+```
+
 Tagging
 -------
 For easier navigation through document revisions, Webstrate includes tagging. A tag is a label applied to a specific version of the document.

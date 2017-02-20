@@ -59,6 +59,9 @@ module.exports = function(cookieHelper, db, pubsub) {
 					module.publish(message.senderSocketId, message.webstrateId, message.nodeId,
 						message.message, message.recipients);
 					break;
+				case "signalUserObject":
+					module.signalUserObject(message.userId, message.senderSocketId, message.message);
+					break;
 				case "cookieUpdate":
 					module.updateCookie(message.userId, message.webstrateId, message.update.key,
 						message.update.value);
@@ -372,6 +375,47 @@ module.exports = function(cookieHelper, db, pubsub) {
 		}
 	};
 
+	/**
+	 * Signal on user object. Any signal made on the user object is sent to all of the user's
+	 * connected clients.
+	 * @param {string} userId          User Id (of the format <username>:<provider, e.g.
+	 *                                 "kbadk:github").
+	 * @param {string} senderSocketId  SocketId (= webstrate.clientId on the client).
+	 * @param {json}   message         Optional message object.
+	 * @param {bool}   local           Whether the publis has happened locally (on this server
+	 *                                 instance) or remotely (on another server instance). We should
+	 *                                 only forward local publish messages, otherwise we end up in a
+	 *                                 livelock where we continuously send the same join back and
+	 *                                 forth between instances.
+	 * @public
+	 */
+	module.signalUserObject = function(userId, senderSocketId, message, local) {
+		broadcastToUserClients(userId, {
+			wa: "signalUserObject",
+			s: senderSocketId,
+			m: message
+		});
+
+		if (local) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: "signalUserObject", userId, senderSocketId, message
+			}));
+		}
+	};
+
+	/**
+	 * Update cookies. Any update made to a user's is sent to all of the user's conneted clients.
+	 * @param {string} userId  User Id (of the format <username>:<provider, e.g. "kbadk:github").
+	 * @param {string} webstrateId WebstrateId.
+	 * @param {string} key         Key to update (or add) in the cookie.
+	 * @param {string} value       Value associated with key.
+	 * @param {bool}   local       Whether the publis has happened locally (on this server
+	 *                             instance) or remotely (on another server instance). We should
+	 *                             only forward local publish messages, otherwise we end up in a
+	 *                             livelock where we continuously send the same join back and
+	 *                             forth between instances.
+	 * @public
+	 */
 	module.updateCookie = function(userId, webstrateId, key, value, local) {
 		var updateObj = {
 			wa: "cookieUpdate",
@@ -490,7 +534,7 @@ module.exports = function(cookieHelper, db, pubsub) {
 
 	/**
 	 * Send message to all clients currently connected and logged in as userId.
-	 * @param  {string} userId  User Id (of the format <username>:<provider, e.g. kbadk:github).
+	 * @param  {string} userId  User Id (of the format <username>:<provider, e.g. "kbadk:github").
 	 * @param  {obj}    message     Message object.
 	 * @private
 	 */
