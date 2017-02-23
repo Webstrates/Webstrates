@@ -55,7 +55,7 @@ Advanced creation of webstrates
 * GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>` will create a new webstrate with id `<newWebstrateId>` using version or tag `<versionOrTag>` of the webstrate `<webstrateId>` as prototype. If the `?copy` value is left out, a random id will be generated.
 * GET on `http://<hostname>/new?prototypeUrl=<someURL>&id=<newWebstrateId>` will create a new webstrate (either with a random id or `<nweWebstrateId>` if provided), containing the contents of `<someURL>`. `<someURL>` must be a fully qualified URL.
 
->**Note:** When using `prototypeUrl`, it is the _source code_ returned from the server that is being copied, not the DOM. Therefore, when naively prototyping from another Webstrates server, the resulting webstrate created would contain the Webstrates server's `client.html`, not the actual webstrate. To overcome this, use the `?raw` parameter.
+When using `prototypeUrl`, it is the _source code_ returned from the server that is being copied, not the DOM. Therefore, when naively prototyping from another Webstrates server, the resulting webstrate created would contain the Webstrates server's `client.html`, not the actual webstrate. To overcome this, use the `?raw` parameter.
 
 **Legacy operations**
 
@@ -74,8 +74,8 @@ Accessing the history of a webstrate
 * GET on `http://<hostname>/<webstrateId>/<versionOrTag>/` will return a static version of webstrate `<webstrateId>` at version or tag `<versionOrTag>`.
 * GET on `http://<hostname>/<webstrateId>/?raw` will return a raw version of webstrate `<webstrateId>`.
 * GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?raw` will return a raw version of webstrate `<webstrateId>` at version or tag `<versionOrTag>`.
-
-**A note on static and raw**
+* GET on `http://<hostname>/<webstrateId>/?dl` will return a ZIP (or TAR with `?dl=tar`) archive of webstrate `<webstrateId>`.
+* GET on `http://<hostname>/<webstrateId>/<versionOrTag>/?dl` will return a ZIP (or TAR with `?dl=tar`) archive of webstrate `<webstrateId>` at version or tag `<versionOrTag>`.
 
 On normal requests, the Webstrates server serves a static `client.html` with JavaScripts that replace the DOM with the content of the webstrate. When using the `raw` parameter, the Webstrates server instead serves the raw HTML. No JavaScript Webstrates JavaScript is executed on the client side, and no WebSocket connection is established. This also means that DOM elements do not have attached `webstrate` objects, and as a result you cannot listen for Webstrate events.
 

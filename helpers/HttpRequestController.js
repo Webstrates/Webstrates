@@ -1,9 +1,10 @@
 "use strict";
 
-var request = require('request');
-var shortId = require('shortid');
+var archiver = require('archiver');
 var jsonml = require('jsonml-tools');
 var jsonmlParse = require('jsonml-parse');
+var request = require('request');
+var shortId = require('shortid');
 var SELFCLOSING_TAGS = ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen",
 	"link", "menuitem", "meta", "param", "source", "track", "wbr"];
 
@@ -154,6 +155,10 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				return serveRawWebstrate(req, res, snapshot);
 			}
 
+			if ("dl" in req.query) {
+				return serveCompressedWebstrate(req, res, snapshot);
+			}
+
 			// Requesting a copy of the webstrate.
 			if ("copy" in req.query) {
 				return copyWebstrate(req, res, snapshot);
@@ -270,7 +275,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Requesting a webstrate by calling `/<id>?raw`.
+	 * Requesting a raw webstrate by calling `/<id>?raw`.
 	 * @param {obj}      req      Express request object.
 	 * @param {obj}      res      Express response object.
 	 * @param {snapshot} snapshot Document snapshot.
@@ -281,7 +286,38 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Copy a webstrate by calling `/<id>?copy=[newWebstrate]`.
+	 * Requesting to download a webstraet by calling `/<id>?dl`.
+	 * @param {obj}      req      Express request object.
+	 * @param {obj}      res      Express response object.
+	 * @param {snapshot} snapshot Document snapshot.
+	 * @private
+	 */
+	function serveCompressedWebstrate(req, res, snapshot) {
+		assetManager.getCurrentAssets(req.webstrateId, function(err, assets) {
+			if (err) {
+				console.error(err);
+				return res.status(409).send(String(err));
+			}
+
+			var format = req.query.dl === 'tar' ? 'tar' : 'zip';
+			var archive = archiver(format, { store: true });
+			archive.append("<!doctype html>\n" + jsonml.toXML(snapshot.data, SELFCLOSING_TAGS),
+				{ name: `${req.webstrateId}/index.html` });
+
+			assets.forEach(function(asset) {
+				archive.file(`${assetManager.UPLOAD_DEST}${asset.fileName}`,
+					{ name: `${req.webstrateId}/${asset.originalFileName}` });
+			});
+
+			archive.finalize();
+			var potentialTag = req.tag ? ("-" + req.tag) : "";
+			res.attachment(`${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`);
+			archive.pipe(res);
+		});
+	}
+
+	/**
+	 * Copy a webstrate by calling `/<id>?copy[=newWebstrateId]`.
 	 * @param {obj}      req      Express request object.
 	 * @param {obj}      res      Express response object.
 	 * @param {snapshot} snapshot Document snapshot.
