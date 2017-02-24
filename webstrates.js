@@ -172,7 +172,6 @@ app.use(function(req, res, next) {
 
 app.get("/", httpRequestController.rootRequestHandler);
 app.get("/new", httpRequestController.newWebstrateRequestHandler);
-app.get("/favicon.ico", httpRequestController.faviconRequestHandler);
 
 // Ensure trailing slash after webstrateId and tag/label.
 app.get(/^\/([A-Z0-9\._-]+)(\/([A-Z0-9_-]+))?$/i,

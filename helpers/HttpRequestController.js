@@ -527,14 +527,5 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 		res.redirect(`/${webstrateId}/`);
 	}
 
-	/**
-	 * Handles requests to "/favicon.ico".
-	 * @param {obj} req Express request object.
-	 * @param {obj} res Express response object.
-	 */
-	module.faviconRequestHandler = function(req, res) {
-		return res.status(404).send("");
-	};
-
 	return module;
 };
