@@ -176,7 +176,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 
 			if ("delete" in req.query) {
 				if (!permissions.includes("w")) {
-					return res.send("Permission denied");
+					return res.status(403).send("Write permissions are required to delete a document");
 				}
 
 				return deleteWebstrate(req, res);
@@ -520,7 +520,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 
 		// If the user has no default write permissions, they're not allowed to create documents.
 		if (!defaultPermissions.includes("w")) {
-			return res.status(403).send("Insufficient permissions");
+			return res.status(403).send("Write permissions are required to create a new document");
 		}
 
 		var webstrateId = shortId.generate();

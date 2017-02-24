@@ -91,7 +91,8 @@ module.exports = function(cookieHelper, db, pubsub) {
 				userId: client.user.userId,
 				username: client.user.username,
 				provider: client.user.provider,
-				displayName: client.user.displayName
+				displayName: client.user.displayName,
+				avatarUrl: client.user._json && client.user._json.avatar_url
 			},
 			webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 		};
