@@ -663,8 +663,12 @@ root.webstrates = (function(webstrates) {
 			}));
 
 			// Let the server know that we are ready. This will trigger a `clientJoin` event on other
-			// clients.
-			websocketSend({ wa: "ready", d: webstrateId });
+			// clients. This happens in a setTimeout, because we need to ensure that the loaded events
+			// are triggered before. Otherwise, the server may send our own clientJoin to us, before
+			// the user has set up clientJoin listeners.
+			setTimeout(function() {
+				websocketSend({ wa: "ready", d: webstrateId });
+			});
 
 			// If the parent window is this window, we are not contained in an iframe, so we return.
 			if (window === window.parent) {

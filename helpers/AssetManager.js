@@ -32,7 +32,6 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				console.error(err);
 				return res.status(409).send(String(err));
 			}
-
 			var asset = req.file;
 			if (!asset) {
 				return res.status(422).send("Parameter missing from request. No 'file' found.");
