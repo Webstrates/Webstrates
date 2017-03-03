@@ -22,6 +22,10 @@ root.webstrates = (function(webstrates) {
 
 		var COLLECTION_NAME = "webstrates";
 
+		// Whether we have previously been connected (used to determine if this is a reconnect or a
+		// fresh connection).
+		var previouslyConnected = false;
+
 		// Default permissions for all webstrates.
 		var defaultPermissionsList;
 
@@ -241,6 +245,11 @@ root.webstrates = (function(webstrates) {
 						userObjectCallbackLists[event].push(callback);
 					};
 
+					if (previouslyConnected) {
+						triggerCallbacks(callbackLists.reconnect);
+					}
+					previouslyConnected = true;
+
 					break;
 
 				case "clientJoin":
@@ -360,16 +369,10 @@ root.webstrates = (function(webstrates) {
 		 */
 		var setupWebsocketListeners = function(websocket) {
 			module.connectionState = websocket.readyState;
-			var previouslyConnected = websocket.readyState === WebSocket.OPEN;
 
 			var existingOpenHandler = websocket.onopen;
 			websocket.onopen = function(event) {
-				// Only trigger reconnect if we've previously been connected.
-				if (previouslyConnected) {
-					module.connectionState = websocket.readyState;
-					triggerCallbacks(callbackLists.reconnect);
-				}
-				previouslyConnected = true;
+				module.connectionState = websocket.readyState;
 				existingOpenHandler(event);
 			};
 
@@ -602,10 +605,18 @@ root.webstrates = (function(webstrates) {
 			// The server needs to be informed that we are now subscribed to signaling events, otherwise
 			// we won't recieve the events at all.
 			if (event === "signal" && callbackLists.signal.length === 0) {
-				websocketSend({
+				var msgObj = {
 					wa: "subscribe",
 					d: webstrateId,
 					id: (node || context).webstrate.id
+				};
+				websocketSend(msgObj);
+				webstrate.on("reconnect", function() {
+					// Resubscribe after a reconnect, if there are still callbacks attached listening for
+					// signals.
+					if (callbackLists.signal.length > 0) {
+						websocketSend(msgObj);
+					}
 				});
 			}
 
