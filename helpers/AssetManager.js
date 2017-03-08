@@ -57,10 +57,11 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 	 * @public
 	 */
 	module.getAssets = function(webstrateId, next) {
-		return db.assets.find({ webstrateId }, { _id: 0, webstrateId: 0, fileName: 0 })
+		return db.assets.find({ webstrateId }, { _id: 0, webstrateId: 0 })
 		.toArray(function(err, assets) {
 			if (err) return next && next(err);
 			assets.forEach(function(asset) {
+				asset.identifier = asset.fileName;
 				asset.fileName = asset.originalFileName;
 				delete asset.originalFileName;
 			});
@@ -261,24 +262,22 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				}, function(err) {
 					if (err) return next && next(err);
 
+					asset = {
+						v: version,
+						fileName: asset.originalname,
+						fileSize: asset.size,
+						mimeType: asset.mimetype,
+						identifier: asset.filename
+					};
+
 					// Inform all clients of the newly added asset.
 					clientManager.sendToClients(webstrateId, {
 						wa: "asset",
 						d: webstrateId,
-						asset: {
-							v: version,
-							fileName: asset.originalname,
-							fileSize: asset.size,
-							mimeType: asset.mimetype
-						}
+						asset: asset
 					});
 
-					return next && next(null, {
-						v: version,
-						fileName: asset.originalname,
-						fileSize: asset.size,
-						mimeType: asset.mimetype
-					});
+					return next && next(null, asset);
 				});
 			});
 		});

@@ -278,11 +278,12 @@ When submitting an asset, the server will return a JSON object representing the 
   v: 128,
   fileName: "cow.jpg",
   fileSize: 138666,
-  mimeType: "image/jpg"
+  mimeType: "image/jpg",
+  identifier: eddc9c8937d6447c550433c5a3f20a65
 }
 ```
 
-In the above example, we have uploaded an image `cow.jpg` with a size of 135 KB (138666 bytes) to version 128 of the document (the current version).
+In the above example, we have uploaded an image `cow.jpg` with a size of 135 KB (138666 bytes) to version 128 of the document (the current version). The assets has also been given the unique identifier `eddc9c8937d6447c550433c5a3f20a65` in the system. When copying/restoring webstrates, files may get different version numbers, making it hard to keep track of a specific version of an asset. The identifier solves this, as the identifier always refers to the same version of an asset.
 
 Note that an asset is always attached to the newest version of a webstrate, because the philosophy of Webstrates is to never modify the history of a document, but only append to it. For the same reason, restoring a webstrate also doesn't modify the history, but only appends to it. Assets cannot be deleted, except by deleting the entire document.
 
