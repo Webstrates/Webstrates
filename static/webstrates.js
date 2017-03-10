@@ -63,6 +63,13 @@ root.webstrates = (function(webstrates) {
 			characterDataOldValue: true
 		};
 
+		var peerConnectionConfig = {
+			'iceServers': [
+				{'url': 'stun:stun.services.mozilla.com'},
+				{'url': 'stun:stun.l.google.com:19302'}
+			]
+		};
+
 		// Lists containing callbacks for events that the user may subscribe to on the global webstrate
 		// object.
 		var callbackLists = {       // Callbacks are triggered when:
@@ -660,7 +667,6 @@ root.webstrates = (function(webstrates) {
 		 * @private
 		 */
 		var notifyListeners = function(webstrateId) {
-
 			// Set webstrate loaded.
 			webstrate.loaded = true;
 
@@ -975,6 +981,120 @@ root.webstrates = (function(webstrates) {
 					signal: []
 				};
 
+				var peerConnectionsIn = {};
+				var peerConnectionsOut = {};
+
+				/**
+				 * Signal a message on the element to all subscribers or a list of recipients.
+				 * @param {*} msg            Message to be signalled.
+				 * @param {array} recipients (optional) List of recipient client IDs. If no recipients are
+				 *                           specified, all listening clients will receive the message.
+				 * @public
+				 */
+				node.webstrate.signal = function(msg, recipients) {
+					sendSignal(node.webstrate.id, msg, recipients);
+				};
+
+				var signalStreamCallbacks = {};
+				node.webstrate.signalStream = function(callback, recipients) {
+					var innerCallback = function(msg, senderId, node) {
+						if (senderId === webstrate.clientId || !msg.__internal_webrtc) return;
+
+						// Somebody is requesting our stream.
+						if (msg.__internal_webrtc === "offerRequest") {
+							callback(senderId, function(stream, meta, onConnectCallback) {
+								var peerConnection = new RTCPeerConnection(peerConnectionConfig);
+								var streamId = webstrates.util.randomString();
+								peerConnectionsOut[streamId] = peerConnection;
+
+								// Add the actual stream.
+								peerConnection.addStream(stream);
+
+								// Send offer to the client requesting to get our stream.
+								peerConnection.createOffer().then(function(description) {
+									peerConnection.setLocalDescription(description).then(function() {
+										node.webstrate.signal({
+											__internal_webrtc: "offer",
+											streamId: streamId,
+											description: description,
+											meta: meta
+										}, senderId);
+									});
+								}).catch(function(err) {
+									console.error(err);
+								});
+
+								// Also send out any ICE candidates we might have.
+								peerConnection.onicecandidate = function(event) {
+									if (!event.iceCandidate) {
+										return;
+									}
+									node.webstrate.signal({
+										__internal_webrtc: "iceCandidate",
+										streamId: streamId,
+										iceCandidate: event.candidate
+									}, senderId);
+								};
+
+								peerConnection.oniceconnectionstatechange = function(event) {
+									switch (peerConnection.iceConnectionState) {
+										case "connected":
+											onConnectCallback && onConnectCallback();
+											break;
+										case "disconnected":
+											onCloseCallbacks.forEach(function(callback) {
+												callback();
+											});
+											break;
+									}
+								};
+								var onCloseCallbacks = [];
+								return {
+									close: function() {
+										return peerConnection.close();
+									},
+									onclose: function(callback) {
+										onCloseCallbacks.push(callback);
+									}
+								};
+							});
+							return;
+						}
+
+						var peerConnection = peerConnectionsOut[msg.streamId];
+						// Other users may be communicating on the node, so we should ignore those messages.
+						if (!peerConnection) {
+							return;
+						}
+
+						if (msg.__internal_webrtc === "answer") {
+							peerConnection.setRemoteDescription(new RTCSessionDescription(msg.description))
+							.then(function() {
+							}).catch(function(err) {
+								console.error(err);
+							});
+							return;
+						}
+
+						if (msg.__internal_webrtc === "iceCandidate") {
+							peerConnection.addIceCandidate(new RTCIceCandidate(msg.iceCandidate));
+							return;
+						}
+					};
+
+					node.webstrate.on('signal', innerCallback);
+					signalStreamCallbacks[callback] = innerCallback;
+
+					node.webstrate.signal({
+						__internal_webrtc: "offerRequestRequest"
+					}, recipients);
+				};
+
+				node.webstrate.stopStreamSignal = function(callback) {
+					node.webstrate.off("signal", signalStreamCallbacks[callback]);
+				};
+
+				var onSignalStreamCallbacks = [];
 				/**
 				 * Register event listeners on events defined in callbackLists.
 				 * @param  {string}   event    Event name.
@@ -982,10 +1102,104 @@ root.webstrates = (function(webstrates) {
 				 * @public
 				 */
 				node.webstrate.on = function(event, callback) {
+					if (event === "signalStream") {
+						node.webstrate.on('signal', function innerCallback(msg, senderId, node) {
+							if (senderId === webstrate.clientId || !msg.__internal_webrtc) return;
+
+							if (msg.__internal_webrtc === "offerRequestRequest") {
+								node.webstrate.signal({
+									__internal_webrtc: "offerRequest"
+								});
+								return;
+							}
+
+							if (msg.__internal_webrtc === "offer") {
+								callback(senderId, msg.meta, function approveOffer(streamCallback) {
+									var peerConnection = new RTCPeerConnection(peerConnectionConfig);
+									peerConnectionsIn[msg.streamId] = peerConnection;
+									peerConnection.setRemoteDescription(new RTCSessionDescription(msg.description)).then(function() {
+										peerConnection.createAnswer().then(function(description) {
+											peerConnection.setLocalDescription(description).then(function() {
+												node.webstrate.signal({
+													__internal_webrtc: "answer",
+													streamId: msg.streamId,
+													description: description
+												}, senderId);
+											});
+										});
+									});
+
+									peerConnection.onicecandidate = function(event) {
+										if (!event.candidate) {
+											return;
+										}
+										node.webstrate.signal({
+											__internal_webrtc: "iceCandidate",
+											streamId: msg.streamId,
+											iceCandidate: event.candidate
+										}, senderId);
+									};
+
+									// `onaddstream` is deprecated, but the replacement `ontrack` isn't implemented.
+									var stream;
+									peerConnection.onaddstream = function(event) {
+										stream = event.stream;
+									};
+
+									peerConnection.oniceconnectionstatechange = function(event) {
+										switch (peerConnection.iceConnectionState) {
+											case "connected":
+												node.webstrate.off('signal', innerCallback);
+												streamCallback(stream);
+												break;
+											case "disconnected":
+												onCloseCallbacks.forEach(function(callback) {
+													callback();
+												});
+												break;
+										}
+									};
+
+									var onCloseCallbacks = [];
+									return {
+										close: function() {
+											return peerConnection.close();
+										},
+										onclose: function(callback) {
+											onCloseCallbacks.push(callback);
+										}
+									};
+								});
+								return;
+							}
+
+							var peerConnection = peerConnectionsIn[msg.streamId];
+							// Other users may be communicating on the node, so we should ignore those messages.
+							if (!peerConnection) {
+								return;
+							}
+
+							if (msg.__internal_webrtc === "iceCandidate") {
+								// We may receive null ICE candidates.
+								if (msg.iceCandidate) {
+									peerConnection.addIceCandidate(new RTCIceCandidate(msg.iceCandidate));
+								}
+								return;
+							}
+						});
+
+						node.webstrate.signal({
+							__internal_webrtc: "offerRequest"
+						});
+
+						return;
+					}
+
 					// Use iframe's window to trigger event when node is an actual iframe element.
 					var context = node.nodeType === Node.ELEMENT_NODE &&
 						node.tagName.toLowerCase() === "iframe" && node.ContentWindow ?
 						(node.contentWindow || window) : window;
+
 					addCallbackToEvent(event, callback, callbackLists, context, node);
 				};
 
@@ -1007,17 +1221,6 @@ root.webstrates = (function(webstrates) {
 				 */
 				node.webstrate.fireEvent = function(event, ...parameters) {
 					triggerCallbacks(callbackLists[event], ...parameters);
-				};
-
-				/**
-				 * Signal a message on the element to all subscribers or a list of recipients.
-				 * @param {*} msg            Message to be signalled.
-				 * @param {array} recipients (optional) List of recipient client IDs. If no recipients are
-				 *                           specified, all listening clients will receive the message.
-				 * @public
-				 */
-				node.webstrate.signal = function(msg, recipients) {
-					sendSignal(node.webstrate.id, msg, recipients);
 				};
 
 				if (node.nodeType === Node.ELEMENT_NODE) {
@@ -1254,7 +1457,7 @@ root.webstrates = (function(webstrates) {
 						pathTree = webstrates.PathTree.create(rootElement, null, true);
 					});
 				};
-								if (callback) callback(err, snapshot, ...args);
+				if (callback) callback(err, snapshot, ...args);
 
 			});
 		};
