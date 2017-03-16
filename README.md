@@ -358,7 +358,7 @@ Webstrates supports WebRTC-based signaling streaming, allowing users to stream t
 A user may start listening for users interested in receiving a stream on a node using:
 
 ```javascript
-elementNode.signalStream(function signalStream(clientId, accept) {
+elementNode.webstrate.signalStream(function signalStream(clientId, accept) {
   // User with clientId is listening for streams on elementNode.
 });
 ```

@@ -65,8 +65,8 @@ root.webstrates = (function(webstrates) {
 
 		var peerConnectionConfig = {
 			'iceServers': [
-				{'url': 'stun:stun.services.mozilla.com'},
-				{'url': 'stun:stun.l.google.com:19302'}
+				{ url: 'stun:stun.services.mozilla.com' },
+				{ url: 'stun:stun.l.google.com:19302' }
 			]
 		};
 
@@ -1007,26 +1007,9 @@ root.webstrates = (function(webstrates) {
 								var streamId = webstrates.util.randomString();
 								peerConnectionsOut[streamId] = peerConnection;
 
-								// Add the actual stream.
-								peerConnection.addStream(stream);
-
-								// Send offer to the client requesting to get our stream.
-								peerConnection.createOffer().then(function(description) {
-									peerConnection.setLocalDescription(description).then(function() {
-										node.webstrate.signal({
-											__internal_webrtc: "offer",
-											streamId: streamId,
-											description: description,
-											meta: meta
-										}, senderId);
-									});
-								}).catch(function(err) {
-									console.error(err);
-								});
-
 								// Also send out any ICE candidates we might have.
 								peerConnection.onicecandidate = function(event) {
-									if (!event.iceCandidate) {
+									if (!event.candidate) {
 										return;
 									}
 									node.webstrate.signal({
@@ -1048,6 +1031,26 @@ root.webstrates = (function(webstrates) {
 											break;
 									}
 								};
+
+								// Add the actual stream.
+								peerConnection.addStream(stream);
+
+								// Send offer to the client requesting to get our stream.
+								peerConnection.createOffer().then(function(description) {
+									peerConnection.setLocalDescription(description).then(function() {
+										node.webstrate.signal({
+											__internal_webrtc: "offer",
+											streamId: streamId,
+											description: description,
+											meta: meta
+										}, senderId);
+									}).catch(function(err) {
+										console.error(err);
+									});
+								}).catch(function(err) {
+									console.error(err);
+								});
+
 								var onCloseCallbacks = [];
 								return {
 									close: function() {
@@ -1125,8 +1128,14 @@ root.webstrates = (function(webstrates) {
 													streamId: msg.streamId,
 													description: description
 												}, senderId);
+											}).catch(function(err) {
+												console.error(err);
 											});
-										});
+										}).catch(function(err) {
+											console.error(err);
+										});;
+									}).catch(function(err) {
+										console.error(err);
 									});
 
 									peerConnection.onicecandidate = function(event) {
@@ -1180,10 +1189,7 @@ root.webstrates = (function(webstrates) {
 							}
 
 							if (msg.__internal_webrtc === "iceCandidate") {
-								// We may receive null ICE candidates.
-								if (msg.iceCandidate) {
-									peerConnection.addIceCandidate(new RTCIceCandidate(msg.iceCandidate));
-								}
+								peerConnection.addIceCandidate(new RTCIceCandidate(msg.iceCandidate));
 								return;
 							}
 						});
