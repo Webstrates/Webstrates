@@ -89,17 +89,17 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				return res.status(409).send(String(err));
 			}
 
-			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
+			req.user.permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 
 			// If the webstrate doesn't exist, write permissions are required to create it.
-			if (!snapshot.type && !permissions.includes("w")) {
+			if (!snapshot.type && !req.user.permissions.includes("w")) {
 				return res.status(403).send("Insufficient permissions.");
 			}
 
 			// If the webstrate does exist, read permissions are required to access it (or any of its
 			// assets).
-			if (!permissions.includes("r")) {
+			if (!req.user.permissions.includes("r")) {
 				return res.status(403).send("Insufficient permissions.");
 			}
 
@@ -161,13 +161,21 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 
 			// Requesting a copy of the webstrate.
 			if ("copy" in req.query) {
+				var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
+					req.user.provider);
+
+				// If the user has no default write permissions, they're not allowed to create documents.
+				if (!defaultPermissions.includes("w")) {
+					return res.status(403).send("Write permissions are required to create a new document");
+				}
+
 				return copyWebstrate(req, res, snapshot);
 			}
 
 			// Requesting to restore document to a previous version or tag by calling:
 			// `/<id>/?restore=<version|tag>`.
 			if ("restore" in req.query) {
-				if (!permissions.includes("w")) {
+				if (!req.user.permissions.includes("w")) {
 					return res.status(403).send("Write permissions are required to restore a document");
 				}
 
@@ -175,7 +183,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 			}
 
 			if ("delete" in req.query) {
-				if (!permissions.includes("w")) {
+				if (!req.user.permissions.includes("w")) {
 					return res.status(403).send("Write permissions are required to delete a document");
 				}
 
@@ -325,6 +333,18 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 */
 	function copyWebstrate(req, res, snapshot) {
 		var webstrateId = req.query.copy;
+
+		// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
+		// otherwise just delete all permissions on the new document.
+		if (!req.user.permissions.includes("w")) {
+			if (req.user.username === "anonymous" && req.user.provider === "") {
+				snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+			} else {
+				snapshot = permissionManager.addPermissionsToSnapshot(req.user.username,
+					req.user.provider, "rw", snapshot);
+			}
+		}
+
 		documentManager.createNewDocument({ webstrateId, snapshot }, function(err, webstrateId) {
 			if (err) {
 				console.error(err);

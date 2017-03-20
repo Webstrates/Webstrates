@@ -138,43 +138,62 @@ module.exports = function(documentManager, pubsub) {
 				return next(err);
 			}
 
-			var currentPermissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
-			if (currentPermissions === permissions) {
-				return next();
-			}
-
 			if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== "html" ||
 				typeof snapshot.data[1] !== "object") {
 				return next(new Error("Invalid document"));
 			}
 
-			var permissionsList = snapshot.data[1]['data-auth'] ?
-				JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')) : [];
-
-			// Find index of the user's current permissions
-			var userIdx = permissionsList.findIndex(function(user) {
-				return user.username === username
-				    && user.provider === provider;
-			});
-
-			var user = { username, provider, permissions };
-
-			// If the user currently has no permissions, we add the new permissions, or otherwise modifies
-			// the existing permissions.
-			if (userIdx === -1) {
-				permissionsList.push(user);
-			} else {
-				permissionsList[userIdx] = user;
-			}
+			var oldPermissions = snapshot.data[1]['data-auth'];
+			snapshot = addPermissionsToSnapshot(username, provider, permissions, snapshot);
+			var newermissions = snapshot.data[1]['data-auth'];
 
 			var op = {
 				p: [1, 'data-auth'],
-				od: snapshot.data[1]['data-auth'],
-				oi: JSON.stringify(permissionsList)
+				od: oldPermissions,
+				oi: newPermissions
 			};
 
 			documentManager.submitOp(webstrateId, op, source, next);
 		});
+	};
+
+	module.addPermissionsToSnapshot = function(username, provider, permissions, snapshot) {
+		var currentPermissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
+		if (currentPermissions === permissions) {
+			return snapshot;
+		}
+
+		var permissionsList = snapshot.data[1]['data-auth'] ?
+			JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')) : [];
+
+		// Find index of the user's current permissions
+		var userIdx = permissionsList.findIndex(function(user) {
+			return user.username === username
+			    && user.provider === provider;
+		});
+
+		var user = { username, provider, permissions };
+
+		// If the user currently has no permissions, we add the new permissions, or otherwise modifies
+		// the existing permissions.
+		if (userIdx === -1) {
+			permissionsList.push(user);
+		} else {
+			permissionsList[userIdx] = user;
+		}
+
+		snapshot.data[1]['data-auth'] = JSON.stringify(permissionsList);
+		return snapshot;
+	};
+
+	/**
+	 * Remove all permissions from snapshot
+	 * @param  {JsonML} snapshot ShareDB document snapshot.
+	 * @return {string}          ShareDB document snapshot without permissions.
+	 */
+	module.clearPermissionsFromSnapshot = function(snapshot) {
+		delete snapshot.data[1]['data-auth'];
+		return snapshot;
 	};
 
 	/**
