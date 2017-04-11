@@ -190,30 +190,25 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 					return !assetsBeingUsed.includes(asset);
 				});
 
-				// If no assets should be deleted from the file system, we should still delete them from
-				// the database.
-				if (assetsToBeDeleted.length === 0) {
-					return db.assets.deleteMany({ webstrateId }, next);
-				}
-
-				// Count callbacks, so we know when all files have been deleted and we can terminate.
-				var callbacksRemaining = 0;
-
+				var promises = [];
 				// Run through the files and delete them.
 				assetsToBeDeleted.forEach(function(asset) {
-					fs.unlink(`${module.UPLOAD_DEST}${asset}`, function(err) {
-						callbacksRemaining--;
-						// We print out errors, but we don't stop execution. The webstrate will already be gone
-						// by now, so there's no reason to keep the database entries or the remaining files,
-						// even if something goes wrong.
-						if (err) {
-							console.error(err);
-						}
-						if (callbacksRemaining === 0) {
-							db.assets.deleteMany({ webstrateId }, next);
-						}
-					});
-				})
+					promises.push(new Promise(function(resolve, reject) {
+						fs.unlink(`${module.UPLOAD_DEST}${asset}`, function(err) {
+							// We print out errors, but we don't stop execution. If a file fails to delete, we
+							// probably still want to get rid of the remaining files.
+							if (err) {
+								console.error(err);
+							}
+							resolve();
+						});
+					}));
+				});
+
+				// Once every file has been deleted from the file system, we delete them from the database.
+				Promise.all(promises).then(function() {
+					db.assets.deleteMany({ webstrateId }, next);
+				});
 			});
 		});
 	};

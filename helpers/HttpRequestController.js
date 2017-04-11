@@ -414,26 +414,27 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
-	 * Delete a webstrate and redirect the user to the root (`/`).
+	 * Delete the assets of a webstrate, then the delete the webstrate itself, and redirect the user
+	 * to the root (`/`).
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
 	 * @private
 	 */
 	function deleteWebstrate(req, res) {
 		var source = req.user.userId;
-		return documentManager.deleteDocument(req.webstrateId, source, function(err) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-
-			assetManager.deleteAssets(req.webstrateId, function(err) {
+		return assetManager.deleteAssets(req.webstrateId, function(err) {
 				if (err) {
 					console.error(err);
 					return res.status(409).send(String(err));
 				}
-				res.redirect("/");
-			});
+
+				documentManager.deleteDocument(req.webstrateId, source, function(err) {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					res.redirect("/");
+				});
 		});
 	}
 
