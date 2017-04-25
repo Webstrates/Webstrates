@@ -60,7 +60,11 @@ var JsonML = JsonML || {};
 						if (attr[i].name === 'style') {
 							props.style = elem.style.cssText || attr[i].value;
 						} else if ('string' === typeof attr[i].value) {
-							props[attr[i].name] = attr[i].value;
+							if (elem.namespaceURI === "http://www.w3.org/2000/svg") {
+								props[attr[i].name.toLowerCase()] = attr[i].value;
+							} else {
+								props[attr[i].name] = attr[i].value;
+							}
 						}
 						hasAttrib = true;
 					}
