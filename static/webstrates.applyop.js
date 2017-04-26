@@ -218,6 +218,102 @@ root.webstrates = (function(webstrates) {
 	};
 
 	/**
+	 * Get element with cursor/selection offset. Given a negative offset, traverse through the DOM
+	 * tree to find the appropriate element.
+	 * @param  {DOMNode} element    Element to traverse from
+	 * @param  {Number} offset      Cursor/selection offset.
+	 * @return {[element, offset]}  Touple containing new element and (positive) offset.
+	 * @private
+	 */
+	function findOffsetElement(element, offset) {
+		// If the offset is within this element, we can return.
+		if (offset >= 0) return [ element, offset ];
+
+		// Explore the previous sibling's children if has children.
+		if (element.lastChild) {
+			offset = element.lastChild.nodeType === document.TEXT_NODE
+				? offset + element.lastChild.length : offset;
+			return findOffsetElement(element.lastChild, offset);
+		}
+
+		if (!element.previousSibling) {
+			// If he element isn't a text node and has no children, we move up the tree to explore the
+			// parent node.
+			offset = element.parentNode.nodeType === document.TEXT_NODE
+				? offset + element.parentNode.length : offset;
+			return findOffsetElement(element.parentNode, offset);
+		}
+
+		// Explore the previous sibling if it's a text node. This recursion will converge towards a
+		// positive offset.
+		if (element.previousSibling.nodeType === document.TEXT_NODE) {
+			return findOffsetElement(element.previousSibling,
+				offset + element.previousSibling.nodeValue.length);
+		}
+	}
+
+	/**
+	 * Find selection range in node if it exists.
+	 * @param  {TextNode} textNode TextNode to look for Range in.
+	 * @return {mixed}             Basic object containing the essential properties of a Range object.
+	 * @private
+	 */
+	function getSelectionRange(textNode) {
+		// If there are no selections, return.
+		if (window.getSelection().rangeCount === 0) {
+			return;
+		}
+
+		var realRange = window.getSelection().getRangeAt(0);
+		// If selection isn't in this node, return.
+		if (realRange.commonAncestorContainer !== textNode) {
+			return;
+		}
+
+		// Finally, return the range. We can't return the original range, as it may change. Since the
+		// range is already bound to the DOM, if we clone it, the cloned range will also be bound to the
+		// DOM. If any changes are made to the involved TextNode, then the offsets will therefore be
+		// set to 0. Therefore, we mange a basic object containing the essential properties of a real
+		// Range object.
+		var fakeRange = {
+			startOffset: realRange.startOffset,
+			startContainer: realRange.startContainer,
+			endOffset: realRange.endOffset,
+			endContainer: realRange.endContainer
+		};
+		return fakeRange;
+	}
+
+	/**
+	 * Set selection on textnode based on fakeRange. Uses findOffsetElement to fix negative offsets.
+	 * @param {TextNode} textNode  TextNode to base selection around.
+	 * @param {mixed} fakeRange    Basic object containing the essential properties of a Range object.
+	 * @private
+	 */
+	function setSelectionRange(textNode, fakeRange) {
+		var realRange = document.createRange();
+
+		if (fakeRange.startOffset < 0) {
+			var [startContainer, startOffset] = findOffsetElement(fakeRange.startContainer,
+				fakeRange.startOffset);
+			fakeRange.startContainer = startContainer;
+			fakeRange.startOffset = startOffset;
+		}
+
+		if (fakeRange.endOffset < 0) {
+			var [endContainer, endOffset] = findOffsetElement(fakeRange.endContainer,
+				fakeRange.endOffset);
+			fakeRange.endContainer = endContainer;
+			fakeRange.endOffset = endOffset;
+		}
+
+		realRange.setStart(fakeRange.startContainer, fakeRange.startOffset);
+		realRange.setEnd(fakeRange.endContainer, fakeRange.endOffset);
+		window.getSelection().removeAllRanges();
+		window.getSelection().addRange(realRange);
+	}
+
+	/**
 	 * Recursively navigates an element using path to insert text at an index.
 	 * @param {DOMNode} parentElement DOMNode used as root element for path navigation.
 	 * @param {DOMPath} path          Path to follow on DOMNode.
@@ -263,7 +359,21 @@ root.webstrates = (function(webstrates) {
 				var oldValue = parentElement.data;
 				var newValue = oldValue.substring(0, charIndex)
 					+ value + oldValue.substring(charIndex);
+				var fakeRange = getSelectionRange(parentElement);
 				parentElement.data = newValue;
+				if (!fakeRange) {
+					break;
+				}
+				// Adjust the range to account for the insertion.
+				if (fakeRange.endContainer === parentElement && fakeRange.endOffset > charIndex) {
+					fakeRange.endOffset += value.length;
+					if (fakeRange.startContainer === parentElement && fakeRange.startOffset >= charIndex) {
+						fakeRange.startOffset += value.length;
+					}
+
+				}
+				// Update selection
+				setSelectionRange(parentElement, fakeRange);
 				break;
 		}
 
@@ -320,7 +430,23 @@ root.webstrates = (function(webstrates) {
 				var oldValue = parentElement.data;
 				var newValue = oldValue.substring(0, charIndex)
 					+ oldValue.substring(charIndex + value.length);
+				var fakeRange = getSelectionRange(parentElement);
 				parentElement.data = newValue;
+				if (!fakeRange) {
+					break;
+				}
+
+				// Adjust the range to account for the deletion.
+				if (fakeRange.endContainer === parentElement && fakeRange.endOffset > charIndex) {
+					fakeRange.endOffset -= value.length;
+					if (fakeRange.startContainer === parentElement && fakeRange.startOffset >= charIndex) {
+						fakeRange.startOffset -= value.length;
+					}
+
+				}
+
+				// Update selection
+				setSelectionRange(parentElement, fakeRange);
 				break;
 		}
 
@@ -341,7 +467,6 @@ root.webstrates = (function(webstrates) {
 	 * @public
 	 */
 	var applyOp = function(op, rootElement) {
-
 		var path = op.p;
 		if (path.length === 0) {
 			return;
