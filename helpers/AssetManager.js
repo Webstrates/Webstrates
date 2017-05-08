@@ -95,6 +95,19 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 	};
 
 	/**
+	 * Delete asset from database. This is useful if, for some reason, an asset no longer exists in
+	 * the file system, but still lingers in the database. Also ensures that the file doesn't exist in
+	 * the database to avoid lingering files in the file system as well.
+	 * @param  {string} fileName Name of the file in the file system. This is not the original file
+	 *                           name used when uploading the file, but rather the 'identifier'.
+	 * @public
+	 */
+	module.deleteAssetFromDatabase = function(fileName) {
+		if (!fileName || fs.existsSync(`${module.UPLOAD_DEST}${fileName}`)) return;
+		db.assets.deleteOne({ fileName: fileName });
+	};
+
+	/**
 	 * Copy assets from before a certain version of one webstrate to another.
 	 * When copying a webstrate we want to copy all the assets over as well. The assets are only
 	 * duplicated in the database, not in the file system.

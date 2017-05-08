@@ -1,6 +1,7 @@
 "use strict";
 
 var archiver = require('archiver');
+var fs = require('fs')
 var jsonml = require('jsonml-tools');
 var jsonmlParse = require('jsonml-parse');
 var request = require('request');
@@ -313,10 +314,16 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				{ name: `${req.webstrateId}/index.html` });
 
 			assets.forEach(function(asset) {
-				archive.file(`${assetManager.UPLOAD_DEST}${asset.fileName}`,
-					{ name: `${req.webstrateId}/${asset.originalFileName}` });
+				var filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
+				if (fs.existsSync(filePath)) {
+					archive.file(filePath, { name: `${req.webstrateId}/${asset.originalFileName}` });
+				} else {
+					console.warn(`Asset ${filePath} (${asset.originalFileName}) for Webstrate ` +
+						`${req.webstrateId} doesn't exist. Deleting it from database.`);
+					// The deletion happens async, but there's no reason to make the user wait for it.
+					assetManager.deleteAssetFromDatabase(asset.fileName);
+				}
 			});
-
 			archive.finalize();
 			var potentialTag = req.tag ? ("-" + req.tag) : "";
 			res.attachment(`${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`);
