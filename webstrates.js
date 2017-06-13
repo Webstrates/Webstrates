@@ -302,7 +302,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			return next();
 		}
 
-		permissionManager.getPermissions(req.user.username, req.user.provider, req.webstrateId,
+		permissionManager.getUserPermissions(req.user.username, req.user.provider, req.webstrateId,
 			function(err, permissions) {
 				if (err) {
 					return next(err);
@@ -501,10 +501,10 @@ wss.on('connection', function(client) {
 		}
 	});
 
+	var opCount = 0, signalCount = 0;
 	if (config.rateLimit) {
-		var messageCount = 0;
 		setInterval(function() {
-			messageCount = 0;
+			opCount = 0, signalCount = 0;
 		}, config.rateLimit.intervalLength);
 	}
 
@@ -512,7 +512,8 @@ wss.on('connection', function(client) {
 		// Rate limiting. Limits the number of messages per interval to avoid clients that have run
 		// haywire from DoS'ing the server.
 		if (config.rateLimit) {
-			if (++messageCount > config.rateLimit.messagesPerInterval) {
+			if ((data.startsWith('{"a":') && ++opCount > config.rateLimit.opsPerInterval)
+			|| (data.startsWith('{"wa":') && ++signalCount > config.rateLimit.signalsPerInterval)) {
 				console.log("Blacklisting", remoteAddress, "for exceeding rate limitation.");
 				var timestamp = Date.now();
 				addressBanList[remoteAddress] = timestamp;
@@ -557,7 +558,7 @@ wss.on('connection', function(client) {
 		// Handle webstrate actions.
 		var webstrateId = data.d;
 
-		permissionManager.getPermissions(user.username, user.provider, webstrateId,
+		permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
 			function(err, permissions) {
 			if (err) return console.error(err);
 

@@ -18,7 +18,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 		dest: module.UPLOAD_DEST,
 		limits: { fileSize: 1024 * 1024 * 20 }, // 20 MB
 		fileFilter: fileFilter
-	}).single("file");
+	}).any();
 
 	/**
 	 * Handles file uploading.
@@ -32,19 +32,28 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				console.error(err);
 				return res.status(409).send(String(err));
 			}
-			var asset = req.file;
-			if (!asset) {
+
+			if (!req.files) {
 				return res.status(422).send("Parameter missing from request. No 'file' found.");
 			}
 
 			var source = `${req.user.userId} (${req.remoteAddr})`;
-			addAsset(req.webstrateId, asset, source, function(err, assetRecord) {
-				if (err) {
-					console.error(err);
-					return res.status(409).send(String(err));
-				}
 
-				res.json(assetRecord);
+			var uploadPromises = [];
+			req.files.forEach(function(asset) {
+				uploadPromises.push(new Promise(function(accept, reject) {
+					addAsset(req.webstrateId, asset, source, function(err, assetRecord) {
+						if (err) return reject(err);
+						accept(assetRecord);
+					});
+				}));
+			});
+
+			Promise.all(uploadPromises).then(function(assetRecords) {
+				res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
+			}).catch(function(err) {
+				console.error(err);
+				res.status(409).send(String(err));
 			});
 		});
 	};
@@ -310,7 +319,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				return next(new Error("Document doesn't exist."));
 			}
 
-			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
+			var permissions = permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 
 			if (!permissions.includes("w")) {

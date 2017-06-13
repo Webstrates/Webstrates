@@ -42,7 +42,7 @@ module.exports = function(documentManager, pubsub) {
 	}
 
 	/**
-	 * Get a user's permissions for a specific snapshot.
+	 * Get a user's permissions for a specific webstrateId.
 	 * @param  {string}   username    Username.
 	 * @param  {string}   provider    Login provider (GitHub, Facebook, OAuth, ...).
 	 * @param  {string}   webstrateId WebstrateId.
@@ -50,7 +50,7 @@ module.exports = function(documentManager, pubsub) {
 	 * @return {mixed}                (async) Error, Document permissions (r, rw).
 	 * @public
 	 */
-	module.getPermissions = function(username, provider, webstrateId, next) {
+	module.getUserPermissions = function(username, provider, webstrateId, next) {
 		var permissions = getCachedPermissions(username, provider, webstrateId);
 		if (permissions) {
 			return next(null, permissions);
@@ -61,7 +61,7 @@ module.exports = function(documentManager, pubsub) {
 				return next(err);
 			}
 
-			var permissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
+			var permissions = module.getUserPermissionsFromSnapshot(username, provider, snapshot);
 			setCachedPermissions(username, provider, permissions, snapshot.id);
 			next(null, permissions);
 		});
@@ -75,7 +75,28 @@ module.exports = function(documentManager, pubsub) {
 	 * @return {string}          Document permissions (r, rw).
 	 * @public
 	 */
-	module.getPermissionsFromSnapshot = function(username, provider, snapshot) {
+	module.getUserPermissionsFromSnapshot = function(username, provider, snapshot) {
+		var permissionsList = module.getPermissionsFromSnapshot(snapshot);
+
+		// If there's also no default permissions, we pretend every user has read-write permissions
+		// lest we lock everybody out. We append a question mark to let the system know that these are
+		// last-resort permissions.
+		if (!permissionsList) {
+				return "rw?";
+		}
+
+		return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
+	};
+
+	/**
+	 * Get all permissions from a specific snapshot.
+	 * @param  {JsonML} snapshot              ShareDB document snapshot.
+	 * @param  {bool}   useDefaultPermissions Whether to return default permissions or not if no
+	 *                                        permissions were found. true uses defaultPermissions.
+	 * @return {array}                       Permissions list.
+	 * @public
+	 */
+	module.getPermissionsFromSnapshot = function(snapshot, useDefaultPermissions = true) {
 		var permissionsList;
 
 		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === "html" &&
@@ -88,23 +109,17 @@ module.exports = function(documentManager, pubsub) {
 				// We don't have to do anything. No valid document permissions.
 			}
 
-			if (!Array.isArray(permissionsList)) {
-				permissionsList = undefined;
+			// If we found permissions, return them.
+			if (Array.isArray(permissionsList) && Object.keys(permissionsList).length > 0) {
+				return permissionsList;
 			}
 		}
 
-		// If we found no permissions, resort to default permissions.
-		if (!permissionsList || Object.keys(permissionsList).length === 0) {
-			// If there's also no default permissions, we pretend every user has read-write permissions
-			// lest we lock everybody out. We append a question mark to let the system know that these are
-			// last-resort permissions.
-			if (!defaultPermissionsList) {
-				return "rw?";
-			}
-			permissionsList = defaultPermissionsList;
+		if (useDefaultPermissions) {
+			return defaultPermissionsList;
 		}
 
-		return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
+		return undefined;
 	};
 
 	/**
@@ -158,13 +173,12 @@ module.exports = function(documentManager, pubsub) {
 	};
 
 	module.addPermissionsToSnapshot = function(username, provider, permissions, snapshot) {
-		var currentPermissions = module.getPermissionsFromSnapshot(username, provider, snapshot);
+		var currentPermissions = module.getUserPermissionsFromSnapshot(username, provider, snapshot);
 		if (currentPermissions === permissions) {
 			return snapshot;
 		}
 
-		var permissionsList = snapshot.data[1]['data-auth'] ?
-			JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')) : [];
+		var permissionsList = module.getPermissionsFromSnapshot(snapshot, false) || [];
 
 		// Find index of the user's current permissions
 		var userIdx = permissionsList.findIndex(function(user) {

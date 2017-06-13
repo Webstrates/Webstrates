@@ -281,9 +281,16 @@ module.exports = function(cookieHelper, db, pubsub) {
 	 * @param  {string} nodeId      NodeId.
 	 * @public
 	 */
-	module.subscribe = function(socketId, webstrateId, nodeId) {
+	module.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
 		// Make sure the client is connected to the webstrate.
 		if (!clients[socketId].webstrates[webstrateId]) {
+			// The user may have been so eager to subscribe that they sent the command before they have
+			// joined the document. Let's retry the subscribe command in a little while.
+			if (retry > 0) {
+				setTimeout(function() {
+					module.subscribe(socketId, webstrateId, nodeId, retry - 1);
+				}, 200);
+			}
 			return;
 		}
 
