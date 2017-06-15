@@ -3,5 +3,5 @@ node_modules
 npm-debug.log
 config.json
 uploads
-client/webstrates.js
-client/webstrates.js.map
+static/webstrates.js
+static/webstrates.js.map

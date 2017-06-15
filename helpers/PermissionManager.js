@@ -1,4 +1,5 @@
 "use strict";
+var shortId = require('shortid');
 
 /**
  * PermissionManager constructor.
@@ -10,6 +11,7 @@ module.exports = function(documentManager, pubsub) {
 	var module = {};
 	var authConfig = global.config.auth;
 
+	var accessTokens = {};
 	var permissionsCache = {};
 	var timeToLive = authConfig ? authConfig.permissionTimeout : 300;
 	var defaultPermissionsList = authConfig && authConfig.defaultPermissions;
@@ -35,10 +37,161 @@ module.exports = function(documentManager, pubsub) {
 				case "invalidateCachedPermissions":
 					module.invalidateCachedPermissions(message.webstrateId);
 					break;
+				case "saveAccessToken":
+					saveAccessToken(message.webstrateId, message.token, message.username,
+						message.provider, message.expiration, false);
+					break;
+				case "expireAccessToken":
+					module.expireAccessToken(message.webstrateId, message.token, false);
+					break;
+				case "expireAllAccessTokens":
+					module.expireAllAccessTokens(message.webstrateId, false);
 				default:
 					console.warn("Unknown action", message);
 			}
 		});
+	}
+
+	/**
+	 * Get user object from access token.
+	 * @param  {string} webstrateId WebstrateId
+	 * @param  {string} token       Access token.
+	 * @return {mixed}              User object containing username and provider.
+	 * @public
+	 */
+	module.getUserFromAccessToken = function(webstrateId, token) {
+		if (!accessTokens[webstrateId] || !accessTokens[webstrateId][token]) {
+			return;
+		}
+
+		var { username, provider, expiration } = accessTokens[webstrateId][token];
+
+		if (expiration <= Date.now()/1000) {
+			delete accessTokens[webstrateId][token];
+			return;
+		}
+
+		return { username, provider };
+	};
+
+	/**
+	 * Generate access token and save it.
+	 * @param {req} req Request object.
+	 * @param {res} res Request object.
+	 * @public
+	 */
+	module.generateAccessToken = function(req, res) {
+		var duration = Number(req.body.token) > 0 ? Number(req.body.token) : 300;
+		var webstrateId = req.webstrateId;
+		var username = req.user.username;
+		var provider = req.user.provider;
+
+		var token = shortId.generate();
+		var expiration = (Date.now()/1000|0) + duration;
+
+		saveAccessToken(webstrateId, token, username, provider, expiration, true);
+
+		res.json({ webstrateId, username, provider, token, expiration });
+	};
+
+	/**
+	 * Save access token and broadcast through publish/subscribe.
+	 * @param {[type]} webstrateId WebstrateId.
+	 * @param {string} token       Access token.
+	 * @param {string} username    Username.
+	 * @param {string} provider    Provider.
+	 * @param {Date} expiration    Expiration date.
+	 * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
+	 *                             or remotely (on another server instance). We should only forward
+	 *                             local cache invalidation requests, otherwise we end up in a
+	 *                             livelock where we continuously send the same request back and forth
+	 *                             between instances.
+	 * @private
+	 */
+	function saveAccessToken(webstrateId, token, username, provider, expiration, local) {
+		if (!accessTokens[webstrateId]) {
+			accessTokens[webstrateId] = {};
+		}
+
+		accessTokens[webstrateId][token] = { username, provider, expiration };
+
+		if (local && pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: "saveAccessToken", webstrateId, token, username, provider, expiration, WORKER_ID
+			}));
+		}
+
+		// Also clean up expired tokens. This happens async. No need to make the user wait.
+		setImmediate(cleanUpExpiredTokens);
+	}
+
+	/**
+	 * Run through all tokens and remove expired ones.
+	 * @private
+	 */
+	function cleanUpExpiredTokens() {
+		var now = Date.now()/1000;
+		for (var webstrateId in accessTokens) {
+			for (var token in accessTokens[webstrateId]) {
+				if (accessTokens[webstrateId][token].expiration <= now) {
+					delete accessTokens[webstrateId][token];
+				}
+			}
+		}
+	};
+
+	/**
+	 * Return a list of access tokens for a specific webstrate.
+	 * @param  {string} webstrateId WebstrateId.
+	 * @return {mixed}              List of access tokens.
+	 * @public
+	 */
+	module.getAccessTokens = function(webstrateId) {
+		cleanUpExpiredTokens();
+		return accessTokens[webstrateId];
+	};
+
+	/**
+	 * Expire an access token.
+	 * @param {[type]} webstrateId WebstrateId.
+	 * @param {string} token       Access token.
+	 * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
+	 *                             or remotely (on another server instance). We should only forward
+	 *                             local cache invalidation requests, otherwise we end up in a
+	 *                             livelock where we continuously send the same request back and forth
+	 *                             between instances.
+	 */
+	module.expireAccessToken = function(webstrateId, token, local) {
+		if (accessTokens[webstrateId]) {
+			accessTokens[webstrateId][token];
+		}
+
+		// Even if the access token doesn't exist locally, we still publish it to the other instances.
+		// A clever timing attack could otherwise make it difficult to expire an access token.
+		if (local && pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: "expireAccessToken", webstrateId, token, WORKER_ID
+			}));
+		}
+	}
+
+	/**
+	 * Expire all access token.
+	 * @param {[type]} webstrateId WebstrateId.
+	 * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
+	 *                             or remotely (on another server instance). We should only forward
+	 *                             local cache invalidation requests, otherwise we end up in a
+	 *                             livelock where we continuously send the same request back and forth
+	 *                             between instances.
+	 */
+	module.expireAllAccessTokens = function(webstrateId, local) {
+		delete accessTokens[webstrateId]
+
+		if (local && pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: "expireAllAccessTokens", webstrateId, WORKER_ID
+			}));
+		}
 	}
 
 	/**

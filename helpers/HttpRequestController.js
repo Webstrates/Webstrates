@@ -160,6 +160,10 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				return serveCompressedWebstrate(req, res, snapshot);
 			}
 
+			if ("tokens" in req.query) {
+				return serveTokenList(req, res);
+			}
+
 			// Requesting a copy of the webstrate.
 			if ("copy" in req.query) {
 				var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
@@ -329,6 +333,10 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 			res.attachment(`${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`);
 			archive.pipe(res);
 		});
+	}
+
+	function serveTokenList(req, res) {
+		res.json(permissionManager.getAccessTokens(req.webstrateId));
 	}
 
 	/**

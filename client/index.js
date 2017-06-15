@@ -11,16 +11,16 @@ const coreWebsocket = require('./webstrates/coreWebsocket');
 // Create an event that'll be triggered once all modules have been loaded.
 coreEvents.createEvent('allModulesLoaded');
 
+const request = coreUtils.getLocationObject();
+
 const protocol = location.protocol === 'http:' ? 'ws:' : 'wss:';
-coreWebsocket.setup(`${protocol}//${location.host}/ws/`);
+coreWebsocket.setup(`${protocol}//${location.host}/ws/${location.search}`);
 
 // Load optional modules.
 config.modules.forEach(module => require('./webstrates/' + module));
 
 // Send out an event when all modules have been loaded.
 coreEvents.triggerEvent('allModulesLoaded');
-
-const request = coreUtils.getLocationObject();
 
 if (request.staticMode) {
 	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then((doc) => {

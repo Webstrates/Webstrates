@@ -1,21 +1,23 @@
 "use strict";
 
-var argv = require("optimist").argv;
+var argv = require('optimist').argv;
+var bodyParser = require('body-parser');
 var cluster = require('cluster');
-var Duplex = require("stream").Duplex;
-var express = require("express");
-var fs = require("fs");
-var fss = require("fs-sync");
-var http = require("http");
-var httpAuth = require("http-auth");
-var MongoClient = require("mongodb").MongoClient;
-var passport = require("passport");
-var redis = require("redis");
-var sessions = require("client-sessions");
-var sharedb = require("sharedb");
-var sharedbMongo = require("sharedb-mongo");
-var sharedbRedisPubSub = require("sharedb-redis-pubsub");
-var WebSocketServer = require("ws").Server;
+var Duplex = require('stream').Duplex;
+var express = require('express');
+var fs = require('fs');
+var fss = require('fs-sync');
+var http = require('http');
+var httpAuth = require('http-auth');
+var MongoClient = require('mongodb').MongoClient;
+var passport = require('passport');
+var redis = require('redis');
+var sessions = require('client-sessions');
+var sharedb = require('sharedb');
+var sharedbMongo = require('sharedb-mongo');
+var sharedbRedisPubSub = require('sharedb-redis-pubsub');
+var url = require('url');
+var WebSocketServer = require('ws').Server;
 
 global.WORKER_ID = cluster.worker && cluster.worker.id || 1;
 global.APP_PATH = __dirname;
@@ -108,7 +110,7 @@ var httpRequestController = require("./helpers/HttpRequestController.js")(docume
 
 var app = express();
 app.server = http.createServer(app);
-app.use(express.static("build"));
+app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static("static"));
 
 if (config.basicAuth) {
@@ -166,16 +168,16 @@ if (config.auth) {
 	auth = true;
 }
 
+// Ensure trailing slash after webstrateId and tag/label.
+app.get(/^\/([A-Z0-9\._-]+)(\/([A-Z0-9_-]+))?$/i,
+	httpRequestController.trailingSlashAppendHandler);
+
 app.use(function(req, res, next) {
-	sessionMiddleware(req, next);
+	sessionMiddleware(req, res, next);
 });
 
 app.get("/", httpRequestController.rootRequestHandler);
 app.get("/new", httpRequestController.newWebstrateRequestHandler);
-
-// Ensure trailing slash after webstrateId and tag/label.
-app.get(/^\/([A-Z0-9\._-]+)(\/([A-Z0-9_-]+))?$/i,
-	httpRequestController.trailingSlashAppendHandler);
 
 // Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
 app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%\._-]+\.[A-Z0-9_-]+))?$/i,
@@ -186,7 +188,21 @@ app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%\._-]+\.[A-Z0-9_-]
 // of a document.
 app.post(/^\/([A-Z0-9\._-]+)\/$/i,
 	httpRequestController.extractQuery,
-	assetManager.assetUploadHandler
+	function(req, res) {
+		if (req.files) {
+			return assetManager.assetUploadHandler(req, res);
+		}
+
+		if ('token' in req.body) {
+			if (req.user.token) {
+				return res.status(403).send("Insufficient permission. Cannot generate access token from " +
+					"token-based access (cannot generate tokens using tokens).")
+			}
+			return permissionManager.generateAccessToken(req, res);
+		}
+
+		return res.status(422).send("Parameter missing from request. No 'file' or 'token' found.");
+	}
 );
 
 // Catch all for get.
@@ -229,38 +245,67 @@ var sessionLoggingMiddleware = function(req, next) {
 	Middleware for extracting user data from cookies used for both regular HTTP requests (Express)
 	and WebSocket requests.
  */
-var sessionMiddleware = function(req, next) {
-	var username = "anonymous";
-	var provider = "";
+var sessionMiddleware = function(req, res, next) {
+	// The WebSocket has no result object.
+	var isWebSocket = !res;
+
+	var webstrateId, token;
+	if (isWebSocket) {
+		// For WebSocket requests.
+		if (req.data) {
+			webstrateId = req.data && req.data.d;
+			token = req.data.query && req.data.query.token;
+		}
+	}	else {
+		// And regular HTTP requests (after trailing slash has been appended).
+		var match = req.url.match(/^\/([A-Z0-9\._-]+)\//i);
+		token = req.query.token;
+		if (match) {
+			[, webstrateId] = match;
+		}
+	}
+
+	if (typeof req.user !== "object") {
+		req.user = {};
+	}
 
 	if (auth) {
 		var session = req.session || (req.agent && req.agent.stream && req.agent.stream.session);
 		if (session && session.passport && session.passport.user) {
-			username = session.passport.user.username;
-			provider = session.passport.user.provider;
+			req.user.username = session.passport.user.username;
+			req.user.provider = session.passport.user.provider;
 		}
-	}
-	if (typeof req.user !== "object") {
-		req.user = {};
 	}
 
 	req.remoteAddr = (req.headers && (req.headers['X-Forwarded-For'] ||
 		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
 
-	req.user.username = username;
-	req.user.provider = provider;
-	req.user.userId = username + ":" + provider;
-	req.webstrateId = req.id || req.data && req.data.d;
+	if (token) {
+		var userObj = permissionManager.getUserFromAccessToken(webstrateId, token);
+		if (userObj) {
+			req.user.token = token;
+			req.user.username = userObj.username;
+			req.user.provider = userObj.provider;
+		}
+		else if (res) {
+			return res.status(403).send("Invalid access token.");
+		}
+	}
+
+	req.user.username = req.user.username || "anonymous";
+	req.user.provider = req.user.provider || "";
+	req.user.userId = req.user.username + ":" + req.user.provider;
+	req.webstrateId = webstrateId;
 	next();
 };
 
 share.use(['connect', 'receive', 'fetch', 'bulk fetch', 'getOps', 'query', 'submit', 'delete'],
 	function(req, next) {
-	sessionMiddleware(req, next);
+	sessionMiddleware(req, undefined /* res object doesn't exist */, next);
 });
 
 share.use('connect', function(req, next) {
-	sessionLoggingMiddleware(req, next)
+	sessionLoggingMiddleware(req, next);
 });
 
 
@@ -340,9 +385,11 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 							var permissionsChanged = req.data.op.some(function(op) {
 								return op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === "data-auth";
 							});
-							// And if the permissions have changed, invalidate the permissions cache.
+							// And if the permissions have changed, invalidate the permissions cache and expire
+							// all access tokens.
 							if (permissionsChanged) {
 								permissionManager.invalidateCachedPermissions(req.webstrateId, true);
+								permissionManager.expireAllAccessTokens(req.webstrateId, true);
 							}
 						}
 
@@ -449,6 +496,7 @@ wss.on('connection', function(client) {
 	client.user = user;
 
 	var socketId = clientManager.addClient(client);
+	var query = url.parse(client.upgradeReq.url, true).query;
 
 	// We replace `client.send` with a function that doesn't throw an exception if the message fails.
 	// Instead, it just quietly removes the client.
@@ -546,6 +594,9 @@ wss.on('connection', function(client) {
 		// to sharedb, because it may trigger our share.use callbacks where we need access to the
 		// socketId.
 		data.socketId = socketId;
+
+		// Also adding query string (to get access token).
+		data.query = query;
 
 		// All our custom actions have the wa (webstrates action) property set. If this is not the case,
 		// the message was intended for sharedb.
@@ -648,6 +699,7 @@ wss.on('connection', function(client) {
 								// The permissions of the older version of the document may be different than what
 								// they are now, so we should invalidate the cached permissions.
 								permissionManager.invalidateCachedPermissions(webstrateId);
+								permissionManager.expireAllAccessTokens(req.webstrateId, true);
 
 								client.send(JSON.stringify({ wa: "reply", reply: newVersion, token: data.token }));
 							}
