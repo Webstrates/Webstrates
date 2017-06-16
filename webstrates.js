@@ -189,19 +189,15 @@ app.get(/^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%\._-]+\.[A-Z0-9_-]
 app.post(/^\/([A-Z0-9\._-]+)\/$/i,
 	httpRequestController.extractQuery,
 	function(req, res) {
-		if (req.files) {
-			return assetManager.assetUploadHandler(req, res);
-		}
-
 		if ('token' in req.body) {
-			if (req.user.token) {
-				return res.status(403).send("Insufficient permission. Cannot generate access token from " +
-					"token-based access (cannot generate tokens using tokens).")
-			}
 			return permissionManager.generateAccessToken(req, res);
 		}
 
-		return res.status(422).send("Parameter missing from request. No 'file' or 'token' found.");
+		if (req.headers['content-type'].startsWith('multipart/form-data;')) {
+			return assetManager.assetUploadHandler(req, res);
+		}
+
+		return res.status(422).send("Parameter missing from request. No 'token' or files found.");
 	}
 );
 

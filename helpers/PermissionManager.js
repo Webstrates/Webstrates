@@ -81,6 +81,10 @@ module.exports = function(documentManager, pubsub) {
 	 * @public
 	 */
 	module.generateAccessToken = function(req, res) {
+		if (req.user.token) {
+			return res.status(403).send("Insufficient permission. Cannot generate access token from " +
+			"token-based access (cannot generate tokens using tokens).")
+		}
 		var duration = Number(req.body.token) > 0 ? Number(req.body.token) : 300;
 		var webstrateId = req.webstrateId;
 		var username = req.user.username;
