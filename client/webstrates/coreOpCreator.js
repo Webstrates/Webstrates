@@ -143,7 +143,7 @@ function characterDataMutation(mutation, targetPathNode) {
 	ops.forEach((op) => {
 		var charIndex = op.p[op.p.length - 1];
 		coreEvents.triggerEvent('DOMTextNodeInsertion', mutation.target, mutation.target.parentElement,
-			charIndex, op.si);
+			charIndex, op.si, true);
 	});
 
 	return ops;
