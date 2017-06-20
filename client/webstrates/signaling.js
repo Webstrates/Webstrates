@@ -112,14 +112,13 @@ function setupSignal(node, publicObject, eventObject) {
 		return;
 	}
 
-	const wid = publicObject.id;
-
 	// If an element doesn't have a wid, it's because we haven't registered it in the DOM yet,
 	// meaning nobody can signal on it. However, we still allow users to subscribe to signals on
 	// the event, in case the element gets a wid in the next cycle. If it doesn't get a wid in
 	// time, we warn the user that they subscribed to a signal that doesn't exist.
 	eventObject.createEvent('signal', {
 		addListener: () => {
+			const wid = publicObject.id;
 			if (wid) {
 				subscribe(wid);
 				return;
@@ -130,20 +129,25 @@ function setupSignal(node, publicObject, eventObject) {
 					subscribe(wid);
 					return;
 				}
-				console.warn(`Signal event listener attached to ${node}, but element can't be signaled on,`
-					+ ' because it\'s not in the DOM or is transient.');
+				console.warn(`Signal event listener attached to ${node.outerHTML}, but element can't be`
+					+ ' signaled on, because it\'s not in the DOM or is transient.');
 			});
 		},
-		removeListener: () => unsubscribe(wid)
+		removeListener: () => {
+			const wid = publicObject.id;
+			unsubscribe(wid);
+		}
 	});
 
 	Object.defineProperty(publicObject, 'signal', {
 		value: (message, recipients) => {
+			const wid = publicObject.id;
 			if (wid) {
 				signal(wid, message, recipients);
 				return;
 			}
-			throw new Error(`Can't signal on ${node}, because it's not in the DOM or is transient.`);
+			throw new Error(`Can't signal on ${node.outerHTML}, because it's not in the DOM or is` +
+				' transient.');
 		},
 		writable: false
 	});
