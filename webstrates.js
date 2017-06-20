@@ -302,7 +302,8 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			return next();
 		}
 
-		permissionManager.getPermissions(req.user.username, req.user.provider, req.webstrateId,
+		permissionManager.getUserPermissionsFromWebstrateId(req.user.username, req.user.provider,
+			req.webstrateId,
 			function(err, permissions) {
 				if (err) {
 					return next(err);
@@ -557,7 +558,7 @@ wss.on('connection', function(client) {
 		// Handle webstrate actions.
 		var webstrateId = data.d;
 
-		permissionManager.getPermissions(user.username, user.provider, webstrateId,
+		permissionManager.getUserPermissionsFromWebstrateId(user.username, user.provider, webstrateId,
 			function(err, permissions) {
 			if (err) return console.error(err);
 

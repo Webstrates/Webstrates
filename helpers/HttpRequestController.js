@@ -90,7 +90,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 				return res.status(409).send(String(err));
 			}
 
-			req.user.permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
+			req.user.permissions = permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 
 			// If the webstrate doesn't exist, write permissions are required to create it.

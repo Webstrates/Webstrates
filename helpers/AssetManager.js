@@ -310,7 +310,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				return next(new Error("Document doesn't exist."));
 			}
 
-			var permissions = permissionManager.getPermissionsFromSnapshot(req.user.username,
+			var permissions = permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 				req.user.provider, snapshot);
 
 			if (!permissions.includes("w")) {
