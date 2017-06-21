@@ -16,29 +16,56 @@ loadedEvent.delayUntil('clientsReceived');
 
 // Create events in userland.
 globalObject.createEvent('clientJoin');
+globalObject.createEvent('clientJoin*');
 globalObject.createEvent('clientPart');
+globalObject.createEvent('clientPart*');
 
 const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
+
+let ownClientId;
 
 websocket.onjsonmessage = (message) => {
 	switch (message.wa) {
 
-		case 'hello':
+		case 'hello': {
 			globalObject.publicObject.clients = message.clients;
 			globalObject.publicObject.clientId = message.id;
+			ownClientId = message.id;
+
+			// Trigger internally.
 			coreEvents.triggerEvent('clientsReceived');
 			break;
+		}
 
-		case 'clientJoin':
-			coreEvents.triggerEvent('clientJoin');
-			globalObject.triggerEvent('clientJoin');
+		case 'clientJoin': {
+			const joiningClientId = message.id;
+
+			// Trigger internally.
+			coreEvents.triggerEvent('clientJoin', joiningClientId);
+
+			// Trigger in userland.
+			const isOwnJoin = ownClientId === joiningClientId;
+			if (!isOwnJoin) {
+				globalObject.triggerEvent('clientJoin', joiningClientId, isOwnJoin);
+			}
+			globalObject.triggerEvent('clientJoin*', joiningClientId, isOwnJoin);
 			break;
+		}
 
-		case 'clientPart':
-			coreEvents.triggerEvent('clientPart');
-			globalObject.triggerEvent('clientPart');
+		case 'clientPart': {
+			const partingClientId = message.id;
+
+			// Trigger internally.
+			coreEvents.triggerEvent('clientPart', partingClientId);
+
+			// Trigger in userland.
+			const isOwnPart = ownClientId === partingClientId;
+			if (!isOwnPart) {
+				globalObject.triggerEvent('clientPart', partingClientId, isOwnPart);
+			}
+			globalObject.triggerEvent('clientPart*', partingClientId, isOwnPart);
 			break;
-
+		}
 	}
 };
 
