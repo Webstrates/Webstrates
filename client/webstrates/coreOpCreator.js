@@ -204,8 +204,12 @@ function childListMutation(mutation, targetPathNode) {
 					}
 				}
 
-				const wid = coreUtils.randomString();
-				coreUtils.setWidOnElement(childNode, wid);
+				// The element may being moved, and thus already is in the DOM and has a wid. We don't want
+				// to redefine this.
+				if (!childNode.__wid) {
+					const wid = coreUtils.randomString();
+					coreUtils.setWidOnElement(childNode, wid);
+				}
 			}
 		}, parentNode);
 

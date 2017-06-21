@@ -28,7 +28,9 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 
 	// If this webstrate object is being added before the element has been node to the DOM (or if the
 	// node is transient), it won't have a __wid, so we won't create an id property.
-	if (node.__wid) {
+	// attachWebstrateObjectToNode may be run multiple times for the same node (e.g. if a node is
+	// being moved around in the DOM), in which case we're not allowed to redefine the id property.
+	if (node.__wid && !node.webstrate.id) {
 		// We don't use `writeable: false` and value here, because in rare cases, node.__wid may change,
 		// so we need to always serve the current node.__wid, not the node.__wid value that existed when
 		// this was added. The wid may get redefined if a client (e.g. file system) creates a node
@@ -37,7 +39,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 		// milliseconds under normal network conditions. That's the cost of eventual consistency.
 		Object.defineProperty(node.webstrate, 'id', {
 			get: () => node.__wid,
-			set: () => { throw new Error('node ID should not be modified'); },
+			set: () => { throw new TypeError('Cannot redefine property: id'); },
 			enumerable: true
 		});
 	}
