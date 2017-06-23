@@ -6,7 +6,7 @@ var shortId = require('shortid');
  * ClientManager constructor.
  * @constructor
  */
-module.exports = function(cookieHelper, db, pubsub) {
+module.exports = function(db, pubsub) {
 	var PUBSUB_CHANNEL = "webstratesClients";
 	var module = {};
 

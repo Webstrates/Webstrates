@@ -95,16 +95,18 @@ MongoClient.connect(DB_ADDRESS, function(err, _db) {
 	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
 	db.assets = _db.collection('assets');
 	db.assets.ensureIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
+	db.sessions = _db.collection('sessions');
+	db.sessions.createIndex({ createdAt: 1, expireAfterSeconds: 60 * 60 * 24 * 365 });
 	db.cookies = _db.collection('cookies');
 	db.cookies.ensureIndex({ userId: 1, webstrateId: 1 }, { unique: true });
 });
 
-var cookieHelper = require("./helpers/CookieHelper.js")();
-var clientManager = require("./helpers/ClientManager.js")(cookieHelper, db, pubsub);
+var clientManager = require("./helpers/ClientManager.js")(db, pubsub);
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, pubsub);
 var assetManager = require("./helpers/AssetManager.js")(permissionManager, clientManager,
 	documentManager, db);
+var sessionManager = require("./helpers/SessionManager.js")(db);
 var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,
 	permissionManager, assetManager);
 
@@ -129,13 +131,8 @@ var auth = false;
 if (config.auth) {
 	app.use(sessions(config.auth.cookie));
 
-	passport.serializeUser(function(user, done) {
-		return done(null, user);
-	});
-
-	passport.deserializeUser(function(obj, done) {
-		return done(null, obj);
-	});
+	passport.serializeUser(sessionManager.serializeUser);
+	passport.deserializeUser(sessionManager.deserializeUser);
 
 	for (var key in config.auth.providers) {
 		var PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
@@ -487,289 +484,295 @@ if (config.rateLimit) {
 }
 
 wss.on('connection', function(client) {
-	var cookie = cookieHelper.decodeCookie(client.upgradeReq.headers.cookie);
-	var user = (cookie && cookie.passport.user) || {};
-	client.user = user;
+	// Apply sessions and passport middleware on the websocket request, so we can access
+	// the user cookie.
+	sessions(config.auth.cookie)(client.upgradeReq, {}, function() {
+		passport.initialize()(client.upgradeReq, null, function() {
+			passport.session()(client.upgradeReq, null, function() {
+				var user = client.upgradeReq.user || {};
+				client.user = user;
 
-	var socketId = clientManager.addClient(client);
-	var query = url.parse(client.upgradeReq.url, true).query;
+				var socketId = clientManager.addClient(client);
+				var query = url.parse(client.upgradeReq.url, true).query;
 
-	// We replace `client.send` with a function that doesn't throw an exception if the message fails.
-	// Instead, it just quietly removes the client.
-	client.__send = client.send;
-	client.send = function(data) {
-		try {
-			client.__send(data);
-		} catch (err) {
-			clientManager.removeClient(socketId);
-			return false;
-		}
-		return true;
-	};
+				// We replace `client.send` with a function that doesn't throw an exception if the message fails.
+				// Instead, it just quietly removes the client.
+				client.__send = client.send;
+				client.send = function(data) {
+					try {
+						client.__send(data);
+					} catch (err) {
+						clientManager.removeClient(socketId);
+						return false;
+					}
+					return true;
+				};
 
-	var stream = new Duplex({
-		objectMode: true
-	});
+				var stream = new Duplex({
+					objectMode: true
+				});
 
-	var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
-		client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
+				var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
+					client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
 
-	stream.session = cookie;
-	stream.headers = client.upgradeReq.headers;
-	stream.remoteAddress = remoteAddress;
+				stream.headers = client.upgradeReq.headers;
+				stream.remoteAddress = remoteAddress;
 
-	stream._write = function(chunk, encoding, callback) {
-		try {
-			client.send(JSON.stringify(chunk));
-		} catch (err) {
-			console.error(err);
-		}
-		callback();
-	};
+				stream._write = function(chunk, encoding, callback) {
+					try {
+						client.send(JSON.stringify(chunk));
+					} catch (err) {
+						console.error(err);
+					}
+					callback();
+				};
 
-	stream._read = function() {};
+				stream._read = function() {};
 
-	stream.on('error', function(msg) {
-		try {
-			return client.close(msg);
-		} catch (err) {
-			console.error(err);
-		}
-	});
+				stream.on('error', function(msg) {
+					try {
+						return client.close(msg);
+					} catch (err) {
+						console.error(err);
+					}
+				});
 
-	stream.on('end', function() {
-		try {
-			return client.close();
-		} catch (err) {
-			console.error(err);
-		}
-	});
+				stream.on('end', function() {
+					try {
+						return client.close();
+					} catch (err) {
+						console.error(err);
+					}
+				});
 
-	var opCount = 0, signalCount = 0;
-	if (config.rateLimit) {
-		setInterval(function() {
-			opCount = 0, signalCount = 0;
-		}, config.rateLimit.intervalLength);
-	}
-
-	client.on('message', function(data) {
-		// Rate limiting. Limits the number of messages per interval to avoid clients that have run
-		// haywire from DoS'ing the server.
-		if (config.rateLimit) {
-			if ((data.startsWith('{"a":') && ++opCount > config.rateLimit.opsPerInterval)
-			|| (data.startsWith('{"wa":') && ++signalCount > config.rateLimit.signalsPerInterval)) {
-				console.log("Blacklisting", remoteAddress, "for exceeding rate limitation.");
-				var timestamp = Date.now();
-				addressBanList[remoteAddress] = timestamp;
-				if (pubsub) {
-					pubsub.publisher.publish(BANLIST_CHANNEL, JSON.stringify({
-						WORKER_ID, remoteAddress, timestamp
-					}));
+				var opCount = 0, signalCount = 0;
+				if (config.rateLimit) {
+					setInterval(function() {
+						opCount = 0, signalCount = 0;
+					}, config.rateLimit.intervalLength);
 				}
-			}
 
-			if (addressBanList[remoteAddress]) {
-				client.close();
-				return;
-			}
-		}
-
-		try {
-			data = JSON.parse(data);
-		} catch (err) {
-			console.error("Received invalid websocket data from", socketId + ":", data);
-			return;
-		}
-
-		// Ignore keep alive messages.
-		if (data.type === 'alive') {
-			return;
-		}
-
-		// Adding socketId to every incoming message. This has to be done even to the messages we send
-		// to sharedb, because it may trigger our share.use callbacks where we need access to the
-		// socketId.
-		data.socketId = socketId;
-
-		// Also adding query string (to get access token).
-		data.query = query;
-
-		// All our custom actions have the wa (webstrates action) property set. If this is not the case,
-		// the message was intended for sharedb.
-		if (!data.wa) {
-			// We do not need to check for permissions here; this happens in the sharedb middleware.
-			stream.push(data);
-			return;
-		}
-
-		// Handle webstrate actions.
-		var webstrateId = data.d;
-
-		permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
-			function(err, permissions) {
-			if (err) return console.error(err);
-
-			if (!permissions.includes("r")) {
-				return console.error("Insufficient read permissions in", data.wa, "call");
-			}
-
-			switch (data.wa) {
-				// When the client is ready.
-				case "ready":
-					clientManager.triggerJoin(socketId);
-					break;
-				// Request a snapshot.
-				case "fetchdoc":
-					var version = data.v;
-					var tag = data.l;
-					if (data.token) {
-						documentManager.getDocument({ webstrateId, tag, version }, function(err, snapshot) {
-							var responseObj = { wa: "reply", token: data.token };
-							if (err) {
-								responseObj.error = err.message;
-							} else {
-								responseObj.reply = snapshot;
+				client.on('message', function(data) {
+					// Rate limiting. Limits the number of messages per interval to avoid clients that have run
+					// haywire from DoS'ing the server.
+					if (config.rateLimit) {
+						if ((data.startsWith('{"a":') && ++opCount > config.rateLimit.opsPerInterval)
+						|| (data.startsWith('{"wa":') && ++signalCount > config.rateLimit.signalsPerInterval)) {
+							console.log("Blacklisting", remoteAddress, "for exceeding rate limitation.");
+							var timestamp = Date.now();
+							addressBanList[remoteAddress] = timestamp;
+							if (pubsub) {
+								pubsub.publisher.publish(BANLIST_CHANNEL, JSON.stringify({
+									WORKER_ID, remoteAddress, timestamp
+								}));
 							}
-							client.send(JSON.stringify(responseObj));
-						});
+						}
+
+						if (addressBanList[remoteAddress]) {
+							client.close();
+							return;
+						}
 					}
-					break;
-				// Subscribe to signals.
-				case "subscribe":
-					var nodeId = data.id || "document";
-					clientManager.subscribe(socketId, webstrateId, nodeId);
-					if (data.token) {
-						client.send(JSON.stringify({ wa: "reply", token: data.token }));
-					}
-					break;
-				// Unsubscribe from signals.
-				case "unsubscribe":
-					var nodeId = data.id || "document";
-					clientManager.unsubscribe(socketId, webstrateId, nodeId);
-					if (data.token) {
-						client.send(JSON.stringify({ wa: "reply", token: data.token }));
-					}
-					break;
-				// Send a signal.
-				case "publish":
-					var nodeId = data.id || "document";
-					var message = data.m;
-					var recipients = data.recipients;
-					clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
-					break;
-				// Signaling on user object.
-				case "signalUserObject":
-					var message = data.m;
-					clientManager.signalUserObject(user.userId, socketId, message, true);
-					break;
-				// Received cookie update.
-				case "cookieUpdate":
-					if (data.update && user.userId !== "anonymous") {
-						clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,
-						true);
-					}
-					break;
-				// Restoring a document to a previous version.
-				case "restore":
-					if (!permissions.includes("w")) {
-						console.error("Insufficient write permissions in", data.wa, "call");
-						client.send(JSON.stringify({ wa: "reply", token: data.token,
-							error: "Insufficient write permissions in restore call." }));
+
+					try {
+						data = JSON.parse(data);
+					} catch (err) {
+						console.error("Received invalid websocket data from", socketId + ":", data);
 						return;
 					}
-					var version = data.v;
-					var tag = data.l;
-					// Only one of these should be defined. We can't restore to a version and a tag.
-					// version xor tag.
-					if (!!version ^ !!tag) {
-						var source = `${user.userId} (${stream.remoteAddress})`;
-						documentManager.restoreDocument({ webstrateId, tag, version }, source,
-							function(err, newVersion) {
-							if (err) {
+
+					// Ignore keep alive messages.
+					if (data.type === 'alive') {
+						return;
+					}
+
+					// Adding socketId to every incoming message. This has to be done even to the messages we send
+					// to sharedb, because it may trigger our share.use callbacks where we need access to the
+					// socketId.
+					data.socketId = socketId;
+
+					// Also adding query string (to get access token).
+					data.query = query;
+
+					// All our custom actions have the wa (webstrates action) property set. If this is not the case,
+					// the message was intended for sharedb.
+					if (!data.wa) {
+						// We do not need to check for permissions here; this happens in the sharedb middleware.
+						stream.push(data);
+						return;
+					}
+
+					// Handle webstrate actions.
+					var webstrateId = data.d;
+
+					permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
+						function(err, permissions) {
+						if (err) return console.error(err);
+
+						if (!permissions.includes("r")) {
+							return console.error("Insufficient read permissions in", data.wa, "call");
+						}
+
+						switch (data.wa) {
+							// When the client is ready.
+							case "ready":
+								clientManager.triggerJoin(socketId);
+								break;
+							// Request a snapshot.
+							case "fetchdoc":
+								var version = data.v;
+								var tag = data.l;
 								if (data.token) {
-									client.send(JSON.stringify({ wa: "reply", token: data.token,
-										error: err.message
-									}));
+									documentManager.getDocument({ webstrateId, tag, version }, function(err, snapshot) {
+										var responseObj = { wa: "reply", token: data.token };
+										if (err) {
+											responseObj.error = err.message;
+										} else {
+											responseObj.reply = snapshot;
+										}
+										client.send(JSON.stringify(responseObj));
+									});
 								}
-							} else {
-								// The permissions of the older version of the document may be different than what
-								// they are now, so we should invalidate the cached permissions.
-								permissionManager.invalidateCachedPermissions(webstrateId);
-								permissionManager.expireAllAccessTokens(req.webstrateId, true);
+								break;
+							// Subscribe to signals.
+							case "subscribe":
+								var nodeId = data.id || "document";
+								clientManager.subscribe(socketId, webstrateId, nodeId);
+								if (data.token) {
+									client.send(JSON.stringify({ wa: "reply", token: data.token }));
+								}
+								break;
+							// Unsubscribe from signals.
+							case "unsubscribe":
+								var nodeId = data.id || "document";
+								clientManager.unsubscribe(socketId, webstrateId, nodeId);
+								if (data.token) {
+									client.send(JSON.stringify({ wa: "reply", token: data.token }));
+								}
+								break;
+							// Send a signal.
+							case "publish":
+								var nodeId = data.id || "document";
+								var message = data.m;
+								var recipients = data.recipients;
+								clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
+								break;
+							// Signaling on user object.
+							case "signalUserObject":
+								var message = data.m;
+								clientManager.signalUserObject(user.userId, socketId, message, true);
+								break;
+							// Received cookie update.
+							case "cookieUpdate":
+								if (data.update && user.userId !== "anonymous") {
+									clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,
+									true);
+								}
+								break;
+							// Restoring a document to a previous version.
+							case "restore":
+								if (!permissions.includes("w")) {
+									console.error("Insufficient write permissions in", data.wa, "call");
+									client.send(JSON.stringify({ wa: "reply", token: data.token,
+										error: "Insufficient write permissions in restore call." }));
+									return;
+								}
+								var version = data.v;
+								var tag = data.l;
+								// Only one of these should be defined. We can't restore to a version and a tag.
+								// version xor tag.
+								if (!!version ^ !!tag) {
+									var source = `${user.userId} (${stream.remoteAddress})`;
+									documentManager.restoreDocument({ webstrateId, tag, version }, source,
+										function(err, newVersion) {
+										if (err) {
+											if (data.token) {
+												client.send(JSON.stringify({ wa: "reply", token: data.token,
+													error: err.message
+												}));
+											}
+										} else {
+											// The permissions of the older version of the document may be different than what
+											// they are now, so we should invalidate the cached permissions.
+											permissionManager.invalidateCachedPermissions(webstrateId);
+											permissionManager.expireAllAccessTokens(req.webstrateId, true);
 
-								client.send(JSON.stringify({ wa: "reply", reply: newVersion, token: data.token }));
-							}
-						});
-					} else {
-						console.error("Can't restore, need either a tag label or version. Not both.");
-						if (data.token) {
-							client.send(JSON.stringify({ wa: "reply", token: data.token,
-								error: "Can't restore, need either a tag label or version. Not both."
-							}));
-						}
-					}
-					break;
-				// Adding a tag to a document version.
-				case "tag":
-					if (!permissions.includes("w")) {
-						console.error("Insufficient write permissions in", data.wa, "call");
-						if (data.token) {
-							client.send(JSON.stringify({ wa: "reply", token: data.token,
-								error: "Insufficient write permissions in tag call."
-							}));
-						}
-						return;
-					}
-					var tag = data.l;
-					var version = parseInt(data.v);
-					// Ensure that label does not begin with a number and that version is a number.
-					if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
-						return;
-					}
-					documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
-						if (err) {
-							console.error(err);
-							if (data.token) {
-								client.send(JSON.stringify({ wa: "reply", token: data.token, error: err.message }));
-							}
+											client.send(JSON.stringify({ wa: "reply", reply: newVersion, token: data.token }));
+										}
+									});
+								} else {
+									console.error("Can't restore, need either a tag label or version. Not both.");
+									if (data.token) {
+										client.send(JSON.stringify({ wa: "reply", token: data.token,
+											error: "Can't restore, need either a tag label or version. Not both."
+										}));
+									}
+								}
+								break;
+							// Adding a tag to a document version.
+							case "tag":
+								if (!permissions.includes("w")) {
+									console.error("Insufficient write permissions in", data.wa, "call");
+									if (data.token) {
+										client.send(JSON.stringify({ wa: "reply", token: data.token,
+											error: "Insufficient write permissions in tag call."
+										}));
+									}
+									return;
+								}
+								var tag = data.l;
+								var version = parseInt(data.v);
+								// Ensure that label does not begin with a number and that version is a number.
+								if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
+									return;
+								}
+								documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
+									if (err) {
+										console.error(err);
+										if (data.token) {
+											client.send(JSON.stringify({ wa: "reply", token: data.token, error: err.message }));
+										}
+									}
+								});
+								break;
+							// Removing a tag from a document version.
+							case "untag":
+								if (!permissions.includes("w")) {
+									return console.error("Insufficient write permissions in", data.wa, "call");
+								}
+								var tag = data.l;
+								if (tag && !/^\d/.test(tag)) {
+									documentManager.untagDocument(webstrateId, { tag });
+									break;
+								}
+								var version = parseInt(data.v);
+								if (version) {
+									documentManager.untagDocument(webstrateId, { version });
+									break;
+								}
+								console.error("Can't restore, need either a tag label or version.");
+								break;
 						}
 					});
-					break;
-				// Removing a tag from a document version.
-				case "untag":
-					if (!permissions.includes("w")) {
-						return console.error("Insufficient write permissions in", data.wa, "call");
+				});
+
+				client.on('close', function(reason) {
+					clientManager.removeClient(socketId);
+					stream.push(null);
+					stream.emit('close');
+					stream.emit('end');
+					stream.end();
+					try {
+						return client.close(reason);
+					} catch (err) {
+						console.error(err);
 					}
-					var tag = data.l;
-					if (tag && !/^\d/.test(tag)) {
-						documentManager.untagDocument(webstrateId, { tag });
-						break;
-					}
-					var version = parseInt(data.v);
-					if (version) {
-						documentManager.untagDocument(webstrateId, { version });
-						break;
-					}
-					console.error("Can't restore, need either a tag label or version.");
-					break;
-			}
+				});
+
+				share.listen(stream);
+			});
 		});
 	});
-
-	client.on('close', function(reason) {
-		clientManager.removeClient(socketId);
-		stream.push(null);
-		stream.emit('close');
-		stream.emit('end');
-		stream.end();
-		try {
-			return client.close(reason);
-		} catch (err) {
-			console.error(err);
-		}
-	});
-
-	share.listen(stream);
 });
 
 var port = argv.p || config.listeningPort || 7007;
