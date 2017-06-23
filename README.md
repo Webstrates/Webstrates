@@ -5,6 +5,32 @@ Webstrates is a research prototype enabling collaborative editing of websites th
 
 Webstrates itself is a webserver and transparent web client that persists and synchronizes any changes done to the Document Object Model (DOM) of any page served between clients of the same page, including changes to inlined JavaScript or CSS. By using [transclusions](https://en.wikipedia.org/wiki/Transclusion) through iframes, we achieve an application-to-document-like relationship between two webstrates. With examples built upon Webstrates, we have demonstrated how transclusion combined with the use of CSS injection and the principles of [instrumental interaction](https://www.lri.fr/~mbl/INSTR/eintroduction.html) can allow multiple users to collaborate on the same webstrate through highly personalized and extensible editors. You can find the academic paper and videos of Webstrates in action at [webstrates.net](http://www.webstrates.net).
 
+Table of contents
+=================
+- [Installation](#installation)
+- [Basic Usage](#basic-usage)
+  * [Compatibility table](#compatibility-table)
+  * [jQuery](#jquery)
+- [Advanced Usage](#advanced-usage)
+  * [Advanced creation of webstrates](#advanced-creation-of-webstrates)
+  * [Accessing the history of a webstrate](#accessing-the-history-of-a-webstrate)
+  * [Restoring a webstrate](#restoring-a-webstrate)
+  * [Deletion of a webstrate](#deletion-of-a-webstrate)
+  * [Events](#events)
+  * [Cookies](#cookies)
+  * [Assets](#assets)
+  * [Signaling](#signaling)
+  * [Signal streaming](#signal-streaming)
+  * [Tagging](#tagging)
+  * [Transient data](#transient-data)
+  * [Connected clients](#connected-clients)
+  * [Handling user connection](#handling-user-connection)
+  * [Rate limiting](#rate-limiting)
+  * [Authentication](#authentication)
+- [Disclaimer](#disclaimer)
+- [License](#license)
+
+
 Installation
 ============
 Requirements:
