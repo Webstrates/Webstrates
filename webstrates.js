@@ -5,12 +5,11 @@ var bodyParser = require('body-parser');
 var cluster = require('cluster');
 var Duplex = require('stream').Duplex;
 var express = require('express');
-var fs = require('fs');
-var fss = require('fs-sync');
+var fs = require('fs');var fss = require('fs-sync');
 var http = require('http');
 var httpAuth = require('http-auth');
-var MongoClient = require('mongodb').MongoClient;
 var passport = require('passport');
+var OAuth2Strategy = require('passport-oauth2');
 var redis = require('redis');
 var sessions = require('client-sessions');
 var sharedb = require('sharedb');
@@ -65,6 +64,8 @@ if (typeof global.config.threads !== "undefined") {
 
 var DB_ADDRESS = global.config.db || "mongodb://localhost:27017/webstrate";
 
+var db = require('./helpers/database.js')(DB_ADDRESS);
+
 var pubsub;
 if (global.config.pubsub) {
 	pubsub = {
@@ -82,26 +83,13 @@ var share = sharedb({
 });
 var agent = share.connect();
 
-var db = {};
-MongoClient.connect(DB_ADDRESS, function(err, _db) {
-	if (err)
-		throw err;
+var db = require('./helpers/database.js')(global.config.db);
 
-	db.sessionLog = _db.collection('sessionLog');
-	db.webstrates = _db.collection('webstrates');
-	db.ops = _db.collection('ops');
-	db.tags = _db.collection('tags');
-	db.tags.ensureIndex({ webstrateId: 1, label: 1 }, { unique: true });
-	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
-	db.assets = _db.collection('assets');
-	db.assets.ensureIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
-	db.sessions = _db.collection('sessions');
-	db.sessions.createIndex({ createdAt: 1, expireAfterSeconds: 60 * 60 * 24 * 365 });
-	db.cookies = _db.collection('cookies');
-	db.cookies.ensureIndex({ userId: 1, webstrateId: 1 }, { unique: true });
-});
-
-var clientManager = require("./helpers/ClientManager.js")(db, pubsub);
+// We initialize clientManager to allow for circular dependencies between messagingManager and
+// clientManager.
+var clientManager = {};
+var messagingManager = require('./helpers/MessagingManager.js')(clientManager, db, pubsub);
+Object.assign(clientManager, require("./helpers/ClientManager.js")(messagingManager, db, pubsub));
 var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, pubsub);
 var assetManager = require("./helpers/AssetManager.js")(permissionManager, clientManager,
@@ -239,18 +227,13 @@ var sessionLoggingMiddleware = function(req, next) {
 	and WebSocket requests.
  */
 var sessionMiddleware = function(req, res, next) {
-	// The WebSocket has no result object.
-	var isWebSocket = !res;
-
 	var webstrateId, token;
-	if (isWebSocket) {
-		// For WebSocket requests.
-		if (req.data) {
+
+	if (req.data) {
 			webstrateId = req.data && req.data.d;
 			token = req.data.query && req.data.query.token;
-		}
-	}	else {
-		// And regular HTTP requests (after trailing slash has been appended).
+			req.user = req.agent.stream.user;
+	}	else if (req.url) {
 		var match = req.url.match(/^\/([A-Z0-9\._-]+)\//i);
 		token = req.query.token;
 		if (match) {
@@ -260,14 +243,6 @@ var sessionMiddleware = function(req, res, next) {
 
 	if (typeof req.user !== "object") {
 		req.user = {};
-	}
-
-	if (auth) {
-		var session = req.session || (req.agent && req.agent.stream && req.agent.stream.session);
-		if (session && session.passport && session.passport.user) {
-			req.user.username = session.passport.user.username;
-			req.user.provider = session.passport.user.provider;
-		}
 	}
 
 	req.remoteAddr = (req.headers && (req.headers['X-Forwarded-For'] ||
@@ -285,7 +260,7 @@ var sessionMiddleware = function(req, res, next) {
 		}
 	}
 
-	req.user.username = req.user.username || "anonymous";
+	req.user.username = req.user.username || "anonymousB";
 	req.user.provider = req.user.provider || "";
 	req.user.userId = req.user.username + ":" + req.user.provider;
 	req.webstrateId = webstrateId;
@@ -486,10 +461,16 @@ if (config.rateLimit) {
 wss.on('connection', function(client) {
 	// Apply sessions and passport middleware on the websocket request, so we can access
 	// the user cookie.
+	// Decrypt cookie.
 	sessions(config.auth.cookie)(client.upgradeReq, {}, function() {
 		passport.initialize()(client.upgradeReq, null, function() {
+			// Deserialize passport session
 			passport.session()(client.upgradeReq, null, function() {
 				var user = client.upgradeReq.user || {};
+				//console.log(user);
+				user.username = user.username || "anonymous";
+				user.provider = user.provider || "";
+				user.userId = user.username + ":" + user.provider;
 				client.user = user;
 
 				var socketId = clientManager.addClient(client);
@@ -512,9 +493,8 @@ wss.on('connection', function(client) {
 					objectMode: true
 				});
 
-				var remoteAddress = client.upgradeReq.headers['X-Forwarded-For'] ||
-					client.upgradeReq.headers['x-forwarded-for'] || client.upgradeReq.connection.remoteAddress;
-
+				var remoteAddress = client.upgradeReq.remoteAddr;
+				stream.user = user;
 				stream.headers = client.upgradeReq.headers;
 				stream.remoteAddress = remoteAddress;
 
@@ -623,7 +603,8 @@ wss.on('connection', function(client) {
 								var version = data.v;
 								var tag = data.l;
 								if (data.token) {
-									documentManager.getDocument({ webstrateId, tag, version }, function(err, snapshot) {
+									documentManager.getDocument({ webstrateId, tag, version }, function(err,
+										snapshot) {
 										var responseObj = { wa: "reply", token: data.token };
 										if (err) {
 											responseObj.error = err.message;
@@ -664,11 +645,29 @@ wss.on('connection', function(client) {
 								break;
 							// Received cookie update.
 							case "cookieUpdate":
-								if (data.update && user.userId !== "anonymous") {
-									clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,
+								if (data.update && user.userId !== "anonymous:") {
+									clientManager.updateCookie(user.userId, webstrateId, data.update.key,
+										data.update.value,
 									true);
 								}
 								break;
+							case "sendMessage":
+								var message = data.m;
+								var recipients = data.recipients;
+								var senderId = user.userId === "anonymous:" ? socketId : user.userId;
+								messagingManager.sendMessage(recipients, message, senderId, true);
+								break;
+							case "deleteMessage":
+								if (user.userId !== "anonymous:") {
+									messagingManager.deleteMessage(user.userId, data.messageId);
+								}
+								break;
+							case "deleteMessages":
+								if (user.userId !== "anonymous:") {
+									messagingManager.deleteMessages(user.userId);
+								}
+								break;
+
 							// Restoring a document to a previous version.
 							case "restore":
 								if (!permissions.includes("w")) {
@@ -692,12 +691,13 @@ wss.on('connection', function(client) {
 												}));
 											}
 										} else {
-											// The permissions of the older version of the document may be different than what
-											// they are now, so we should invalidate the cached permissions.
+											// The permissions of the older version of the document may be different than
+											// what they are now, so we should invalidate the cached permissions.
 											permissionManager.invalidateCachedPermissions(webstrateId);
 											permissionManager.expireAllAccessTokens(req.webstrateId, true);
 
-											client.send(JSON.stringify({ wa: "reply", reply: newVersion, token: data.token }));
+											client.send(JSON.stringify({ wa: "reply", reply: newVersion,
+												token: data.token }));
 										}
 									});
 								} else {
@@ -730,7 +730,8 @@ wss.on('connection', function(client) {
 									if (err) {
 										console.error(err);
 										if (data.token) {
-											client.send(JSON.stringify({ wa: "reply", token: data.token, error: err.message }));
+											client.send(JSON.stringify({ wa: "reply", token: data.token,
+												error: err.message }));
 										}
 									}
 								});
@@ -752,6 +753,9 @@ wss.on('connection', function(client) {
 								}
 								console.error("Can't restore, need either a tag label or version.");
 								break;
+
+							default:
+								console.warn("Unknown command from %s on %s: %o", user.userId, webstrateId, data);
 						}
 					});
 				});

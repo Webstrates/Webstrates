@@ -100,14 +100,17 @@ coreEventsModule.triggerEvent = (eventName, ...args) => {
 	// Convert set of event listeners to array, so we can sort them.
 	const arrEventListeners = Array.from(eventListeners[eventName]);
 
-	// Sort all events by priority
+	// Sort all events by priority (IMMEDIATE, HIGH, MEDIUM, ... ).
 	arrEventListeners.sort((e, f) => e.priority - f.priority);
 
-	// Execute events (in proper order)
+	// Execute events (in proper order).
 	arrEventListeners.forEach(eventListener => {
+		// IMMEDIATE listeners get triggered right now, everything else happens on the next tick.
 		if (eventListener.priority === coreEventsModule.PRIORITY.IMMEDIATE) {
 			eventListener(...args);
 		} else {
+			// It is somewhat counter-intuitive that non-IMMEDIATE listeners gets triggered by
+			// setImmediate. setImmediate means "immediately after we're done with everything else".
 			setImmediate(eventListener, ...args);
 		}
 	});

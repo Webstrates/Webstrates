@@ -6,7 +6,7 @@ var shortId = require('shortid');
  * ClientManager constructor.
  * @constructor
  */
-module.exports = function(db, pubsub) {
+module.exports = function(messagingManager, db, pubsub) {
 	var PUBSUB_CHANNEL = "webstratesClients";
 	var module = {};
 
@@ -174,26 +174,47 @@ module.exports = function(db, pubsub) {
 		if (!userId) {
 			module.sendToClient(socketId, helloMsgObj);
 		} else {
-			db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { "$exists": false } } ] })
-			.toArray(function(err, res) {
-				if (err) return console.error(err);
+			var promises = [];
+			promises.push(new Promise(function(accept, reject) {
+				db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { "$exists": false } } ] })
+				.toArray(function(err, cookies) {
+					if (err) {
+						reject(err);
+						return console.error(err);
+					}
+					accept(cookies)
+				});
+			}));
 
-				helloMsgObj.cookies = { here: {}, anywhere: {} };
-				// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
-				// structure into a regular object.
-				var documentCookies = res.find(cookie => cookie.webstrateId === webstrateId) || {};
-				if (documentCookies.cookies) {
-					documentCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.here[key] = value);
-				}
+			promises.push(new Promise(function(accept, reject) {
+				messagingManager.getMessages(userId, function(err, messages) {
+					if (err) {
+						reject(err);
+						return console.error(err);
+					}
+					accept(messages);
+				});
+			}));
 
-				// Rinse and repeat for "anywhere" (global) cookies.
-				var globalCookies = res.find(cookie => typeof cookie.webstrateId === "undefined") || {};
+			Promise.all(promises).then(function([cookies, messages]) {
+					helloMsgObj.cookies = { here: {}, anywhere: {} };
+					// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
+					// structure into a regular object.
+					var documentCookies = cookies.find(cookie => cookie.webstrateId === webstrateId) || {};
+					if (documentCookies.cookies) {
+						documentCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.here[key] = value);
+					}
 
-				if (globalCookies.cookies) {
-					globalCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.anywhere[key] = value);
-				}
+					// Rinse and repeat for "anywhere" (global) cookies.
+					var globalCookies = cookies.find(cookie => typeof cookie.webstrateId === "undefined") || {};
 
-				module.sendToClient(socketId, helloMsgObj);
+					if (globalCookies.cookies) {
+						globalCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.anywhere[key] = value);
+					}
+
+					helloMsgObj.messages = messages;
+
+					module.sendToClient(socketId, helloMsgObj);
 			});
 		}
 
@@ -399,7 +420,7 @@ module.exports = function(db, pubsub) {
 	 * @public
 	 */
 	module.signalUserObject = function(userId, senderSocketId, message, local) {
-		broadcastToUserClients(userId, {
+		module.broadcastToUserClients(userId, {
 			wa: "signalUserObject",
 			s: senderSocketId,
 			m: message
@@ -435,7 +456,7 @@ module.exports = function(db, pubsub) {
 			updateObj.d = webstrateId;
 			broadcastToUserClientsInWebstrate(webstrateId, userId, updateObj);
 		} else {
-			broadcastToUserClients(userId, updateObj);
+			module.broadcastToUserClients(userId, updateObj);
 		}
 
 		if (local && pubsub) {
@@ -470,7 +491,7 @@ module.exports = function(db, pubsub) {
 	/**
 	 * Send message to clients in a webstrate.
 	 * @param  {string} webstrateId WebstrateId.
-	 * @param  {string} message  Message.
+	 * @param  {mixed} message      Message.
 	 * @return {bool}            True on success, false on failure.
 	 * @public
 	 */
@@ -488,7 +509,7 @@ module.exports = function(db, pubsub) {
 	/**
 	 * Send message to client by socketId.
 	 * @param  {string} socketId SocketId.
-	 * @param  {string} message  Message.
+	 * @param  {mixed} message   Message.
 	 * @return {bool}            True on success, false on failure.
 	 * @public
 	 */
@@ -545,9 +566,9 @@ module.exports = function(db, pubsub) {
 	 * Send message to all clients currently connected and logged in as userId.
 	 * @param  {string} userId  User Id (of the format <username>:<provider, e.g. "kbadk:github").
 	 * @param  {obj}    message     Message object.
-	 * @private
+	 * @public
 	 */
-	function broadcastToUserClients(userId, message) {
+		module.broadcastToUserClients = function(userId, message) {
 		if (!userIds[userId]) {
 			return;
 		}

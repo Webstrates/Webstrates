@@ -18,26 +18,25 @@ module.exports = function(db) {
 	 */
 	module.serializeUser = function(user, next) {
 		user.createdAt = new Date();
-		db.sessions.insertOne(user, function(err, result) {
-			if (err) return next(err);			//console.log("Saving", result.insertedId);
-			next(null, result.insertedId)
+		user.userId = user.username + ":" + user.provider;
+		db.sessions.update({ userId: user.userId }, user, { upsert: true }, function(err, result) {
+			if (err) {
+				console.error(err);
+				return next(err);
+			}
+			next(null, user.userId);
 		});
 	};
 
 	/**
 	 * Deserializes a user object from ObjectID.
-	 * @param  {int}   id      MongoDB ObjectID as an integer.
+	 * @param  {int}    userId UserID (username:provider combination).
 	 * @param  {Function} next Callback.
 	 * @return {objec}         (async) Passport user object.
 	 * @public
 	 */
-	module.deserializeUser = function(id, next) {
-		//return next(null, id);
-		if (!ObjectID.isValid(id)) {
-			console.log("Invalid serialization", id);
-			return next(null, null);
-		}
-		db.sessions.findOne(ObjectID(id), function(err, user) {
+	module.deserializeUser = function(userId, next) {
+		db.sessions.findOne({ userId }, function(err, user) {
 			if (!user) return next(null, null);
 			delete user.createdAt;
 			next(null, user);

@@ -61,6 +61,14 @@ coreUtilsModule.objectEquals = (a, b) => JSON.stringify(a) === JSON.stringify(b)
 coreUtilsModule.objectClone = (obj) => Object.assign({}, obj);
 
 /**
+ * Returns a locked, shallow clone of an object.
+ * @param  {obj} obj Object to lock and clone.
+ * @return {obj}     Cloned object.
+ * @public
+ */
+coreUtilsModule.objectCloneAndLock = (obj) => Object.freeze(coreUtilsModule.objectClone(obj));
+
+/**
  * Get random integer from interval [min, max). Unbiased and evenly distributed (or close to).
  * @param  {int} min Minimum number, inclusive.
  * @param  {int} max Maximum number, exclusive.

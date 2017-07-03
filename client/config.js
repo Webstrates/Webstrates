@@ -1,5 +1,5 @@
 module.exports = {
-	VERBOSE_MODE: true,
+	VERBOSE_MODE: false,
 	modules: [
 		'globalObject',
 		'loadedEvent',
@@ -15,7 +15,7 @@ module.exports = {
 		'signaling', // Depends on connectionEvents for reconnect event.
 		'signalStream',
 		'assets',
-
+		'messages',
 		'keepAlive'
 	],
 	// Supports selector syntax, i.e. 'div.not-persisted' to not persist all DIV elements with the
