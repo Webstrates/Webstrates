@@ -185,6 +185,10 @@ function fromHTML(elem, filter) {
 				hasAttrib = false;
 
 			for (i=0; attr && i<attr.length; i++) {
+				// Transient attributes should not be added to the JsonML.
+				if (config.isTransientAttribute(elem, attr[i].name)) {
+					continue;
+				}
 				if (attr[i].specified) {
 					if (attr[i].name === 'style') {
 						props.style = elem.style.cssText || attr[i].value;
