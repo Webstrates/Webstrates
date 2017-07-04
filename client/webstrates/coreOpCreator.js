@@ -161,12 +161,22 @@ function childListMutation(mutation, targetPathNode) {
 	Array.from(mutation.addedNodes).forEach(function(addedNode) {
 		// Sanitizes all nodes (i.e. ensures valid tag names and attributes) and set wids on all nodes.
 		const parentNode = mutation.target;
-		coreUtils.recursiveForEach(addedNode, (childNode, parentNode) => {
-			let addedPathNode = corePathTree.getPathNode(childNode, parentNode);
-			if (addedPathNode && targetPathNode.id === addedPathNode.parent.id) {
-				return;
-			}
 
+		let addedPathNode = corePathTree.getPathNode(addedNode, parentNode);
+
+		// If an element already has a pathNode, it means it's already in the DOM. This could still
+		// generate an op if the element is being moved. However, if the element is already in the DOM,
+		// and it has the same parent as before, then it hasn't moved, so there's no reason to generate
+		// an op.
+		//
+		// NOTE: I think there might be a bug here: If moving a text node around, it could have a
+		// pathNode, but also have the same parent, in which case the move wouldn't create an op.
+		// I am, however, unable to reproduce this...
+		if (addedPathNode && targetPathNode.id === addedPathNode.parent.id) {
+			return;
+		}
+
+		coreUtils.recursiveForEach(addedNode, (childNode, parentNode) => {
 			if (childNode.nodeType === document.ELEMENT_NODE) {
 				let sanitizedTagName = coreUtils.sanitizeString(childNode.tagName);
 				// If the name is unsanitized, we remove the element and replace it with an identical
@@ -254,7 +264,6 @@ function childListMutation(mutation, targetPathNode) {
 		ops.push(op);
 
 		coreEvents.triggerEvent('DOMNodeInserted', addedNode, targetPathNode.DOMNode, true);
-
 	});
 
 	Array.from(mutation.removedNodes).forEach(function(removedNode) {
