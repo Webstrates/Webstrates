@@ -460,7 +460,8 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	 * @private
 	 */
 	function serveWebstrate(req, res) {
-		return res.sendFile(APP_PATH + "/static/client.html");
+		var maxAge = config.maxAge || "1d";
+		return res.sendFile(APP_PATH + "/static/client.html", { maxAge });
 	}
 
 	/**

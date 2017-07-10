@@ -101,7 +101,8 @@ var httpRequestController = require("./helpers/HttpRequestController.js")(docume
 var app = express();
 app.server = http.createServer(app);
 app.use(bodyParser.urlencoded({ extended: true }));
-app.use(express.static("static"));
+var maxAge = config.maxAge || "1d";
+app.use(express.static("static", { maxAge }));
 
 if (config.basicAuth) {
 	if (WORKER_ID === 1) console.log("Basic auth enabled");
