@@ -7,6 +7,7 @@ const userObject = require('./userObject');
 const loadedEvent = require('./loadedEvent');
 
 const permissionsModule = {};
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 // Create internal events.
 coreEvents.createEvent('globalPermissions');
@@ -95,7 +96,7 @@ let receivedDocumentPromise = new Promise((accept) => {
 
 let helloMessageReceivedPromise = new Promise((accept) => {
 	websocket.onjsonmessage = (message) => {
-		if (message.wa === 'hello') {
+		if (message.wa === 'hello' && message.d === webstrateId) {
 			username = message.user.username;
 			provider = message.user.provider;
 			defaultPermissionsList = message.defaultPermissions;

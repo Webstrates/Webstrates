@@ -13,8 +13,12 @@ globalObject.createEvent('untag');
 let doc, currentTag, allTags = {}, futureTags = {};
 
 const websocket = coreWebsocket.copy(event => event.data.startsWith('{"wa":'));
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 websocket.onjsonmessage = (message) => {
+	// Ignore message intended for other webstrates sharing the same websocket.
+	if (message.d !== webstrateId) return;
+
 	switch (message.wa) {
 
 		case 'tags': {

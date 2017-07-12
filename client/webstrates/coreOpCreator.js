@@ -105,7 +105,8 @@ function attributeMutation(mutation, targetPathNode) {
 	// happen so rapidly, that the browser skipped a MutationRecord. Or that's my theory, at least.
 	// We are lose about checking jsonmlAttrs[mutation.attributeName], because we don't want to
 	// diff, regardless of whether it's an empty string or it's null.
-	if (oldValue === null || !jsonmlAttrs[mutation.attributeName]) {
+	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
+	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]) {
 		coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
 			newValue, true);
 		return [{ oi: newValue, p: path }];

@@ -9,7 +9,6 @@ var fs = require('fs');var fss = require('fs-sync');
 var http = require('http');
 var httpAuth = require('http-auth');
 var passport = require('passport');
-var OAuth2Strategy = require('passport-oauth2');
 var redis = require('redis');
 var sessions = require('client-sessions');
 var sharedb = require('sharedb');

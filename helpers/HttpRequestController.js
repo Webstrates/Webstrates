@@ -121,7 +121,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 					}
 
 					res.type(asset.mimeType);
-					res.sendFile(APP_PATH + "/uploads/" + asset.fileName);
+					res.sendFile(APP_PATH + "/uploads/" + asset.fileName, { maxAge: "1m" });
 				});
 			}
 

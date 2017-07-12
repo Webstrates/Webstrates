@@ -1,6 +1,8 @@
 'use strict';
 const coreEvents = require('./coreEvents');
+const coreUtils = require('./coreUtils');
 const coreWebsocket = require('./coreWebsocket');
+const globalObject = require('./globalObject');
 const sharedb = require('sharedb/lib/client');
 
 const coreDatabaseModule = {};
@@ -8,7 +10,7 @@ const coreDatabaseModule = {};
 coreEvents.createEvent('receivedDocument');
 coreEvents.createEvent('receivedOps');
 
-let doc;
+let doc, conn;
 
 coreDatabaseModule.getDocument = () => doc;
 
@@ -37,7 +39,6 @@ coreDatabaseModule.elementAtPath = function(snapshot, path) {
 	return coreDatabaseModule.elementAtPath(snapshot[head], tail);
 };
 
-
 coreDatabaseModule.subscribe = (documentName) => {
 	return new Promise((resolve, reject) => {
 		// Filter out our own messages. This could be done more elegantly by parsing the JSON object and
@@ -47,15 +48,21 @@ coreDatabaseModule.subscribe = (documentName) => {
 		// @return {bool}       Whether the message should be let through to ShareDB.
 		const websocket = coreWebsocket.copy(event => !event.data.startsWith('{"wa":'));
 
-		// Create a shareDB connection.
-		const conn = new sharedb.Connection(websocket);
+		// Check if we can reuse the ShareDB Database connection from a parent if we're in an iframe.
+		if (coreUtils.isTranscluded() && coreUtils.sameParentDomain()) {
+			conn = window.parent.window.webstrate.shareDbConnection;
+		} else {
+			// Create a new ShareDB connection.
+			conn = new sharedb.Connection(websocket);
+		}
 
 		// Get ShareDB document for webstrateId.
 		doc = conn.get('webstrates', documentName);
 
+		console.log('subscribing', documentName);
 		// Subscribe to remote operations (changes to the ShareDB document).
 		doc.subscribe(function(error) {
-
+			console.log('subbed', documentName);
 			if (error) {
 				return reject(error);
 			}
@@ -124,5 +131,9 @@ coreDatabaseModule.restore = (documentName, tagOrVersion) => {
 
 	coreWebsocket.send(msgObj);
 };
+
+Object.defineProperty(globalObject.publicObject, 'shareDbConnection', {
+	get: () => conn
+});
 
 module.exports = coreDatabaseModule;

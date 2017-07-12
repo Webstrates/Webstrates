@@ -30,8 +30,12 @@ function getNs(elem) {
 }
 
 function isPlainObject(obj) {
-	return obj && typeof obj === 'object' &&
-		Object.getPrototypeOf(obj) === Object.prototype && !obj.nodeType;
+	return obj && typeof obj === 'object'
+	// Previously, we did comparison like: Object.getPrototypeOf(obj) === Object.prototype, but we
+	// can no longer do that, because if we use the parent's ShareDB Connection, plain objects created
+	// in the outer frame will have used that frame's Object.prototype, which is not the same as the
+	// Object.prototype in the inner frame, even though they're identical.
+	&& Object.prototype.toString.call(obj) === '[object Object]';
 }
 
 function toHTML(elem, xmlNs, scripts) {

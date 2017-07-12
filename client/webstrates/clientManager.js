@@ -3,7 +3,7 @@ const coreEvents = require('./coreEvents');
 const coreWebsocket = require('./coreWebsocket');
 const globalObject = require('./globalObject');
 const loadedEvent = require('./loadedEvent');
-
+const coreUtils = require('./coreUtils');
 const clientManagerModule = {};
 
 // Create internal events that other modules may subscribe to
@@ -21,12 +21,14 @@ globalObject.createEvent('clientPart');
 globalObject.createEvent('clientPart*');
 
 const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
-
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 let ownClientId;
 
 websocket.onjsonmessage = (message) => {
-	switch (message.wa) {
+	// Ignore message intended for other webstrates sharing the same websocket.
+	if (message.d !== webstrateId) return;
 
+	switch (message.wa) {
 		case 'hello': {
 			globalObject.publicObject.clients = message.clients;
 			globalObject.publicObject.clientId = message.id;

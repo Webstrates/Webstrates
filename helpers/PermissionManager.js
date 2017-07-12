@@ -13,7 +13,7 @@ module.exports = function(documentManager, pubsub) {
 
 	var accessTokens = {};
 	var permissionsCache = {};
-	var timeToLive = authConfig ? authConfig.permissionTimeout : 300;
+	var timeToLive = authConfig && authConfig.permissionTimeout || 300;
 	var defaultPermissionsList = authConfig && authConfig.defaultPermissions;
 
 	// Listen for events happening on other server instances. This is only used when using multi-

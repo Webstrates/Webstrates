@@ -230,6 +230,26 @@ coreUtilsModule.executeScripts = (scripts, callback) => {
 };
 
 /**
+ * Check if the current page has been transcluded (i.e. is an iframe)
+ * @return {bool} True if this frame is transcluded.
+ * @public
+ */
+coreUtilsModule.isTranscluded = () => window.frameElement && window.parent !== window;
+
+/**
+ * Check whether the current frame shares domain with the outer frame. Only useful when called
+ * when transcluded (i.e. called from an iframe). This is used to determine whether accessing the
+ * outer frame will cause CORS errors.
+ * @return {bool} True if current and outer frame share domain.
+ * @public
+ */
+coreUtilsModule.sameParentDomain = () => {
+	const a = document.createElement('a');
+	a.href = document.referrer;
+	return a.host === location.host;
+};
+
+/**
  * Removes characters that are illegal in attributes and tag names.
  * @param  {string} tagName Unsanitized string.
  * @return {string}         Sanitized string.

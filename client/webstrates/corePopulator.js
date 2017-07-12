@@ -47,8 +47,8 @@ corePopulator.populate = function(rootElement, doc) {
 	// In order to execute scripts synchronously, we insert them all without execution, and then
 	// execute them in order afterwards.
 	const scripts = [];
-	coreUtils.appendChildWithoutScriptExecution(rootElement,
-		coreJsonML.toHTML(doc.data, undefined, scripts));
+	const html = coreJsonML.toHTML(doc.data, undefined, scripts);
+	coreUtils.appendChildWithoutScriptExecution(rootElement, html);
 
 	return new Promise((resolve) => {
 		coreUtils.executeScripts(scripts, () => {

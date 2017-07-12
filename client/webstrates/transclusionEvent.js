@@ -1,19 +1,14 @@
 'use strict';
 const coreEvents = require('./coreEvents');
+const coreUtils = require('./coreUtils');
 const globalObject = require('./globalObject');
-
-function referrerDomain() {
-	var a = document.createElement('a');
-	a.href = document.referrer;
-	return a.host;
-}
 
 // If webstrate is transcluded in an iframe, we should probably raise an event on the frame element
 // in the parent document, so the parent document can trigger the transcluded event.
-if (window.frameElement) {
+if (coreUtils.isTranscluded()) {
 	// If the domain of the iframe we're in is different from the parent's domain, we shouldn't raise
 	// we won't be allowed to access frameElement due to cross-domain restrictions on iframes.
-	if (referrerDomain() === location.host) {
+	if (coreUtils.sameParentDomain()) {
 		coreEvents.addEventListener('populated', () => {
 			window.frameElement.dispatchEvent(new CustomEvent('transcluded', {
 				detail: [

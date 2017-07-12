@@ -15,8 +15,10 @@ globalObject.createEvent('asset');
 let assets;
 
 const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 websocket.onjsonmessage = (message) => {
+	if (message.d !== webstrateId) return;
 	switch (message.wa) {
 		case 'assets':
 			assets = message.assets;

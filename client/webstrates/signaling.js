@@ -10,6 +10,7 @@ const signalingModule = {};
 coreEvents.createEvent('receivedSignal');
 
 const websocket = coreWebsocket.copy(event => event.data.startsWith('{"wa":"publish"'));
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 // Allow other modules to add interceptors to signals. An interceptor is function that gets access
 // to a signal payload, then decides whether this module should handle the signal as a regular
@@ -29,6 +30,9 @@ signalingModule.subscribe = wid => subscribe(wid);
 signalingModule.unsubscribe = wid => unsubscribe(wid);
 
 websocket.onjsonmessage = payload => {
+	// Ignore message intended for other webstrates sharing the same websocket.
+	if (payload.d !== webstrateId) return;
+
 	let intercepted = false;
 	interceptors.forEach(interceptor => {
 		intercepted |= interceptor(payload);
@@ -54,15 +58,6 @@ websocket.onjsonmessage = payload => {
 	// Trigger event internally.
 	coreEvents.triggerEvent('receivedSignal', message, senderId, node);
 };
-
-// The webstrateId is required for signal, subscribe, unsubscribe messages. We can't wrap everything
-// below in the 'populated' handler, because webstrateobjectsAdded may (will) be triggered before
-// we get to subscribe. However, the populated even always happens just before
-// webstrateobjectsAdded, so we are not at risk of needing webstrateId before it has been defined.
-// We could have created two promises (populated and webstrateobjectsAdded) and waited for both to
-// be resolved, but there's really no need.
-let webstrateId;
-coreEvents.addEventListener('populated', (rootElement, _webstrateId) => webstrateId = _webstrateId);
 
 // Map of wids to number of subscribers on the wid. Used to resubscribe after a disconnect.
 const subscriptions = {};
@@ -168,4 +163,3 @@ coreEvents.addEventListener('webstrateObjectAdded', (node, eventObject) => {
 coreEvents.addEventListener('reconnect', () => Object.keys(subscriptions).forEach(subscribe));
 
 module.exports = signalingModule;
-

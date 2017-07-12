@@ -1,5 +1,6 @@
 'use strict';
 const coreUtils = require('./coreUtils');
+const globalObject = require('./globalObject');
 
 const coreWebsocketModule = {};
 
@@ -25,9 +26,20 @@ function reconnectDelay() {
 }
 
 coreWebsocketModule.setup = (_url, _protocols) => {
+
 	url = _url;
 	protocols = _protocols;
-	websocket = new WebSocket(url, protocols);
+
+	if (coreUtils.isTranscluded() && coreUtils.sameParentDomain()) {
+		websocket = window.parent.window.webstrate.getWebsocket();
+	} else {
+		websocket = new WebSocket(url, protocols);
+	}
+
+	Object.defineProperty(globalObject.publicObject, 'getWebsocket', {
+		value: coreWebsocketModule.copy
+	});
+
 	forceClose = false;
 
 	websocket.onopen = event => {
@@ -112,6 +124,7 @@ coreWebsocketModule.setup = (_url, _protocols) => {
  * @public
  */
 coreWebsocketModule.copy = filter => {
+
 	const copy = {
 		send: coreWebsocketModule.send,
 		close: () => {
@@ -128,6 +141,7 @@ coreWebsocketModule.copy = filter => {
 			return websocket.readyState;
 		}
 	};
+
 	copies.push({ websocket: copy, filter });
 	return copy;
 };
