@@ -5,14 +5,12 @@ const coreWebsocket = require('./coreWebsocket');
 const globalObject = require('./globalObject');
 const sharedb = require('sharedb/lib/client');
 
-const coreDatabaseModule = {};
-
 coreEvents.createEvent('receivedDocument');
 coreEvents.createEvent('receivedOps');
 
 let doc, conn;
 
-coreDatabaseModule.getDocument = () => doc;
+exports.getDocument = () => doc;
 
 /**
  * Get the element at a given path in a JsonML document.
@@ -20,7 +18,7 @@ coreDatabaseModule.getDocument = () => doc;
  * @return {JsonML}          Element at path in snapshot.
  * @public
  */
-coreDatabaseModule.elementAtPath = function(snapshot, path) {
+exports.elementAtPath = function(snapshot, path) {
 // Snapshot is optional (and only used in the internal recursion).
 	if (!path) {
 		path = snapshot;
@@ -36,10 +34,10 @@ coreDatabaseModule.elementAtPath = function(snapshot, path) {
 		return snapshot;
 	}
 
-	return coreDatabaseModule.elementAtPath(snapshot[head], tail);
+	return exports.elementAtPath(snapshot[head], tail);
 };
 
-coreDatabaseModule.subscribe = (documentName) => {
+exports.subscribe = (documentName) => {
 	return new Promise((resolve, reject) => {
 		// Filter out our own messages. This could be done more elegantly by parsing the JSON object and
 		// then checking if the "wa" property exists, but this is a lot faster.
@@ -84,7 +82,7 @@ coreDatabaseModule.subscribe = (documentName) => {
 	});
 };
 
-coreDatabaseModule.fetch = (documentName, tagOrVersion) => {
+exports.fetch = (documentName, tagOrVersion) => {
 	return new Promise((resolve, reject) => {
 		const msgObj = {
 			wa: 'fetchdoc',
@@ -115,7 +113,7 @@ coreDatabaseModule.fetch = (documentName, tagOrVersion) => {
  * reverted as this is ShareDB's job.
  * @param  {string} tagOrVersion Tag label or version number.
  */
-coreDatabaseModule.restore = (documentName, tagOrVersion) => {
+exports.restore = (documentName, tagOrVersion) => {
 	var msgObj = {
 		wa: 'restore',
 		d: documentName
@@ -133,5 +131,3 @@ coreDatabaseModule.restore = (documentName, tagOrVersion) => {
 Object.defineProperty(globalObject.publicObject, 'shareDbConnection', {
 	get: () => conn
 });
-
-module.exports = coreDatabaseModule;

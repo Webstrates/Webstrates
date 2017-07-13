@@ -694,7 +694,7 @@ wss.on('connection', function(client) {
 											// The permissions of the older version of the document may be different than
 											// what they are now, so we should invalidate the cached permissions.
 											permissionManager.invalidateCachedPermissions(webstrateId);
-											permissionManager.expireAllAccessTokens(req.webstrateId, true);
+											permissionManager.expireAllAccessTokens(webstrateId, true);
 
 											client.send(JSON.stringify({ wa: "reply", reply: newVersion,
 												token: data.token }));

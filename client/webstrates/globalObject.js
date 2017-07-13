@@ -1,5 +1,4 @@
 'use strict';
-//const coreEvents = require('./coreEvents');
 const coreDatabase = require('./coreDatabase');
 const corePopulator = require('./corePopulator');
 const coreUtils = require('./coreUtils');
@@ -110,10 +109,6 @@ publicObject.restore = (tagOrVersion, callback) => {
 		coreDatabase.restore(publicObject.webstrateId, tagOrVersion);
 	}
 };
-
-/*coreEvents.addEventListener('populated', (targetElement, webstrateId) => {
-	publicObject.webstrateId = webstrateId;
-}, coreEvents.PRIORITY.IMMEDIATE);*/
 
 window.webstrate = publicObject;
 module.exports = globalObjectModule;
