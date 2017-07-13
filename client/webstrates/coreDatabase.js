@@ -49,7 +49,7 @@ coreDatabaseModule.subscribe = (documentName) => {
 		const websocket = coreWebsocket.copy(event => !event.data.startsWith('{"wa":'));
 
 		// Check if we can reuse the ShareDB Database connection from a parent if we're in an iframe.
-		if (coreUtils.isTranscluded() && coreUtils.sameParentDomain()) {
+		if (coreUtils.isTranscluded() && coreUtils.sameParentDomain() && config.reuseWebsocket) {
 			conn = window.parent.window.webstrate.shareDbConnection;
 		} else {
 			// Create a new ShareDB connection.

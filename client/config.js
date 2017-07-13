@@ -12,12 +12,14 @@ module.exports = {
 		'permissions',
 		'tagging',
 		'clientManager',
-		'signaling', // Depends on connectionEvents for reconnect event.
+		'signaling',
 		'signalStream',
 		'assets',
 		'messages',
 		'keepAlive'
 	],
+	// Reuse the parent's websocket when doing transclusion. Very experimental.
+	reuseWebsocket: true,
 	// Supports selector syntax, i.e. 'div.not-persisted' to not persist all DIV elements with the
 	// class 'not-persisted'.
 	isTransientElement: (DOMNode) => DOMNode.matches('transient'),

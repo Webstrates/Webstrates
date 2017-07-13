@@ -30,7 +30,7 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 	url = _url;
 	protocols = _protocols;
 
-	if (coreUtils.isTranscluded() && coreUtils.sameParentDomain()) {
+	if (coreUtils.isTranscluded() && coreUtils.sameParentDomain() && config.reuseWebsocket) {
 		websocket = window.parent.window.webstrate.getWebsocket();
 	} else {
 		websocket = new WebSocket(url, protocols);
