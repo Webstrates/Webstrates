@@ -76,7 +76,7 @@ function setupFragmentObserver(fragment, element) {
 	if (fragment.id) {
 		return;
 	}
-	fragment.id = coreUtils.util.randomString();
+	fragment.id = coreUtils.randomString();
 	const fragmentObserver = new MutationObserver(mutationsHandler);
 	fragmentObserver.observe(fragment, observerOptions);
 	fragmentObservers[fragment.id] = [fragment, fragmentObserver];

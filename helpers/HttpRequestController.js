@@ -121,7 +121,12 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 					}
 
 					res.type(asset.mimeType);
-					res.sendFile(APP_PATH + "/uploads/" + asset.fileName, { maxAge: "1m" });
+
+					// `/<webstrateId>/<asset>` may not always refer to the same asset, but to optimize rapid
+					// requests, we set a maxAge anyway. If the requested asset includes a specific version,
+					// it'll always refer to the same thing, allowing us to set a longer maxAge.
+					var maxAge = req.version ? (config.maxAge || "1d") : "1m";
+					res.sendFile(APP_PATH + "/uploads/" + asset.fileName, { maxAge });
 				});
 			}
 

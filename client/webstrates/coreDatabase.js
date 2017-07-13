@@ -59,10 +59,8 @@ coreDatabaseModule.subscribe = (documentName) => {
 		// Get ShareDB document for webstrateId.
 		doc = conn.get('webstrates', documentName);
 
-		console.log('subscribing', documentName);
 		// Subscribe to remote operations (changes to the ShareDB document).
 		doc.subscribe(function(error) {
-			console.log('subbed', documentName);
 			if (error) {
 				return reject(error);
 			}
