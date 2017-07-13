@@ -1,9 +1,9 @@
 'use strict';
 const coreEvents = require('./webstrates/coreEvents');
 const coreDatabase = require('./webstrates/coreDatabase');
+const coreMutation = require('./webstrates/coreMutation');
 const coreOpApplier = require('./webstrates/coreOpApplier');
 const coreOpCreator = require('./webstrates/coreOpCreator');
-const coreMutation = require('./webstrates/coreMutation');
 const corePopulator = require('./webstrates/corePopulator');
 const coreUtils = require('./webstrates/coreUtils');
 const coreWebsocket = require('./webstrates/coreWebsocket');

@@ -38,7 +38,7 @@ coreEventsModule.PRIORITY = new Proxy(priorities, {
  */
 coreEventsModule.createEvent = (eventName, options = {}) => {
 	debug.log('createEvent', eventName, options);
-	if (typeof eventListeners[eventName] !== 'undefined' && !options.idempotent) {
+	if (coreEventsModule.eventExists(eventName) && !options.idempotent) {
 		throw new Error(`Event ${eventName} already exists.`);
 	}
 
@@ -56,17 +56,19 @@ coreEventsModule.createEvent = (eventName, options = {}) => {
 		removeEventListenerListeners[eventName] = options.removeListener;
 	}
 
-	eventListeners[eventName] = new Set();
+	if (!eventListeners[eventName]) {
+		eventListeners[eventName] = new Set();
+	}
 };
 
 coreEventsModule.eventExists = (eventName) => eventListeners.hasOwnProperty(eventName);
 
 coreEventsModule.addEventListener = (eventName, eventListener,
-	priority = coreEventsModule.PRIORITY.LOW) => {
+	priority = coreEventsModule.PRIORITY.LOW, options) => {
 	debug.log('addEventListener', eventName, priority);
 
 	eventListener.priority = priority;
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!coreEventsModule.eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 
@@ -82,7 +84,7 @@ coreEventsModule.addEventListener = (eventName, eventListener,
 
 coreEventsModule.removeEventListener = (eventName, eventListener) => {
 	debug.log('removeEventListener', eventName);
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!coreEventsModule.eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 	eventListeners[eventName].delete(eventListener);
@@ -93,7 +95,7 @@ coreEventsModule.removeEventListener = (eventName, eventListener) => {
 
 coreEventsModule.triggerEvent = (eventName, ...args) => {
 	debug.log('triggerEvent', eventName, args);
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!coreEventsModule.eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 

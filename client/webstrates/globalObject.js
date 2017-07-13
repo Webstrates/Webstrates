@@ -37,8 +37,12 @@ const addEventListenerListeners = {};
 // Map from event names to actual listeners: string -> function.
 const removeEventListenerListeners = {};
 
+function eventExists(eventName) {
+	return eventListeners.hasOwnProperty(eventName);
+}
+
 globalObjectModule.createEvent = (eventName, options = {}) => {
-	if (typeof eventListeners[eventName] !== 'undefined' && !options.idempotent) {
+	if (eventExists(eventName) && !options.idempotent) {
 		throw new Error(`Event ${eventName} already exists.`);
 	}
 
@@ -56,11 +60,13 @@ globalObjectModule.createEvent = (eventName, options = {}) => {
 		removeEventListenerListeners[eventName] = options.removeListener;
 	}
 
-	eventListeners[eventName] = new Set();
+	if (!eventExists(eventName)) {
+		eventListeners[eventName] = new Set();
+	}
 };
 
 globalObjectModule.triggerEvent = (eventName, ...args) => {
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 	eventListeners[eventName].forEach(eventListener => {
@@ -69,7 +75,7 @@ globalObjectModule.triggerEvent = (eventName, ...args) => {
 };
 
 publicObject.on = (eventName, eventListener) => {
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 	eventListeners[eventName].add(eventListener);
@@ -79,7 +85,7 @@ publicObject.on = (eventName, eventListener) => {
 };
 
 publicObject.off = (eventName, eventListener) => {
-	if (typeof eventListeners[eventName] === 'undefined') {
+	if (!eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
 	eventListeners[eventName].delete(eventListener);

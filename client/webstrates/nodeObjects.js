@@ -57,8 +57,12 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 	// Map from event names to actual listeners: string -> function.
 	const removeEventListenerListeners = {};
 
+	function eventExists(eventName) {
+		return eventListeners.hasOwnProperty(eventName);
+	}
+
 	node.webstrate.on = (eventName, eventListener) => {
-		if (typeof eventListeners[eventName] === 'undefined') {
+		if (!eventExists(eventName)) {
 			throw new Error(`Event ${eventName} doesn't exist on ${node}.`);
 		}
 		eventListeners[eventName].add(eventListener);
@@ -68,7 +72,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 	};
 
 	node.webstrate.off = (eventName, eventListener) => {
-		if (typeof eventListeners[eventName] === 'undefined') {
+		if (!eventExists(eventName)) {
 			throw new Error(`Event ${eventName} doesn't exist.`);
 		}
 		eventListeners[eventName].delete(eventListener);
@@ -79,7 +83,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 
 	const eventObject = {
 		createEvent: (eventName, options = {}) => {
-			if (typeof eventListeners[eventName] !== 'undefined' && !options.idempotent) {
+			if (eventExists(eventName) && !options.idempotent) {
 				console.error(`Event ${eventName} already exists on ${node}.`);
 				throw new Error(`Event ${eventName} already exists on ${node}.`);
 			}
@@ -100,10 +104,12 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 				removeEventListenerListeners[eventName] = options.removeListener;
 			}
 
-			eventListeners[eventName] = new Set();
+			if (!eventExists(eventName)) {
+				eventListeners[eventName] = new Set();
+			}
 		},
 		triggerEvent: (eventName, ...args) => {
-			if (typeof eventListeners[eventName] === 'undefined') {
+			if (!eventExists(eventName)) {
 				console.error(`Event ${eventName} doesn't exist on ${node}.`);
 				throw new Error(`Event ${eventName} doesn't exist on ${node}.`);
 			}

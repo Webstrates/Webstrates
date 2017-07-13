@@ -21,6 +21,12 @@ const primaryObserver = new MutationObserver(mutationsHandler);
 const fragmentObservers = {};
 const fragmentParentMap = {};
 
+coreMutation.emitMutationsFrom = (_rootElement) => {
+	rootElement = _rootElement;
+	primaryObserver.observe(rootElement, observerOptions);
+	isPaused = false;
+};
+
 function mutationsHandler(mutations) {
 	mutations.forEach(function forEachMutation(mutation) {
 		// DocumentFragments (as per the specification) can't have parents, even if they actually do.
@@ -32,39 +38,13 @@ function mutationsHandler(mutations) {
 			// We use defineProperty rather than a primitive assignemtn, because the target property is
 			// read-only.
 			Object.defineProperty(mutation, 'target', {
-				value: () => fragmentParentMap[mutation.target.id]
-			});
-		}
-
-		// The global mutation observer does not observe on changes to documentFragments within the
-		// document, so we have to manually create and manage individual observers for each
-		// documentFragment manually.
-		if (mutation.type === 'childList') {
-			Array.from(mutation.addedNodes).forEach(function(addedNode) {
-				coreUtils.recursiveForEach(addedNode, (node) => {
-					if (node.content && node.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-						setupFragmentObserver(node.content, node);
-					}
-				});
-			});
-			Array.from(mutation.removedNodes).forEach(function(removedNode) {
-				coreUtils.recursiveForEach(removedNode, function(node) {
-					if (node.content && node.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-						teardownFragmentObserver(node.content);
-					}
-				});
+				value: fragmentParentMap[mutation.target.id]
 			});
 		}
 
 		coreEvents.triggerEvent('mutation', mutation);
 	});
 }
-
-let isPaused = true;
-Object.defineProperty(coreMutation, 'isPaused', {
-	get: function() { return isPaused; }
-});
-
 
 /**
  * Set ups a Mutation Observer on a Document Fragment.
@@ -99,11 +79,42 @@ function teardownFragmentObserver(fragment) {
 	delete fragmentParentMap[fragment.id];
 }
 
-coreMutation.emitMutationsFrom = (_rootElement) => {
-	rootElement = _rootElement;
-	primaryObserver.observe(rootElement, observerOptions);
-	isPaused = false;
-};
+// The global mutation observer does not observe on changes to documentFragments (i.e. the things
+// that live inside <template>s within the document, so we have to manually create and manage
+// individual observers for each documentFragment.
+// Before we can do that, we have to create DOMNodeInserted and DOMNodeDeletedoutselves ourselves,
+// because this module gets loaded before they get created (by coreOpApplier or coreOpCreator).
+// The 'idempotent' option allows these events to be created even if they already. Just to be safe.
+coreEvents.createEvent('DOMNodeInserted', { idempotent: true });
+coreEvents.createEvent('DOMNodeDeleted', { idempotent: true });
+
+// Whenever the DOM gets modified, we add/remove potential MutationObservers from documentFragments
+// (i.e. the things living inside <template>s).
+coreEvents.addEventListener('DOMNodeInserted', addedNode => {
+	coreUtils.recursiveForEach(addedNode, (node) => {
+		if (node.content && node.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+			setupFragmentObserver(node.content, node);
+		}
+	});
+}, coreEvents.PRIORITY.IMMEDIATE);
+
+coreEvents.addEventListener('DOMNodeDeleted', removedNode => {
+	coreUtils.recursiveForEach(removedNode, function(node) {
+		if (node.content && node.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+			teardownFragmentObserver(node.content);
+		}
+	});
+}, coreEvents.PRIORITY.IMMEDIATE);
+
+// To not create a live-lock, the coreOpApplier module needs to pause the mutation observer when
+// adding incoming ops to the DOM. Otherwise, those incoming ops would in turn create new ops, and
+// so on.
+// The following allows other modules to manage the MutationObservers.
+let isPaused = true;
+Object.defineProperty(coreMutation, 'isPaused', {
+	get: () => isPaused
+});
+
 
 coreMutation.pause = () => {
 	if (isPaused) return;
