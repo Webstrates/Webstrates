@@ -234,8 +234,10 @@ var sessionMiddleware = function(req, res, next) {
 		// req.data.d will be set for most requests, but submit requests will have req.id set instead.
 		webstrateId = req.data && req.data.d || req.id;
 		token = req.data && req.data.query && req.data.query.token;
-		req.user = req.agent.stream.user;
-		req.remoteAddress = req.agent.stream.remoteAddress;
+		if (req.agent.stream) {
+			req.user = req.agent.stream.user;
+			req.remoteAddress = req.agent.stream.remoteAddress;
+		}
 	}
 	// Regular HTTPS requests.
 	else if (req.url) {
@@ -264,7 +266,6 @@ var sessionMiddleware = function(req, res, next) {
 			return res.status(403).send("Invalid access token.");
 		}
 	}
-
 
 	req.user.username = req.user.username || "anonymous";
 	req.user.provider = req.user.provider || "";
