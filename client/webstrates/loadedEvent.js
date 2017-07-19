@@ -56,7 +56,8 @@ coreEvents.addEventListener('allModulesLoaded', () => {
 			// modules, respectively, which aren't a part of the core. It may be bad style to have them
 			// here anyway, but luckily it won't break anything if these two modules aren't present.
 			globalObject.publicObject.clientId, globalObject.publicObject.user);
-		coreEvents.triggerEvent('loadedTriggered');
+		coreEvents.triggerEvent('loadedTriggered', globalObject.publicObject.webstrateId,
+			globalObject.publicObject.clientId, globalObject.publicObject.user);
 	});
 });
 

@@ -81,9 +81,8 @@ websocket.onjsonmessage = (message) => {
 
 // Note that if the server doesn't receive a ready event within 2 seconds, it sends it out anyway.
 // That way, no clients can linger unnoticed in a document.
-coreEvents.addEventListener('loadedTriggered', (webstrateId) => {
+coreEvents.addEventListener('loadedTriggered', () => {
 	websocket.send({ wa: 'ready', d: webstrateId });
 });
-
 
 module.exports = clientManagerModule;

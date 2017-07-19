@@ -85,7 +85,7 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @return {Snapshot}                     (async) Document snapshot.
 	 * @public
 	 */
-	module.getDocument = function({ webstrateId, version, tag }, next) {
+	module.getDocument = function({ webstrateId, version, tag }, next) {
 		if (tag) {
 			return getDocumentFromTag(webstrateId, tag, next);
 		}

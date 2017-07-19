@@ -210,7 +210,7 @@ var sessionLoggingMiddleware = function(req, next) {
 			sessionId: req.agent.clientId,
 			userId: req.user.userId,
 			connectTime: req.agent.connectTime,
-			remoteAddress: req.stream.remoteAddress
+			remoteAddress: req.remoteAddress
 		}, function(err, db) {
 			if (err) {
 				throw err;
@@ -229,11 +229,16 @@ var sessionLoggingMiddleware = function(req, next) {
 var sessionMiddleware = function(req, res, next) {
 	var webstrateId, token;
 
-	if (req.data) {
-			webstrateId = req.data && req.data.d;
-			token = req.data.query && req.data.query.token;
-			req.user = req.agent.stream.user;
-	}	else if (req.url) {
+	// ShareDB/websocket requests.
+	if (req.agent) {
+		// req.data.d will be set for most requests, but submit requests will have req.id set instead.
+		webstrateId = req.data && req.data.d || req.id;
+		token = req.data && req.data.query && req.data.query.token;
+		req.user = req.agent.stream.user;
+		req.remoteAddress = req.agent.stream.remoteAddress;
+	}
+	// Regular HTTPS requests.
+	else if (req.url) {
 		var match = req.url.match(/^\/([A-Z0-9\._-]+)\//i);
 		token = req.query.token;
 		if (match) {
@@ -241,12 +246,12 @@ var sessionMiddleware = function(req, res, next) {
 		}
 	}
 
+	req.remoteAddress = req.remoteAddress || (req.headers && (req.headers['X-Forwarded-For'] ||
+		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
+
 	if (typeof req.user !== "object") {
 		req.user = {};
 	}
-
-	req.remoteAddr = (req.headers && (req.headers['X-Forwarded-For'] ||
-		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
 
 	if (token) {
 		var userObj = permissionManager.getUserFromAccessToken(webstrateId, token);
@@ -260,7 +265,8 @@ var sessionMiddleware = function(req, res, next) {
 		}
 	}
 
-	req.user.username = req.user.username || "anonymousB";
+
+	req.user.username = req.user.username || "anonymous";
 	req.user.provider = req.user.provider || "";
 	req.user.userId = req.user.username + ":" + req.user.provider;
 	req.webstrateId = webstrateId;
@@ -312,6 +318,10 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		// If the user is creating a new document, it makes no sense to verify whether he has access to
 		// said document.
 		if (req.op && req.op.create) {
+			return next();
+		}
+
+		if (req.action === "connect") {
 			return next();
 		}
 
@@ -493,10 +503,12 @@ wss.on('connection', function(client) {
 					objectMode: true
 				});
 
-				var remoteAddress = client.upgradeReq.remoteAddr;
+				var remoteAddress = client.upgradeReq.headers['X-Forwarded-For']
+					|| client.upgradeReq.headers['x-forwarded-for']
+					|| client.upgradeReq.connection.remoteAddress;
+				stream.remoteAddress = remoteAddress;
 				stream.user = user;
 				stream.headers = client.upgradeReq.headers;
-				stream.remoteAddress = remoteAddress;
 
 				stream._write = function(chunk, encoding, callback) {
 					try {

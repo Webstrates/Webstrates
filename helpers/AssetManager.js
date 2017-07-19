@@ -37,7 +37,7 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 				return res.status(422).send("Parameter missing from request.");
 			}
 
-			var source = `${req.user.userId} (${req.remoteAddr})`;
+			var source = `${req.user.userId} (${req.remoteAddress})`;
 
 			var uploadPromises = [];
 			req.files.forEach(function(asset) {

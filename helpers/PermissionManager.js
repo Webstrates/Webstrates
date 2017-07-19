@@ -208,6 +208,10 @@ module.exports = function(documentManager, pubsub) {
 	 * @public
 	 */
 	module.getUserPermissions = function(username, provider, webstrateId, next) {
+		if (!webstrateId) {
+			return next(new Error(`Missing webstrateId`), null);
+		}
+
 		var permissions = getCachedPermissions(username, provider, webstrateId);
 		if (permissions) {
 			return next(null, permissions);
@@ -431,8 +435,8 @@ module.exports = function(documentManager, pubsub) {
 		}
 
 		var [permissions, cacheTime] = cacheEntry;
-		var currentTime = Date.now() / 1000 | 0;
-		if (currentTime - cacheTime > timeToLive) {
+		var currentTime = Date.now() / 1000 | 0;
+		if (currentTime - cacheTime > timeToLive) {
 			return null;
 		}
 
@@ -452,7 +456,7 @@ module.exports = function(documentManager, pubsub) {
 			permissionsCache[webstrateId] = {};
 		}
 
-		var currentTime = Date.now() / 1000 | 0;
+		var currentTime = Date.now() / 1000 | 0;
 		permissionsCache[webstrateId][username + ":" + provider] = [permissions, currentTime];
 	}
 

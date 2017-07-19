@@ -57,7 +57,7 @@ describe('Event triggering', function() {
 	});
 
 	it('should pass arguments to eventlistener', function(done) {
-		coreEvents.addEventListener('testEvent3', function(a, b) {
+		coreEvents.addEventListener('testEvent3', function(a, b) {
 			assert(a === 'bar' && b === 'quux', 'a should be bar and b should be quux');
 			done();
 		});
@@ -88,7 +88,7 @@ describe('Listener priority', function() {
 
 	});
 
-	it('should respect priority in execution order', function(done) {
+	it('should respect priority in execution order', function(done) {
 
 		var promises = [];
 		var result = [];
