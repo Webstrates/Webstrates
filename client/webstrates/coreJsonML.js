@@ -90,7 +90,7 @@ function toHTML(elem, xmlNs, scripts) {
 						continue;
 					}
 					var value = elem[i][index] && elem[i][index]
-						.replace(/&quot;/g, '\'').replace(/&amp;/g, '&');
+						.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 					index = coreUtils.sanitizeString(index);
 					if (xmlNs) {
 						if (index === 'href' || index === 'xlink:href') {
