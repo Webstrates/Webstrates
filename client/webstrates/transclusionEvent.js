@@ -9,7 +9,7 @@ if (coreUtils.isTranscluded()) {
 	// If the domain of the iframe we're in is different from the parent's domain, we shouldn't raise
 	// we won't be allowed to access frameElement due to cross-domain restrictions on iframes.
 	if (coreUtils.sameParentDomain()) {
-		coreEvents.addEventListener('loaded', () => {
+		coreEvents.addEventListener('loadedTriggered', () => {
 			window.frameElement.dispatchEvent(new CustomEvent('transcluded', {
 				detail: [
 					globalObject.publicObject.webstrateId,

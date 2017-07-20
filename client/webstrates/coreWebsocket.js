@@ -3,6 +3,7 @@ const coreUtils = require('./coreUtils');
 const globalObject = require('./globalObject');
 
 const coreWebsocketModule = {};
+const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 let url, protocols, websocket, forceClose, reconnectAttempts;
 const copies = [];
@@ -25,20 +26,35 @@ function reconnectDelay() {
 	return 1000 * Math.pow(1.5, reconnectAttempts++);
 }
 
+// Having multiple subscriptions to the same webstrate causes ShareDB to behave oddly and cut
+// off parts of operations for (so far) unknown reasons. As a result, getDocument() above will
+// return nothing if a subcription to the document already exists.
+const subscriptions = new Set();
+Object.defineProperty(globalObject.publicObject, 'getWebsocket', {
+	value: (filter, webstrateId) => {
+		if (typeof filter === 'string') {
+			webstrateId = filter;
+		}
+		if (subscriptions.has(webstrateId)) return;
+		subscriptions.add(webstrateId);
+		return coreWebsocketModule.copy();
+	}
+});
+
 coreWebsocketModule.setup = (_url, _protocols) => {
 
 	url = _url;
 	protocols = _protocols;
 
 	if (coreUtils.isTranscluded() && coreUtils.sameParentDomain() && config.reuseWebsocket) {
-		websocket = window.parent.window.webstrate.getWebsocket();
-	} else {
-		websocket = new WebSocket(url, protocols);
+		websocket = window.parent.window.webstrate.getWebsocket(webstrateId);
 	}
 
-	Object.defineProperty(globalObject.publicObject, 'getWebsocket', {
-		value: coreWebsocketModule.copy
-	});
+	// Even if we're transcluded, we won't succeed in getting a websocket from our parent if another
+	// subscription on the same webstrate already exists.
+	if (!websocket) {
+		websocket = new WebSocket(url, protocols);
+	}
 
 	forceClose = false;
 

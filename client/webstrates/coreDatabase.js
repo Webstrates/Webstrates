@@ -37,25 +37,46 @@ exports.elementAtPath = function(snapshot, path) {
 	return exports.elementAtPath(snapshot[head], tail);
 };
 
-exports.subscribe = (documentName) => {
-	return new Promise((resolve, reject) => {
-		// Filter out our own messages. This could be done more elegantly by parsing the JSON object and
-		// then checking if the "wa" property exists, but this is a lot faster.
-		// This filter is passed to coreWebsocket.copy() when getting a copy of a websocket.
-		// @param  {obj} event  Websocket onmessage event.
-		// @return {bool}       Whether the message should be let through to ShareDB.
-		const websocket = coreWebsocket.copy(event => !event.data.startsWith('{"wa":'));
+// Having multiple subscriptions to the same webstrate causes ShareDB to behave oddly and cut
+// off parts of operations for (so far) unknown reasons. As a result, getDocument() above will
+// return nothing if a subcription to the document already exists.
+const subscriptions = new Set();
+Object.defineProperty(globalObject.publicObject, 'getDocument', {
+	value: (webstrateId) => {
+		if (subscriptions.has(webstrateId)) return;
+		subscriptions.add(webstrateId);
+		return conn.get('webstrates', webstrateId);
+	}
+});
 
+exports.subscribe = (webstrateId) => {
+	return new Promise((resolve, reject) => {
 		// Check if we can reuse the ShareDB Database connection from a parent if we're in an iframe.
 		if (coreUtils.isTranscluded() && coreUtils.sameParentDomain() && config.reuseWebsocket) {
-			conn = window.parent.window.webstrate.shareDbConnection;
-		} else {
-			// Create a new ShareDB connection.
-			conn = new sharedb.Connection(websocket);
+			doc = window.parent.window.webstrate.getDocument(webstrateId);
 		}
 
-		// Get ShareDB document for webstrateId.
-		doc = conn.get('webstrates', documentName);
+		if (doc) {
+			console.log('got parent', doc.id);
+		}
+
+		// Even if we're transcluded, we won't succeed in getting a document from our parent if another
+		// subscription on the same webstrate already exists.
+		if (!doc) {
+			// Filter out our own messages. This could be done more elegantly by parsing the JSON object
+			//  and
+			// then checking if the "wa" property exists, but this is a lot faster.
+			// This filter is passed to coreWebsocket.copy() when getting a copy of a websocket.
+			// @param  {obj} event  Websocket onmessage event.
+			// @return {bool}       Whether the message should be let through to ShareDB.
+			const websocket = coreWebsocket.copy(event => !event.data.startsWith('{"wa":'));
+
+			// Create a new ShareDB connection.
+			conn = new sharedb.Connection(websocket);
+
+			// Get ShareDB document for webstrateId.
+			doc = conn.get('webstrates', webstrateId);
+		}
 
 		// Subscribe to remote operations (changes to the ShareDB document).
 		doc.subscribe(function(error) {
@@ -65,28 +86,31 @@ exports.subscribe = (documentName) => {
 
 			coreEvents.triggerEvent('receivedDocument', doc, { static: false });
 
-			doc.on('op', (ops, source) => {
-				// If source is truthy, it is our own op, which should not be broadcasted as "recivedOps".
-				// It will already have been broadcasted as "createdOps".
-				if (!source) {
+			// Generate a unique ID for this document client.
+			const source = coreUtils.randomString();
+
+			coreEvents.addEventListener('createdOps', (ops) => {
+				doc.submitOp(ops, { source });
+			}, coreEvents.PRIORITY.IMMEDIATE);
+
+			doc.on('op', (ops, opsSource) => {
+				// We don't broadcast a 'receivedOps' event for ops we create ourselves, as we haven't
+				// received them from anybody.
+				if (opsSource !== source) {
 					coreEvents.triggerEvent('receivedOps', ops);
 				}
 			});
-
-			coreEvents.addEventListener('createdOps', (ops) => {
-				doc.submitOp(ops);
-			}, coreEvents.PRIORITY.IMMEDIATE);
 
 			resolve(doc);
 		});
 	});
 };
 
-exports.fetch = (documentName, tagOrVersion) => {
+exports.fetch = (webstrateId, tagOrVersion) => {
 	return new Promise((resolve, reject) => {
 		const msgObj = {
 			wa: 'fetchdoc',
-			d: documentName
+			d: webstrateId
 		};
 
 		if (/^\d/.test(tagOrVersion) && Number(tagOrVersion)) {
@@ -113,10 +137,10 @@ exports.fetch = (documentName, tagOrVersion) => {
  * reverted as this is ShareDB's job.
  * @param  {string} tagOrVersion Tag label or version number.
  */
-exports.restore = (documentName, tagOrVersion) => {
+exports.restore = (webstrateId, tagOrVersion) => {
 	var msgObj = {
 		wa: 'restore',
-		d: documentName
+		d: webstrateId
 	};
 
 	if (/^\d/.test(tagOrVersion)) {
@@ -127,7 +151,3 @@ exports.restore = (documentName, tagOrVersion) => {
 
 	coreWebsocket.send(msgObj);
 };
-
-Object.defineProperty(globalObject.publicObject, 'shareDbConnection', {
-	get: () => conn
-});

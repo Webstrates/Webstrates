@@ -16,33 +16,30 @@ corePopulator.populate = function(rootElement, doc) {
 	}
 
 	const webstrateId = doc.id;
+	// If the document doesn't exist (no type) or is empty (no data), we should recreate it, unless
+	// we're in static mode. We should never modify the document from static mode.
+	if ((!doc.type || doc.data.length === 0) && !coreUtils.getLocationObject().staticMode) {
+		if (!doc.type) {
+			console.log(`Creating new sharedb document: "${webstrateId}".`);
+			doc.create('json0');
+		} else {
+			console.log(`Document: "${webstrateId}" exists, but was empty. Recreating basic document.`);
+		}
 
-	// This will normally be the case, but when using the static parameter, the document will just
-	// be a plain JavaScript object, in which case we don't need all this stuff.
-	if (doc instanceof sharedb.Doc) {
-		// A typeless document is not a document at all. Let's create one.
-		if (!doc.type || doc.data.length === 0) {
-			if (!doc.type) {
-				console.log(`Creating new sharedb document: "${webstrateId}".`);
-				doc.create('json0');
-			} else {
-				console.log('Document exists, but was empty. Recreating basic document.');
-			}
-
-			const op = [{ 'p': [], 'oi': [
-				'html', {},
-				[ 'head', {},
+		const op = [{ 'p': [], 'oi': [
+			'html', {},
+			[ 'head', {},
 				[ 'title', {}, webstrateId ] ],
 				[ 'body', {} ]
-			]}];
-			doc.submitOp(op);
-		}
+		]}];
+		doc.submitOp(op);
+	}
 
 		// All documents are persisted as JsonML, so we only know how to work with JSON documents.
-		if (doc.type.name !== 'json0') {
-			throw `Unsupported document type: ${doc.type.name}`;
-		}
+	if (doc.type.name !== 'json0') {
+		throw `Unsupported document type: ${doc.type.name}`;
 	}
+
 
 	// In order to execute scripts synchronously, we insert them all without execution, and then
 	// execute them in order afterwards.
