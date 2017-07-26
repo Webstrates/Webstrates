@@ -3,7 +3,6 @@ const coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
 const coreJsonML = require('./coreJsonML');
 const corePathTree = require('./corePathTree');
-const sharedb = require('sharedb/lib/client');
 
 const corePopulator = {};
 

@@ -38,8 +38,8 @@ exports.elementAtPath = function(snapshot, path) {
 };
 
 // Having multiple subscriptions to the same webstrate causes ShareDB to behave oddly and cut
-// off parts of operations for (so far) unknown reasons. As a result, getDocument() above will
-// return nothing if a subcription to the document already exists.
+// off parts of operations for (so far) unknown reasons. As a result, getDocument will return
+// nothing if a subcription to the document already exists.
 const subscriptions = new Set();
 Object.defineProperty(globalObject.publicObject, 'getDocument', {
 	value: (webstrateId) => {

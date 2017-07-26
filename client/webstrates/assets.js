@@ -31,12 +31,10 @@ websocket.onjsonmessage = (message) => {
 	}
 };
 
-/**
- * Get a list of all assets. Returns a frozen copy, so users won't (accidentally) modify it.
- * @return {obj} List of assets.
- * @public
- */
-globalObject.publicObject.assets = Object.freeze(coreUtils.objectClone(assets));
+// Define webstrate.assets. Returns a frozen copy, so users won't modify it.
+Object.defineProperty(globalObject.publicObject, 'assets', {
+	get: () => Object.freeze(coreUtils.objectClone(assets))
+});
 
 /**
  * Makes it possible to select and upload files .

@@ -58,7 +58,7 @@ coreUtilsModule.objectEquals = (a, b) => JSON.stringify(a) === JSON.stringify(b)
  * @return {obj}     Shallow clone.
  * @public
  */
-coreUtilsModule.objectClone = (obj) => Object.assign({}, obj);
+coreUtilsModule.objectClone = (obj) => Array.isArray(obj) ? obj.slice(0) : Object.assign({}, obj);
 
 /**
  * Returns a locked, shallow clone of an object.
