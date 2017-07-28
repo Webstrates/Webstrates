@@ -43,6 +43,11 @@ exports.elementAtPath = function(snapshot, path) {
 const subscriptions = new Set();
 Object.defineProperty(globalObject.publicObject, 'getDocument', {
 	value: (webstrateId) => {
+		// In case this document is transcluded as well, we recursively ask the parent for the document.
+		if (!conn) {
+			return window.parent.window.webstrate.getDocument(webstrateId);
+		}
+
 		if (subscriptions.has(webstrateId)) return;
 		subscriptions.add(webstrateId);
 		return conn.get('webstrates', webstrateId);
