@@ -23,7 +23,14 @@ const fragmentParentMap = {};
 
 coreMutation.emitMutationsFrom = (_rootElement) => {
 	rootElement = _rootElement;
+	// Add MutationObserver on root.
 	primaryObserver.observe(rootElement, observerOptions);
+	// Add MutationObservers on to all documentFragments (the things that live inside <template>s).
+	coreUtils.recursiveForEach(rootElement, (node) => {
+		if (node.content && node.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
+			setupFragmentObserver(node.content, node);
+		}
+	});
 	isPaused = false;
 };
 
@@ -79,9 +86,9 @@ function teardownFragmentObserver(fragment) {
 	delete fragmentParentMap[fragment.id];
 }
 
-// The global mutation observer does not observe on changes to documentFragments (i.e. the things
-// that live inside <template>s within the document, so we have to manually create and manage
-// individual observers for each documentFragment.
+// The global mutation observer does not observe on changes to documentFragments (the things that
+// live inside <template>s within the document, so we have to manually create and manage individual
+// observers for each documentFragment.
 // Before we can do that, we have to create DOMNodeInserted and DOMNodeDeletedoutselves ourselves,
 // because this module gets loaded before they get created (by coreOpApplier or coreOpCreator).
 // The 'idempotent' option allows these events to be created even if they already. Just to be safe.

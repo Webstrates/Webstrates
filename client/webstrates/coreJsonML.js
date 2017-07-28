@@ -151,17 +151,17 @@ coreJsonML.toHTML = toHTML;
 
 function addChildren(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
 	var childNodes = coreUtils.getChildNodes(elem);
-	if ((childNodes = coreUtils.getChildNodes(elem))) {
-		for (var i=0; i<childNodes.length; i++) {
-			var child = childNodes[i];
-			child = fromHTML(child, filter);
-			if (child) {
-				jml.push(child);
-			}
+	if (childNodes.length === 0) return false;
+
+	for (var i=0; i<childNodes.length; i++) {
+		var child = childNodes[i];
+		child = fromHTML(child, filter);
+		if (child) {
+			jml.push(child);
 		}
-		return true;
 	}
-	return false;
+
+	return true;
 }
 
 /**
@@ -219,38 +219,18 @@ function fromHTML(elem, filter) {
 				case 'frame':
 				case 'iframe':
 					break; //Do not recursively serialize content in iFrames (CNK)
-			/*try {
-				if ('undefined' !== typeof elem.contentDocument) {
-					// W3C
-					child = elem.contentDocument;
-				} else if ('undefined' !== typeof elem.contentWindow) {
-					// Microsoft
-					child = elem.contentWindow.document;
-				} else if ('undefined' !== typeof elem.document) {
-					// deprecated
-					child = elem.document;
-				}
-
-				child = fromHTML(child, filter);
-				if (child) {
-					jml.push(child);
-				}
-			} catch (ex) {}
-			break;*/
 				case 'style':
 					child = elem.styleSheet && elem.styleSheet.cssText;
 					if (child && 'string' === typeof child) {
-				// unwrap comment blocks
+						// unwrap comment blocks
 						child = child.replace('<!--', '').replace('-->', '');
 						jml.push(child);
-			// elem.content may have childNodes if elem is a template (i.e. elem.content is a
-			// document fragment).
 					} else if ((childNodes = coreUtils.getChildNodes(elem))) {
 						for (i=0; i<childNodes.length; i++) {
 							child = childNodes[i];
 							child = fromHTML(child, filter);
 							if (child && 'string' === typeof child) {
-						// unwrap comment blocks
+								// unwrap comment blocks
 								child = child.replace('<!--', '').replace('-->', '');
 								jml.push(child);
 							}
@@ -262,7 +242,7 @@ function fromHTML(elem, filter) {
 					child = (elem.type !== 'password') && elem.value;
 					if (child) {
 						if (!hasAttrib) {
-					// need to add an attribute object
+							// need to add an attribute object
 							jml.shift();
 							props = {};
 							jml.unshift(props);
@@ -284,21 +264,21 @@ function fromHTML(elem, filter) {
 					break;
 			}
 
-		// filter result
+			// filter result
 			if ('function' === typeof filter) {
 				jml = filter(jml, elem);
 			}
 
-		// free references
+			// free references
 			elem = null;
 			return jml;
-		case 3: // text node
-		case 4: // CDATA node
+		case Node.TEXT_NODE: // text node
+		case Node.CDATA_SECTION_NODE: // CDATA node
 			var str = String(elem.nodeValue);
-		// free references
+			// free references
 			elem = null;
 			return str;
-		case 10: // doctype
+		case Node.DOCUMENT_TYPE_NODE: // doctype
 			jml = ['!'];
 
 			var type = ['DOCTYPE', (elem.name || 'html').toLowerCase()];
@@ -320,7 +300,7 @@ function fromHTML(elem, filter) {
 		// free references
 			elem = null;
 			return jml;
-		case 8: // comment node
+		case Node.COMMENT_NODE: // comment node
 			if ((elem.nodeValue||'').indexOf('DOCTYPE') !== -1) {
 			// free references
 				elem = null;

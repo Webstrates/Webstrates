@@ -103,7 +103,8 @@ coreUtilsModule.randomString = (size = 8,
  * @return {array}                    List of child nodes.
  */
 coreUtilsModule.getChildNodes = function(parentElement) {
-	if (parentElement.content && parentElement.content === document.DOCUMENT_FRAGMENT_NODE) {
+	// This will be the case for <template> tags.
+	if (parentElement.content && parentElement.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
 		parentElement = parentElement.content;
 	}
 	return parentElement.childNodes;
