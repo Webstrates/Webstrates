@@ -598,6 +598,34 @@ wss.on('connection', function(client) {
 					// Handle webstrate actions.
 					var webstrateId = data.d;
 
+					switch (data.wa) {
+						// When the client is ready.
+						case "ready":
+							clientManager.triggerJoin(socketId);
+							return;
+						// Signaling on user object.
+						case "signalUserObject":
+							var message = data.m;
+							clientManager.signalUserObject(user.userId, socketId, message, true);
+							return;
+						case "sendMessage":
+							var message = data.m;
+							var recipients = data.recipients;
+							var senderId = user.userId === "anonymous:" ? socketId : user.userId;
+							messagingManager.sendMessage(recipients, message, senderId, true);
+							return;
+						case "deleteMessage":
+							if (user.userId !== "anonymous:") {
+								messagingManager.deleteMessage(user.userId, data.messageId);
+							}
+							return;
+						case "deleteMessages":
+							if (user.userId !== "anonymous:") {
+								messagingManager.deleteMessages(user.userId);
+							}
+							return;
+					}
+
 					permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
 						function(err, permissions) {
 						if (err) return console.error(err);
@@ -607,10 +635,6 @@ wss.on('connection', function(client) {
 						}
 
 						switch (data.wa) {
-							// When the client is ready.
-							case "ready":
-								clientManager.triggerJoin(socketId);
-								break;
 							// Request a snapshot.
 							case "fetchdoc":
 								var version = data.v;
@@ -651,11 +675,6 @@ wss.on('connection', function(client) {
 								var recipients = data.recipients;
 								clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
 								break;
-							// Signaling on user object.
-							case "signalUserObject":
-								var message = data.m;
-								clientManager.signalUserObject(user.userId, socketId, message, true);
-								break;
 							// Received cookie update.
 							case "cookieUpdate":
 								if (data.update && user.userId !== "anonymous:") {
@@ -664,23 +683,6 @@ wss.on('connection', function(client) {
 									true);
 								}
 								break;
-							case "sendMessage":
-								var message = data.m;
-								var recipients = data.recipients;
-								var senderId = user.userId === "anonymous:" ? socketId : user.userId;
-								messagingManager.sendMessage(recipients, message, senderId, true);
-								break;
-							case "deleteMessage":
-								if (user.userId !== "anonymous:") {
-									messagingManager.deleteMessage(user.userId, data.messageId);
-								}
-								break;
-							case "deleteMessages":
-								if (user.userId !== "anonymous:") {
-									messagingManager.deleteMessages(user.userId);
-								}
-								break;
-
 							// Restoring a document to a previous version.
 							case "restore":
 								if (!permissions.includes("w")) {
