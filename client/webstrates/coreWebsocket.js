@@ -52,7 +52,7 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 
 	// Even if we're transcluded, we won't succeed in getting a websocket from our parent if another
 	// subscription on the same webstrate already exists.
-	if (!websocket) {
+	if (!websocket || websocket.readyState === WebSocket.CLOSED) {
 		websocket = new WebSocket(url, protocols);
 	}
 
