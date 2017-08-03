@@ -1,5 +1,5 @@
 'use strict';
-const coreEvents = require('./coreEvents');
+var coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
 
 const coreMutation = {};

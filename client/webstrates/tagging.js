@@ -10,7 +10,7 @@ coreEvents.createEvent('receivedTags');
 globalObject.createEvent('tag');
 globalObject.createEvent('untag');
 
-let doc, currentTag, allTags = {}, futureTags = {};
+var doc, currentTag, allTags = {}, futureTags = {};
 
 const websocket = coreWebsocket.copy(event => event.data.startsWith('{"wa":'));
 const webstrateId = coreUtils.getLocationObject().webstrateId;
