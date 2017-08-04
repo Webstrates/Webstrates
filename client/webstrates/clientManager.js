@@ -22,7 +22,16 @@ globalObject.createEvent('clientPart*');
 
 const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
 const webstrateId = coreUtils.getLocationObject().webstrateId;
-let ownClientId;
+
+let clientId, clients;
+
+Object.defineProperty(globalObject.publicObject, 'clients', {
+	get: () => coreUtils.objectCloneAndLock(clients)
+});
+
+Object.defineProperty(globalObject.publicObject, 'clientId', {
+	get: () => clientId
+});
 
 websocket.onjsonmessage = (message) => {
 	// Ignore message intended for other webstrates sharing the same websocket.
@@ -30,9 +39,8 @@ websocket.onjsonmessage = (message) => {
 
 	switch (message.wa) {
 		case 'hello': {
-			globalObject.publicObject.clients = message.clients;
-			globalObject.publicObject.clientId = message.id;
-			ownClientId = message.id;
+			clients = message.clients;
+			clientId = message.id;
 
 			// Trigger internally.
 			coreEvents.triggerEvent('clientsReceived');
@@ -41,12 +49,16 @@ websocket.onjsonmessage = (message) => {
 
 		case 'clientJoin': {
 			const joiningClientId = message.id;
+			const isOwnJoin = clientId === joiningClientId;
+			// Own join will already be in the client list.
+			if (!isOwnJoin) {
+				clients.push(joiningClientId);
+			}
 
 			// Trigger internally.
 			coreEvents.triggerEvent('clientJoin', joiningClientId);
 
 			// Trigger in userland.
-			const isOwnJoin = ownClientId === joiningClientId;
 			if (!isOwnJoin) {
 				globalObject.triggerEvent('clientJoin', joiningClientId, isOwnJoin);
 			}
@@ -56,12 +68,13 @@ websocket.onjsonmessage = (message) => {
 
 		case 'clientPart': {
 			const partingClientId = message.id;
+			clients.splice(clients.indexOf(partingClientId), 1);
 
 			// Trigger internally.
 			coreEvents.triggerEvent('clientPart', partingClientId);
 
 			// Trigger in userland.
-			const isOwnPart = ownClientId === partingClientId;
+			const isOwnPart = clientId === partingClientId;
 			if (!isOwnPart) {
 				globalObject.triggerEvent('clientPart', partingClientId, isOwnPart);
 			}
