@@ -18,7 +18,7 @@ function updateCookie(key, value, isAnywhere = false) {
 		update: { key, value }
 	};
 	if (!isAnywhere) {
-		updateObj.d = globalObject.webstrateObject.webstrateId;
+		updateObj.d = globalObject.publicObject.webstrateId;
 	}
 	websocket.send(updateObj);
 }
