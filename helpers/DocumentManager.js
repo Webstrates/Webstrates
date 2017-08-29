@@ -314,8 +314,14 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @public
 	 */
 	module.getTags = function(webstrateId, next) {
-		db.tags.find({ webstrateId }, { webstrateId: 0, _id: 0, data: 0, type: 0 })
-			.sort({ v: 1 }).toArray(next);
+		db.tags.find({ webstrateId }, { webstrateId: 0, data: 0, type: 0 })
+			.sort({ v: 1 }).toArray((err, tags) => {
+				if (!err) tags.forEach(tag => {
+					tag.timestamp = tag._id.getTimestamp();
+					delete tag._id;
+				});
+				next(err, tags);
+			});
 	};
 
 	/**
