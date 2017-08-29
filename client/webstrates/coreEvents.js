@@ -107,13 +107,18 @@ coreEventsModule.triggerEvent = (eventName, ...args) => {
 
 	// Execute events (in proper order).
 	arrEventListeners.forEach(eventListener => {
-		// IMMEDIATE listeners get triggered right now, everything else happens on the next tick.
-		if (eventListener.priority === coreEventsModule.PRIORITY.IMMEDIATE) {
-			eventListener(...args);
-		} else {
-			// It is somewhat counter-intuitive that non-IMMEDIATE listeners gets triggered by
-			// setImmediate. setImmediate means "immediately after we're done with everything else".
-			setImmediate(eventListener, ...args);
+		try {
+			// IMMEDIATE listeners get triggered right now, everything else happens on the next tick.
+			if (eventListener.priority === coreEventsModule.PRIORITY.IMMEDIATE) {
+				eventListener(...args);
+			} else {
+				// It is somewhat counter-intuitive that non-IMMEDIATE listeners gets triggered by
+				// setImmediate. setImmediate means "immediately after we're done with everything else".
+				setImmediate(eventListener, ...args);
+			}
+		}
+		catch (e) {
+			console.error(e);
 		}
 	});
 };
