@@ -576,7 +576,7 @@ coreOpApplier.listenForOpsAndApplyOn = (rootElement) => {
 
 		// And re-enable MuationObservers.
 		coreMutation.resume();
-	});
+	}, coreEvents.PRIORITY.IMMEDIATE);
 };
 
 module.exports = coreOpApplier;
