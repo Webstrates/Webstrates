@@ -304,7 +304,7 @@ module.exports = function(messagingManager, db, pubsub) {
 	 */
 	module.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
 		// Make sure the client is connected to the webstrate.
-		if (!clients[socketId].webstrates[webstrateId]) {
+		if (!clients[socketId] || !clients[socketId].webstrates[webstrateId]) {
 			// The user may have been so eager to subscribe that they sent the command before they have
 			// joined the document. Let's retry the subscribe command in a little while.
 			if (retry > 0) {
