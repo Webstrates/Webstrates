@@ -270,6 +270,20 @@ coreUtilsModule.sanitizeString = (string) => {
 	}).join('');
 };
 
+/**
+ * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
+ * @param  {string} value Unescaped string.
+ * @return {string}       Escaped string.
+ */
+coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/\"/g, '&quot;');
+
+/**
+ * Replaces &amp; and &quot; with their respective characters (& and ").
+ * @param  {string} value Escaped string.
+ * @return {string}       Unescaped string.
+ */
+coreUtilsModule.unescape = value => value && value.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
 const widMap = new Map();
 /**
  * Add a wid to a node and make it (easily) non-modifiable.

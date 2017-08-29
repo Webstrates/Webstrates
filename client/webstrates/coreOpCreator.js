@@ -61,16 +61,6 @@ function patchesToOps(path, oldValue, newValue) {
 }
 
 /**
- * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
- * @param  {string} value Unescaped string.
- * @return {string}       Escaped string.
- */
-function escape(value) {
-	if (!value) return value;
-	return value.replace(/&/g, '&amp;').replace(/\"/g, '&quot;');
-}
-
-/**
  * Creates attribute operation (object insertion) from mutation.
  * @param  {MutationRecord} mutation MutationRecord created by MutationObserver.
  * @param  {PathNode} targetPathNode The PathNode from PathTree that is the target of the
@@ -84,7 +74,7 @@ function attributeMutation(mutation, targetPathNode) {
 	var targetPathNodeJsonML = targetPathNode.toPath();
 	var path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, mutation.attributeName];
 	var oldValue = mutation.oldValue;
-	var newValue = escape(mutation.target.getAttribute(mutation.attributeName));
+	var newValue = coreUtils.escape(mutation.target.getAttribute(mutation.attributeName));
 
 	var jsonmlAttrs = coreDatabase.elementAtPath([...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
 

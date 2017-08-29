@@ -62,6 +62,8 @@ function setAttribute(rootElement, path, attributeName, newValue) {
 		return;
 	}
 
+	newValue = coreUtils.unescape(newValue);
+
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 	if (attributeName === '__wid') {
 		coreUtils.setWidOnElement(childElement, newValue);
