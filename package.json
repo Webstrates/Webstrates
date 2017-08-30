@@ -1,6 +1,6 @@
 {
-  "name": "webstrate",
-  "version": "1.5.0",
+  "name": "Webstrates",
+  "version": "1.6.0",
   "description": "Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrates observes changes to the DOM using MutationObservers.",
   "keywords": [
     "Operational Transformation",
@@ -8,16 +8,23 @@
     "Collaborative Editing"
   ],
   "scripts": {
-    "start": "webpack && node webstrates.js",
+    "start": "npm run build && node webstrates.js",
     "build": "NODE_ENV='production' webpack -p"
   },
-  "homepage": "http://www.webstrates.net",
+  "homepage": "https://www.webstrates.net/",
   "license": "Apache-2.0",
-  "author": "Clemens N. Klokmose <clemens@cavi.au.dk>",
+  "author": {
+    "name": "Kristian Borup Antonsen",
+    "email": "kba@cs.au.dk"
+   },
   "contributors": [
     {
-      "name": "Kristian Borup Antonsen",
-      "email": "kba@cs.au.dk"
+      "name": "Clemens N. Klokmose",
+      "email": "clemens.cavi.au.dk"
+    },
+    {
+      "name": "Roman Rädle",
+      "email": "me@romanraedle.com"
     }
   ],
   "dependencies": {
