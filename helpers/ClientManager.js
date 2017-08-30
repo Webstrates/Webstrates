@@ -459,7 +459,7 @@ module.exports = function(messagingManager, db, pubsub) {
 			module.broadcastToUserClients(userId, updateObj);
 		}
 
-		if (local && pubsub) {
+		if (local) {
 			var webstrateIdQuery = webstrateId || { "$exists": false };
 			db.cookies.update({ userId, webstrateId: webstrateIdQuery, cookies: { key } },
 			{ $set: { "cookies.$.value": value } }, function(err, res) {
@@ -472,17 +472,21 @@ module.exports = function(messagingManager, db, pubsub) {
 					// doesn't exist, the document may still exist.
 					{ $push: { cookies: { key, value } } }, { upsert: true }, function(err, res) {
 						if (err) return console.error(err);
-						pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-							action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
-						}));
+						if (pubsub) {
+							pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+								action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
+							}));
+						}
 					});
 				}
 				else {
 					// Actually, I've stopped trying to be clever altogether. Yes, this is the same as
 					// above.
-					pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-						action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
-					}));
+					if (pubsub) {
+						pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+							action: "cookieUpdate", userId, update: { key, value }, webstrateId, WORKER_ID
+						}));
+					}
 				}
 			});
 		}
