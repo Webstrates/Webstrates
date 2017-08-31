@@ -32,7 +32,7 @@ websocket.onjsonmessage = (message) => {
 			cookies = message.cookies || { here: {}, anywhere: {} };
 
 			// Only allow cookies if the user object exists, i.e. is logged in with OAuth.
-			if (userObject.publicObject.userId && userObject.publicObject.userId !== "anonymous:") {
+			if (userObject.publicObject.userId && userObject.publicObject.userId !== 'anonymous:') {
 				userObject.publicObject.cookies = {
 					anywhere: {
 						get: function(key) {

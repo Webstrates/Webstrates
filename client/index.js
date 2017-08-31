@@ -23,12 +23,12 @@ config.modules.forEach(module => require('./webstrates/' + module));
 coreEvents.triggerEvent('allModulesLoaded');
 
 if (request.staticMode) {
-	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then((doc) => {
+	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then(doc => {
 		corePopulator.populate(document, doc);
 	});
 }
 else {
-	coreDatabase.subscribe(request.webstrateId).then((doc) => {
+	coreDatabase.subscribe(request.webstrateId).then(doc => {
 		corePopulator.populate(document, doc).then(() => {
 			// Emits mutations from changes on the document.
 			coreMutation.emitMutationsFrom(document);

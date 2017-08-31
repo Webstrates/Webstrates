@@ -65,7 +65,7 @@ permissionsModule.getUserPermissions = (username, provider) => {
 	return anonymous ? anonymous.permissions : '';
 };
 
-permissionsModule.getPermissionsFromDocument = (doc) => {
+permissionsModule.getPermissionsFromDocument = doc => {
 	if (doc && doc.data && doc.data[0] && doc.data[0] === 'html' &&
 		doc.data[1] && doc.data[1]['data-auth']) {
 		try {
@@ -83,7 +83,7 @@ permissionsModule.getPermissionsFromDocument = (doc) => {
  * we can emit permission events, so we create two promises, and wait until both have been resolved.
  */
 let receivedDocumentPromise = new Promise((accept) => {
-	coreEvents.addEventListener('receivedDocument', (doc) => {
+	coreEvents.addEventListener('receivedDocument', doc => {
 		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
 		if (!globalObject.publicObject) {
 			throw new Error('Permissions loaded, but global webstrate object doesn\'t exist.');

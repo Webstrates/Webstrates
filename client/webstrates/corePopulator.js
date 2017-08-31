@@ -15,9 +15,10 @@ corePopulator.populate = function(rootElement, doc) {
 	}
 
 	const webstrateId = doc.id;
+	const staticMode = coreUtils.getLocationObject().staticMode;
 	// If the document doesn't exist (no type) or is empty (no data), we should recreate it, unless
 	// we're in static mode. We should never modify the document from static mode.
-	if ((!doc.type || doc.data.length === 0) && !coreUtils.getLocationObject().staticMode) {
+	if ((!doc.type || doc.data.length === 0) && !staticMode) {
 		if (!doc.type) {
 			console.log(`Creating new sharedb document: "${webstrateId}".`);
 			doc.create('json0');
@@ -34,8 +35,10 @@ corePopulator.populate = function(rootElement, doc) {
 		doc.submitOp(op);
 	}
 
-		// All documents are persisted as JsonML, so we only know how to work with JSON documents.
-	if (doc.type.name !== 'json0') {
+	// All documents are persisted as JsonML, so we only know how to work with JSON documents.
+	if ((!staticMode && doc.type.name !== 'json0')
+		|| (staticMode && doc.type !== 'http://sharejs.org/types/JSONv0')) {
+		console.log(staticMode, doc.type);
 		throw `Unsupported document type: ${doc.type.name}`;
 	}
 
