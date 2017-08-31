@@ -19,9 +19,9 @@ module.exports = {
 		'keepAlive'
 	],
 	// Reuse the parent's websocket when doing transclusion. Very experimental.
-	reuseWebsocket: true,
+	reuseWebsocket: false,
 	// Keep alive message interval in seconds. A falsy value disables keep alive.
-	keepAliveInterval: 55,
+	keepAliveInterval: 25,
 	// Supports selector syntax, i.e. 'div.not-persisted' to not persist all DIV elements with the
 	// class 'not-persisted'.
 	isTransientElement: (DOMNode) => DOMNode.matches('transient'),
