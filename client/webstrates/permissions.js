@@ -9,111 +9,115 @@ const loadedEvent = require('./loadedEvent');
 const permissionsModule = {};
 const webstrateId = coreUtils.getLocationObject().webstrateId;
 
+// In static mode, the user does not receive the permissions. Since the webstrate doesn't change,
+// it also doesn't make sense to listen for permission changes, so we don't do that either.
+if (!coreUtils.getLocationObject().staticMode) {
 // Create internal events.
-coreEvents.createEvent('globalPermissions');
-coreEvents.createEvent('userPermissions');
+	coreEvents.createEvent('globalPermissions');
+	coreEvents.createEvent('userPermissions');
 
 // Create events for userland.
-globalObject.createEvent('permissionsChanged');
+	globalObject.createEvent('permissionsChanged');
 
 // Delay the loaded event, until the 'globalPermissions' and 'userPermissions' events have been
 // triggered.
-loadedEvent.delayUntil('globalPermissions', 'userPermissions');
+	loadedEvent.delayUntil('globalPermissions', 'userPermissions');
 
-const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
-let doc, username, provider, userPermissions, defaultPermissionsList, permissionsList;
+	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
+	let doc, username, provider, userPermissions, defaultPermissionsList, permissionsList;
 
-function detectPermissionChanges(ops) {
-	const permissionsChanged = ops.some(op =>
+	function detectPermissionChanges(ops) {
+		const permissionsChanged = ops.some(op =>
 		op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
 
 	// If permissions have changed, we need to recalculate the user's permissions.
-	if (permissionsChanged) {
-		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
-		coreEvents.triggerEvent('globalPermissions', permissionsList);
-		const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
-		if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
-			userPermissions = newUserPermissions;
-			coreEvents.triggerevent('userPermissions', userPermissions);
+		if (permissionsChanged) {
+			permissionsList = permissionsModule.getPermissionsFromDocument(doc);
+			coreEvents.triggerEvent('globalPermissions', permissionsList);
+			const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
+			if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
+				userPermissions = newUserPermissions;
+				coreEvents.triggerevent('userPermissions', userPermissions);
+			}
 		}
 	}
-}
 
-permissionsModule.getUserPermissions = (username, provider) => {
-	let activePermissionList = permissionsList;
+	permissionsModule.getUserPermissions = (username, provider) => {
+		let activePermissionList = permissionsList;
 	// If we found no permissions, resort to default permissions.
-	if (!permissionsList || Object.keys(permissionsList).length === 0) {
+		if (!permissionsList || Object.keys(permissionsList).length === 0) {
 		// If there's also no default permissions, we pretend every user has read-write permissions
 		// lest we lock everybody out. We append a question mark to let the system know that these are
 		// last-resort permissions.
-		if (!defaultPermissionsList) {
-			return 'rw?';
+			if (!defaultPermissionsList) {
+				return 'rw?';
+			}
+			activePermissionList = defaultPermissionsList;
 		}
-		activePermissionList = defaultPermissionsList;
-	}
 
-	var user = activePermissionList.find(user =>
+		var user = activePermissionList.find(user =>
 		user.username === username && user.provider === provider);
 
-	if (user) {
-		return user.permissions;
-	}
+		if (user) {
+			return user.permissions;
+		}
 
-	var anonymous = activePermissionList.find(user =>
+		var anonymous = activePermissionList.find(user =>
 		user.username === 'anonymous' && user.provider === '');
 
-	return anonymous ? anonymous.permissions : '';
-};
+		return anonymous ? anonymous.permissions : '';
+	};
 
-permissionsModule.getPermissionsFromDocument = doc => {
-	if (doc && doc.data && doc.data[0] && doc.data[0] === 'html' &&
+	permissionsModule.getPermissionsFromDocument = doc => {
+		if (doc && doc.data && doc.data[0] && doc.data[0] === 'html' &&
 		doc.data[1] && doc.data[1]['data-auth']) {
-		try {
-			return JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
+			try {
+				return JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
 				.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
-		} catch (err) {
-			console.warn('Couldn\'t parse document permission');
+			} catch (err) {
+				console.warn('Couldn\'t parse document permission');
+			}
 		}
-	}
-	return [];
-};
+		return [];
+	};
 
 /*
  * We need both doc, username, provider, permissionsList and defaultPermissionsList to be set before
  * we can emit permission events, so we create two promises, and wait until both have been resolved.
  */
-let receivedDocumentPromise = new Promise((accept) => {
-	coreEvents.addEventListener('receivedDocument', doc => {
-		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
-		if (!globalObject.publicObject) {
-			throw new Error('Permissions loaded, but global webstrate object doesn\'t exist.');
-		}
-		globalObject.publicObject.permissions = permissionsList;
-		coreEvents.triggerEvent('globalPermissions', permissionsList);
-		accept();
-	});
-});
-
-let helloMessageReceivedPromise = new Promise((accept) => {
-	websocket.onjsonmessage = (message) => {
-		if (message.wa === 'hello' && message.d === webstrateId) {
-			username = message.user.username;
-			provider = message.user.provider;
-			defaultPermissionsList = message.defaultPermissions;
-			userPermissions = permissionsModule.getUserPermissions(username, provider);
-			if (!globalObject.publicObject || !userObject.publicObject) {
-				throw new Error('Permissions loaded, but global webstrate user object doesn\'t exist.');
+	let receivedDocumentPromise = new Promise((accept) => {
+		coreEvents.addEventListener('receivedDocument', doc => {
+			permissionsList = permissionsModule.getPermissionsFromDocument(doc);
+			if (!globalObject.publicObject) {
+				throw new Error('Permissions loaded, but global webstrate object doesn\'t exist.');
 			}
-			userObject.publicObject.permissions = userPermissions;
-			coreEvents.triggerEvent('userPermissions', userPermissions);
+			globalObject.publicObject.permissions = permissionsList;
+			coreEvents.triggerEvent('globalPermissions', permissionsList);
 			accept();
-		}
-	};
-});
+		});
+	});
 
-Promise.all([receivedDocumentPromise, helloMessageReceivedPromise]).then(() => {
-	coreEvents.addEventListener('receivedOps', detectPermissionChanges);
-	coreEvents.addEventListener('createdOps', detectPermissionChanges);
-});
+	let helloMessageReceivedPromise = new Promise((accept) => {
+		websocket.onjsonmessage = (message) => {
+			if (message.wa === 'hello' && message.d === webstrateId) {
+				username = message.user.username;
+				provider = message.user.provider;
+				defaultPermissionsList = message.defaultPermissions;
+				userPermissions = permissionsModule.getUserPermissions(username, provider);
+				if (!globalObject.publicObject || !userObject.publicObject) {
+					throw new Error('Permissions loaded, but global webstrate user object doesn\'t exist.');
+				}
+				userObject.publicObject.permissions = userPermissions;
+				coreEvents.triggerEvent('userPermissions', userPermissions);
+				accept();
+			}
+		};
+	});
 
+	Promise.all([receivedDocumentPromise, helloMessageReceivedPromise]).then(() => {
+		coreEvents.addEventListener('receivedOps', detectPermissionChanges);
+		coreEvents.addEventListener('createdOps', detectPermissionChanges);
+	});
+
+}
 module.exports = permissionsModule;

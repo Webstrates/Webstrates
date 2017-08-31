@@ -49,6 +49,7 @@ coreEvents.createEvent('loadedTriggered', {
 
 // Wait for all events to have been triggered, before firing the loaded event.
 coreEvents.addEventListener('allModulesLoaded', () => {
+
 	Promise.all(delayLoadedUntilPromises).then(() => {
 		loadedTriggered = true;
 		globalObject.triggerEvent('loaded', globalObject.publicObject.webstrateId,
