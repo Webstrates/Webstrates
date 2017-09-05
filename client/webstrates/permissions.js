@@ -26,22 +26,6 @@ if (!coreUtils.getLocationObject().staticMode) {
 	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
 	let doc, username, provider, userPermissions, defaultPermissionsList, permissionsList;
 
-	function detectPermissionChanges(ops) {
-		const permissionsChanged = ops.some(op =>
-		op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
-
-	// If permissions have changed, we need to recalculate the user's permissions.
-		if (permissionsChanged) {
-			permissionsList = permissionsModule.getPermissionsFromDocument(doc);
-			coreEvents.triggerEvent('globalPermissions', permissionsList);
-			const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
-			if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
-				userPermissions = newUserPermissions;
-				coreEvents.triggerevent('userPermissions', userPermissions);
-			}
-		}
-	}
-
 	permissionsModule.getUserPermissions = (username, provider) => {
 		let activePermissionList = permissionsList;
 	// If we found no permissions, resort to default permissions.
@@ -114,9 +98,35 @@ if (!coreUtils.getLocationObject().staticMode) {
 		};
 	});
 
+	/**
+	 * Identifies whether a set operations modify the permissions of a webstrate.
+	 * @param  {[ops]} ops   List of operations.
+	 * @return {bool}     True if ops modify permissions, false otherwise.
+	 * @private
+	 */
+	const permissionsChanged = (ops) =>
+		ops.some(op => op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+
+	/**
+	 * Recalculates permissions and trigger permission events if permissions have changed.
+	 * @param  {[ops]} ops List of operations.
+	 * @private
+	 */
+	const handleOps = (ops) => {
+		if (!permissionsChanged(ops)) return;
+
+		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
+		coreEvents.triggerEvent('globalPermissions', permissionsList);
+		const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
+		if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
+			userPermissions = newUserPermissions;
+			coreEvents.triggerevent('userPermissions', userPermissions);
+		}
+	};
+
 	Promise.all([receivedDocumentPromise, helloMessageReceivedPromise]).then(() => {
-		coreEvents.addEventListener('receivedOps', detectPermissionChanges);
-		coreEvents.addEventListener('createdOps', detectPermissionChanges);
+		coreEvents.addEventListener('receivedOps', handleOps);
+		coreEvents.addEventListener('createdOps', handleOps);
 	});
 
 }

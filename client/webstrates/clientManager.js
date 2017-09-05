@@ -87,12 +87,12 @@ if (!coreUtils.getLocationObject().staticMode) {
 	};
 
 	// The server delays firing the 'clientJoin' event until the joining client is ready.
-	// If we didn't do that, another client might send a message to the joining client immediately after
-	// the 'clientJoin' event has been triggered. At this point, however, the joining client's scripts
-	// haven't been run (they usually aren't executed until after the userland 'loaded' event has been
-	// triggered), so the joining client won't be able to receive the data. Therefore, we delay this
-	// 'clientJoin' message, until after the userland 'loaded' event has been triggered, so that we know
-	// the joining client will be ready to handle the reactions of the join.
+	// If we didn't do that, another client might send a message to the joining client immediately
+	// after the 'clientJoin' event has been triggered. At this point, however, the joining client's
+	// scripts haven't been run (they usually aren't executed until after the userland 'loaded' event
+	// has been triggered), so the joining client won't be able to receive the data. Therefore, we
+	// delay this 'clientJoin' message, until after the userland 'loaded' event has been triggered, so
+	// that we know the joining client will be ready to handle the reactions of the join.
 
 	// Note that if the server doesn't receive a ready event within 2 seconds, it sends it out anyway.
 	// That way, no clients can linger unnoticed in a document.

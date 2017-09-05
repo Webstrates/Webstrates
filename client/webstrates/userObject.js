@@ -24,8 +24,8 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 	websocket.onjsonmessage = (message) => {
 		if (message.wa === 'hello') {
-			// Merge the incoming information with the existing user object. We don't overwrite it, as other
-			// modules may already have added their own stuff.
+			// Merge the incoming information with the existing user object. We don't overwrite it, as
+			// other modules may already have added their own stuff.
 			Object.assign(publicObject, message.user);
 			coreEvents.triggerEvent('userObjectAdded');
 		}

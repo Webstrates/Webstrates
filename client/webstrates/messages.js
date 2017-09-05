@@ -66,37 +66,33 @@ if (!coreUtils.getLocationObject().staticMode) {
 		writable: false
 	});
 
-	function deleteMessages() {
-		var length = messages.length;
-		if (length === 0) return 0;
-
-		messages = [];
-		websocket.send({
-			wa: 'deleteMessages'
-		});
-
-		return length;
-	}
-
 	Object.defineProperty(globalObject.publicObject, 'deleteMessage', {
-		value: deleteMessage,
+		value: messageId => {
+			var messageIndex = messages.findIndex(message => message.messageId === messageId);
+			if (messageIndex === -1) return 0 ;
+
+			messages.splice(messageIndex, 1);
+			websocket.send({
+				wa: 'deleteMessage', messageId
+			});
+
+			return 1;
+		},
 		writable: false
 	});
 
-	function deleteMessage(messageId) {
-		var messageIndex = messages.findIndex(message => message.messageId === messageId);
-		if (messageIndex === -1) return 0 ;
-
-		messages.splice(messageIndex, 1);
-		websocket.send({
-			wa: 'deleteMessage', messageId
-		});
-
-		return 1;
-	}
-
 	Object.defineProperty(globalObject.publicObject, 'deleteMessages', {
-		value: deleteMessages,
+		value: () => {
+			var length = messages.length;
+			if (length === 0) return 0;
+
+			messages = [];
+			websocket.send({
+				wa: 'deleteMessages'
+			});
+
+			return length;
+		},
 		writable: false
 	});
 }
