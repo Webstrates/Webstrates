@@ -494,6 +494,7 @@ wss.on('connection', function(client) {
 					try {
 						client.__send(data);
 					} catch (err) {
+						console.log('senderror', socketId);
 						clientManager.removeClient(socketId);
 						return false;
 					}
@@ -522,20 +523,15 @@ wss.on('connection', function(client) {
 
 				stream._read = function() {};
 
-				stream.on('error', function(msg) {
-					try {
-						return client.close(msg);
-					} catch (err) {
-						console.error(err);
-					}
-				});
-
-				stream.on('end', function() {
-					try {
-						return client.close();
-					} catch (err) {
-						console.error(err);
-					}
+				['error', 'end', 'finish'].forEach(type => {
+					stream.on(type, msg => {
+						clientManager.removeClient(socketId);
+						try {
+							client.close(msg);
+						} catch (err) {
+							console.error(type, err);
+						}
+					});
 				});
 
 				var opCount = 0, signalCount = 0;
