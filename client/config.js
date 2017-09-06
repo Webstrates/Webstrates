@@ -6,6 +6,7 @@ module.exports = {
 		'userObject',
 		'cookies',
 		'nodeObjects',
+		'databaseErrors',
 		'domEvents',
 		'transclusionEvent',
 		'connectionEvents',
@@ -36,3 +37,4 @@ module.exports = {
 		]
 	}
 };
+

@@ -7,6 +7,7 @@ const sharedb = require('sharedb/lib/client');
 
 coreEvents.createEvent('receivedDocument');
 coreEvents.createEvent('receivedOps');
+coreEvents.createEvent('databaseError');
 
 let doc, conn;
 
@@ -61,10 +62,6 @@ exports.subscribe = (webstrateId) => {
 			doc = window.parent.window.webstrate.getDocument(webstrateId);
 		}
 
-		if (doc) {
-			console.log('got parent', doc.id);
-		}
-
 		// Even if we're transcluded, we won't succeed in getting a document from our parent if another
 		// subscription on the same webstrate already exists.
 		if (!doc) {
@@ -104,6 +101,11 @@ exports.subscribe = (webstrateId) => {
 				if (opsSource !== source) {
 					coreEvents.triggerEvent('receivedOps', ops);
 				}
+			});
+
+			doc.on('error', error => {
+				console.error(error);
+				coreEvents.triggerEvent('databaseError', error);
 			});
 
 			resolve(doc);
