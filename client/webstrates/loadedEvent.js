@@ -6,6 +6,10 @@ const loadedEventModule = {};
 
 let loadedTriggered = false;
 
+Object.defineProperty(globalObject.publicObject, 'loaded', {
+	get: () => loadedTriggered
+});
+
 // List of events that has to be resolved before the loaded event gets triggered.
 let delayLoadedUntilPromises = [];
 
@@ -52,6 +56,7 @@ coreEvents.addEventListener('allModulesLoaded', () => {
 
 	Promise.all(delayLoadedUntilPromises).then(() => {
 		loadedTriggered = true;
+
 		globalObject.triggerEvent('loaded', globalObject.publicObject.webstrateId,
 			// These last two arguments depend on the existance of the clientManager and userObject
 			// modules, respectively, which aren't a part of the core. It may be bad style to have them
