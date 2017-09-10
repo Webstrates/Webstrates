@@ -126,21 +126,31 @@ function characterDataMutation(mutation, targetPathNode) {
 		return;
 	}
 
-	let ops;
-	if (config.generateDiffOps) {
-		ops = patchesToOps(path, oldValue, newValue);
-		if (isComment) {
-			ops[0].p.splice(ops[0].p.length - 1, 0, 1);
+	let ops = patchesToOps(path, oldValue, newValue);
+	if (isComment) {
+		ops[0].p.splice(ops[0].p.length - 1, 0, 1);
+	}
+	// In most cases, we could use mutation.target.parentElement to determine the parentElement, but
+	// when deleting a node from the DOM, the target will no longer have a parentElement. Therefore,
+	// we instead look at our path tree.
+	const parentElement = targetPathNode.parent.DOMNode;
+
+	ops.forEach((op) => {
+		let type, value, charIndex = op.p[op.p.length - 1];
+		if ('si' in op) {
+			type = 'DOMTextNodeInsertion';
+			value = op.si;
+		} else if ('sd' in op) {
+			type = 'DOMTextNodeDeletion';
+			value = op.sd;
 		}
-	} else {
+		coreEvents.triggerEvent(type, mutation.target, parentElement, charIndex, value, true);
+	});
+
+	if (!config.generateDiffOps) {
 		ops = [{ li: newValue, ld: oldValue, p: path }];
 	}
 
-	ops.forEach((op) => {
-		var charIndex = op.p[op.p.length - 1];
-		coreEvents.triggerEvent('DOMTextNodeInsertion', mutation.target, mutation.target.parentElement,
-			charIndex, op.si, true);
-	});
 	return ops;
 }
 
