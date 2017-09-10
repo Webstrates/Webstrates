@@ -96,15 +96,15 @@ function attributeMutation(mutation, targetPathNode) {
 	// We are lose about checking jsonmlAttrs[mutation.attributeName], because we don't want to
 	// diff, regardless of whether it's an empty string or it's null.
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
-	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]) {
-		coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
-			newValue, true);
-		return [{ oi: newValue, p: path }];
+	let ops;
+	if (!config.generateDiffOps || oldValue === null || newValue.length < 50 ||
+		!jsonmlAttrs[mutation.attributeName]) {
+		ops = [{ oi: newValue, p: path }];
+	} else {
+		ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
 	}
-
 	coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
 		newValue, true);
-	let ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
 	return ops;
 }
 
@@ -126,9 +126,14 @@ function characterDataMutation(mutation, targetPathNode) {
 		return;
 	}
 
-	var ops = patchesToOps(path, oldValue, newValue);
-	if (isComment) {
-		ops[0].p.splice(ops[0].p.length - 1, 0, 1);
+	let ops;
+	if (config.generateDiffOps) {
+		ops = patchesToOps(path, oldValue, newValue);
+		if (isComment) {
+			ops[0].p.splice(ops[0].p.length - 1, 0, 1);
+		}
+	} else {
+		ops = [{ li: newValue, ld: oldValue, p: path }];
 	}
 
 	ops.forEach((op) => {
@@ -136,7 +141,6 @@ function characterDataMutation(mutation, targetPathNode) {
 		coreEvents.triggerEvent('DOMTextNodeInsertion', mutation.target, mutation.target.parentElement,
 			charIndex, op.si, true);
 	});
-
 	return ops;
 }
 
