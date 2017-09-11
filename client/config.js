@@ -21,9 +21,6 @@ module.exports = {
 	],
 	// Reuse the parent's websocket when doing transclusion. Very experimental.
 	reuseWebsocket: false,
-	// Using diff ops can cause smaller operations to be created and sent, but might also require more
-	// processing power on both server and client, as well as introduce other problems.
-	generateDiffOps: true,
 	// Keep alive message interval in seconds. A falsy value disables keep alive.
 	keepAliveInterval: 25,
 	// Supports selector syntax, i.e. 'div.not-persisted' to not persist all DIV elements with the

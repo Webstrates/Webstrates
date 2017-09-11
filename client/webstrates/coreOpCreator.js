@@ -97,16 +97,17 @@ function attributeMutation(mutation, targetPathNode) {
 	// diff, regardless of whether it's an empty string or it's null.
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
 	let ops;
-	if (!config.generateDiffOps || oldValue === null || newValue.length < 50 ||
-		!jsonmlAttrs[mutation.attributeName]) {
+	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]) {
 		ops = [{ oi: newValue, p: path }];
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
 	}
+
 	coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
 		newValue, true);
 	return ops;
 }
+
 
 /**
  * Creates string insertion and string deletion operations from mutation.
@@ -130,6 +131,7 @@ function characterDataMutation(mutation, targetPathNode) {
 	if (isComment) {
 		ops[0].p.splice(ops[0].p.length - 1, 0, 1);
 	}
+
 	// In most cases, we could use mutation.target.parentElement to determine the parentElement, but
 	// when deleting a node from the DOM, the target will no longer have a parentElement. Therefore,
 	// we instead look at our path tree.
@@ -146,10 +148,6 @@ function characterDataMutation(mutation, targetPathNode) {
 		}
 		coreEvents.triggerEvent(type, mutation.target, parentElement, charIndex, value, true);
 	});
-
-	if (!config.generateDiffOps) {
-		ops = [{ li: newValue, ld: oldValue, p: path }];
-	}
 
 	return ops;
 }
