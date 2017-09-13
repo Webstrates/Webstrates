@@ -594,6 +594,7 @@ wss.on('connection', function(client) {
 					// Handle webstrate actions.
 					var webstrateId = data.d;
 
+					// Here we handle all requests which do not require any sort of permissions.
 					switch (data.wa) {
 						// When the client is ready.
 						case "ready":
@@ -618,6 +619,13 @@ wss.on('connection', function(client) {
 						case "deleteMessages":
 							if (user.userId !== "anonymous:") {
 								messagingManager.deleteMessages(user.userId);
+							}
+							return;
+						case "cookieUpdate":
+							if (data.update && user.userId !== "anonymous:") {
+								clientManager.updateCookie(user.userId, webstrateId, data.update.key,
+									data.update.value,
+								true);
 							}
 							return;
 					}
@@ -670,14 +678,6 @@ wss.on('connection', function(client) {
 								var message = data.m;
 								var recipients = data.recipients;
 								clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
-								break;
-							// Received cookie update.
-							case "cookieUpdate":
-								if (data.update && user.userId !== "anonymous:") {
-									clientManager.updateCookie(user.userId, webstrateId, data.update.key,
-										data.update.value,
-									true);
-								}
 								break;
 							// Restoring a document to a previous version.
 							case "restore":
