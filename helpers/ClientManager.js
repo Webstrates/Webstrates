@@ -98,6 +98,8 @@ module.exports = function(messagingManager, db, pubsub) {
 			webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 		};
 
+		messagingManager.clientAdded(socketId, client.user.userId, true);
+
 		return socketId;
 	};
 

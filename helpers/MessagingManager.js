@@ -54,7 +54,7 @@ module.exports = function(clientManager, db, pubsub) {
 	module.clientAdded = function(socketId, userId, local) {
 		socketUserMap.set(socketId, userId);
 
-		if (local) {
+		if (local && pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 				action: "clientAdded", socketId, userId, WORKER_ID
 			}));

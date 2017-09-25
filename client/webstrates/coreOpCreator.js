@@ -99,7 +99,7 @@ function attributeMutation(mutation, targetPathNode) {
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
 	let ops;
 	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]
-		|| !coreConfig.attributeValueDiffing) {
+		|| !coreConfig.attributeValueDiffing) {
 		ops = [{ oi: newValue, p: path }];
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
