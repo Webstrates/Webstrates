@@ -104,6 +104,10 @@ exports.subscribe = (webstrateId) => {
 			});
 
 			doc.on('error', error => {
+				// ShareDB error code 4018 (Document was created remotely) triggers happens when multiple
+				// clients try to create the same webstrate at the same time. It doesn't matter, so we
+				// suppress it.
+				if (error.code === 4018) return;
 				console.error(error);
 				coreEvents.triggerEvent('databaseError', error);
 			});
