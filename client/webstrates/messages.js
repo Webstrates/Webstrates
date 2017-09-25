@@ -20,11 +20,68 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 	let messages;
 
+	const defineMessageProperties = () => {
+		Object.defineProperty(globalObject.publicObject, 'messages', {
+			get: () => {
+				return coreUtils.objectCloneAndLock(messages);
+			},
+			set: () => {
+				throw new Error('webstrate.messages is read-only. Use webstrate.deleteMessage(messageId) ' +
+				'or webstrate.deleteMessages() to delete a message');
+			}
+		});
+
+		Object.defineProperty(globalObject.publicObject, 'message', {
+			value: (message, recipients) => {
+				const msgObj = {
+					wa: 'sendMessage',
+					m: message,
+					recipients
+				};
+				websocket.send(msgObj);
+			},
+			writable: false
+		});
+
+		Object.defineProperty(globalObject.publicObject, 'deleteMessage', {
+			value: messageId => {
+				var messageIndex = messages.findIndex(message => message.messageId === messageId);
+				if (messageIndex === -1) return 0 ;
+
+				messages.splice(messageIndex, 1);
+				websocket.send({
+					wa: 'deleteMessage', messageId
+				});
+
+				return 1;
+			},
+			writable: false
+		});
+
+		Object.defineProperty(globalObject.publicObject, 'deleteMessages', {
+			value: () => {
+				var length = messages.length;
+				if (length === 0) return 0;
+
+				messages = [];
+				websocket.send({
+					wa: 'deleteMessages'
+				});
+
+				return length;
+			},
+			writable: false
+		});
+	};
+
 	websocket.onjsonmessage = (message) => {
 		switch (message.wa) {
 			case 'hello':
 				messages = message.messages || [];
 				messages.forEach(message => Object.freeze(message));
+				if (message.user.userId !== 'anonymous:') {
+					defineMessageProperties();
+				}
 				break;
 			case 'message':
 				Object.freeze(message);
@@ -44,57 +101,6 @@ if (!coreUtils.getLocationObject().staticMode) {
 		}
 	});
 
-	Object.defineProperty(globalObject.publicObject, 'messages', {
-		get: () => {
-			return coreUtils.objectCloneAndLock(messages);
-		},
-		set: () => {
-			throw new Error('webstrate.messages is read-only. Use webstrate.deleteMessage(messageId) ' +
-				'or webstrate.deleteMessages() to delete a message');
-		}
-	});
-
-	Object.defineProperty(globalObject.publicObject, 'message', {
-		value: (message, recipients) => {
-			const msgObj = {
-				wa: 'sendMessage',
-				m: message,
-				recipients
-			};
-			websocket.send(msgObj);
-		},
-		writable: false
-	});
-
-	Object.defineProperty(globalObject.publicObject, 'deleteMessage', {
-		value: messageId => {
-			var messageIndex = messages.findIndex(message => message.messageId === messageId);
-			if (messageIndex === -1) return 0 ;
-
-			messages.splice(messageIndex, 1);
-			websocket.send({
-				wa: 'deleteMessage', messageId
-			});
-
-			return 1;
-		},
-		writable: false
-	});
-
-	Object.defineProperty(globalObject.publicObject, 'deleteMessages', {
-		value: () => {
-			var length = messages.length;
-			if (length === 0) return 0;
-
-			messages = [];
-			websocket.send({
-				wa: 'deleteMessages'
-			});
-
-			return length;
-		},
-		writable: false
-	});
 }
 
 module.exports = messagesModule;
