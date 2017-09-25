@@ -1,4 +1,5 @@
 'use strict';
+const coreConfig = require('./coreConfig');
 const coreDatabase = require('./coreDatabase');
 const corePopulator = require('./corePopulator');
 const coreUtils = require('./coreUtils');
@@ -26,6 +27,8 @@ Object.defineProperty(publicObject, 'isStatic', {
 	set: () => { throw new Error('isStatic cannot be modified.'); },
 	enumerable: true
 });
+
+Object.defineProperty(publicObject, 'config', { value: coreConfig });
 
 globalObjectModule.publicObject = publicObject;
 

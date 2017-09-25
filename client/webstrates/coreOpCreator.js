@@ -1,4 +1,5 @@
 'use strict';
+const coreConfig = require('./coreConfig');
 const coreEvents = require('./coreEvents');
 const coreDatabase = require('./coreDatabase');
 const corePathTree = require('./corePathTree');
@@ -97,7 +98,8 @@ function attributeMutation(mutation, targetPathNode) {
 	// diff, regardless of whether it's an empty string or it's null.
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
 	let ops;
-	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]) {
+	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]
+		|| !coreConfig.attributeValueDiffing) {
 		ops = [{ oi: newValue, p: path }];
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
