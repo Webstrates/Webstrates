@@ -613,12 +613,12 @@ wss.on('connection', function(client) {
 							return;
 						case "deleteMessage":
 							if (user.userId !== "anonymous:") {
-								messagingManager.deleteMessage(user.userId, data.messageId);
+								messagingManager.deleteMessage(user.userId, data.messageId, true);
 							}
 							return;
-						case "deleteMessages":
+						case "deleteAllMessages":
 							if (user.userId !== "anonymous:") {
-								messagingManager.deleteMessages(user.userId);
+								messagingManager.deleteAllMessages(user.userId, true);
 							}
 							return;
 						case "cookieUpdate":
@@ -632,7 +632,7 @@ wss.on('connection', function(client) {
 
 					permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
 						function(err, permissions) {
-						if (err) return console.error(err);
+						if (err) return console.error(err, data);
 
 						if (!permissions.includes("r")) {
 							return console.error("Insufficient read permissions in", data.wa, "call");

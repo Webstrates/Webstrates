@@ -34,7 +34,12 @@ module.exports = function(clientManager, db, pubsub) {
 				case "message":
 					sendMessage(message.userId, message.messageId, message.message, message.senderId);
 					break;
-
+				case "allMessagesDeleted":
+					module.deleteAllMessages(message.userId);
+					break;
+				case "messageDeleted":
+					module.deleteMessage(message.userId, message.messageId);
+					break;
 				default:
 					console.warn("Unknown action", message);
 			}
@@ -131,9 +136,22 @@ module.exports = function(clientManager, db, pubsub) {
 	 * @param  {string} messageId MessageId.
 	 * @public
 	 */
-	module.deleteMessage = function(userId, messageId) {
+	module.deleteMessage = function(userId, messageId, local) {
 		if (!userId || !messageId) return;
-		db.messages.deleteOne({ userId, messageId });
+
+	clientManager.broadcastToUserClients(userId, {
+			wa: 'messageDeleted', messageId
+		});
+
+
+		if (local) {
+			db.messages.deleteOne({ userId, messageId });
+			if (pubsub) {
+				pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+					action: "messageDeleted", userId, messageId, WORKER_ID
+				}));
+			}
+		}
 	};
 
 
@@ -142,9 +160,21 @@ module.exports = function(clientManager, db, pubsub) {
 	 * @param  {string} userId UserId.
 	 * @public
 	 */
-	module.deleteMessages = function(userId) {
+	module.deleteAllMessages = function(userId, local) {
 		if (!userId) return;
-		db.messages.deleteMany({ userId });
+
+		clientManager.broadcastToUserClients(userId, {
+			wa: 'allMessagesDeleted'
+		});
+
+		if (local) {
+			db.messages.deleteMany({ userId });
+			if (pubsub) {
+				pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+					action: "allMessageDeleted", userId, WORKER_ID
+				}));
+			}
+		}
 	};
 
 	/**

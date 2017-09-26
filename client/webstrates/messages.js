@@ -12,15 +12,21 @@ if (!coreUtils.getLocationObject().staticMode) {
 	// Create internal event that other modules may subscribe to
 	coreEvents.createEvent('messageReceived');
 	coreEvents.createEvent('messageSent');
+	coreEvents.createEvent('messageDeleted');
+	coreEvents.createEvent('allMessagesDeleted');
 
 	// Create event in userland.
-	globalObject.createEvent('message');
+	globalObject.createEvent('messageReceived');
+	globalObject.createEvent('messageDeleted');
 
 	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
 
 	let messages;
 
 	const defineMessageProperties = () => {
+		// If we're reconnecting, these properties will already exist.
+		if (globalObject.publicObject.messages) return;
+
 		Object.defineProperty(globalObject.publicObject, 'messages', {
 			get: () => {
 				return coreUtils.objectCloneAndLock(messages);
@@ -45,30 +51,21 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 		Object.defineProperty(globalObject.publicObject, 'deleteMessage', {
 			value: messageId => {
-				var messageIndex = messages.findIndex(message => message.messageId === messageId);
-				if (messageIndex === -1) return 0 ;
-
-				messages.splice(messageIndex, 1);
 				websocket.send({
 					wa: 'deleteMessage', messageId
 				});
-
-				return 1;
+				return !!messages.find(message => message.messageId === messageId);
 			},
 			writable: false
 		});
 
-		Object.defineProperty(globalObject.publicObject, 'deleteMessages', {
+		Object.defineProperty(globalObject.publicObject, 'deleteAllMessages', {
 			value: () => {
-				var length = messages.length;
-				if (length === 0) return 0;
-
 				messages = [];
 				websocket.send({
-					wa: 'deleteMessages'
+					wa: 'deleteAllMessages'
 				});
-
-				return length;
+				return messages.length > 0;
 			},
 			writable: false
 		});
@@ -76,19 +73,43 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 	websocket.onjsonmessage = (message) => {
 		switch (message.wa) {
-			case 'hello':
+			case 'hello': {
 				messages = message.messages || [];
 				messages.forEach(message => Object.freeze(message));
 				if (message.user.userId !== 'anonymous:') {
 					defineMessageProperties();
 				}
 				break;
-			case 'message':
+			}
+			case 'message': {
+				message = {
+					messageId: message.messageId,
+					message: message.message,
+					senderId: message.senderId
+				};
 				Object.freeze(message);
 				messages.push(message);
 				coreEvents.triggerEvent('messageReceived', message);
-				globalObject.triggerEvent('message', message.message, message.senderId, message.messageId);
+				globalObject.triggerEvent('messageReceived', message.message, message.senderId,
+					message.messageId);
 				break;
+			}
+			case 'messageDeleted': {
+				const messageIndex = messages.findIndex(m => m.messageId === message.messageId);
+				if (messageIndex === -1) return;
+				messages.splice(messageIndex, 1);
+				coreEvents.triggerEvent('messageDeleted', message);
+				globalObject.triggerEvent('messageDeleted', message.messageId);
+				break;
+			}
+			case 'allMessagesDeleted': {
+				const oldMessages = messages;
+				messages = [];
+				coreEvents.triggerEvent('allMessagesDeleted', message);
+				oldMessages.forEach(message =>
+					globalObject.triggerEvent('messageDeleted', message.messageId));
+				break;
+			}
 		}
 	};
 
@@ -96,11 +117,11 @@ if (!coreUtils.getLocationObject().staticMode) {
 		if (messages.length > 0) {
 			messages.forEach(message => {
 				coreEvents.triggerEvent('messageReceived', message);
-				globalObject.triggerEvent('message', message.message, message.senderId, message.messageId);
+				globalObject.triggerEvent('messageReceived', message.message, message.senderId,
+					message.messageId);
 			});
 		}
 	});
-
 }
 
 module.exports = messagesModule;
