@@ -76,7 +76,6 @@ function signal(wid, message, recipients) {
 }
 
 function subscribe(wid) {
-	debug.log('Subscribe on', wid);
 	const msgObj = {
 		wa: 'subscribe',
 		d: webstrateId,
@@ -89,7 +88,6 @@ function subscribe(wid) {
 function unsubscribe(wid) {
 	subscriptions[wid] = (subscriptions[wid] || 0) - 1;
 	if (subscriptions[wid] < 1) {
-		debug.log('Unsubscribe on', wid);
 		const msgObj = {
 			wa: 'unsubscribe',
 			d: webstrateId,

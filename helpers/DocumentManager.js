@@ -1,6 +1,6 @@
 "use strict";
 
-var jsondiff = require("json0-ot-diff");
+var jsondiff = require('json0-ot-diff');
 var ot = require('sharedb/lib/ot');
 var sharedb = require('sharedb');
 var mongodb = require('mongodb');

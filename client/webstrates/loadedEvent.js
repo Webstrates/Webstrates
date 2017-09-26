@@ -23,7 +23,6 @@ loadedEventModule.delayUntil = (...args) => {
 	var [eventName, ...eventNames] = args;
 	if (!eventName) return;
 
-	debug.log('Delay loaded event until', eventName, 'has been triggered');
 	delayLoadedUntilPromises.push(new Promise((accept) => {
 		// Low priority, because want need to ensure that this gets triggered after the webstrateId
 		// has been set on the wet publicObject (which we do below at medium priority).

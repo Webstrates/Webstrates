@@ -37,7 +37,6 @@ coreEventsModule.PRIORITY = new Proxy(priorities, {
  * @public
  */
 coreEventsModule.createEvent = (eventName, options = {}) => {
-	debug.log('createEvent', eventName, options);
 	if (coreEventsModule.eventExists(eventName) && !options.idempotent) {
 		throw new Error(`Event ${eventName} already exists.`);
 	}
@@ -65,7 +64,6 @@ coreEventsModule.eventExists = (eventName) => eventListeners.hasOwnProperty(even
 
 coreEventsModule.addEventListener = (eventName, eventListener,
 	priority = coreEventsModule.PRIORITY.LOW, options) => {
-	debug.log('addEventListener', eventName, priority);
 
 	eventListener.priority = priority;
 	if (!coreEventsModule.eventExists(eventName)) {
@@ -83,7 +81,6 @@ coreEventsModule.addEventListener = (eventName, eventListener,
 };
 
 coreEventsModule.removeEventListener = (eventName, eventListener) => {
-	debug.log('removeEventListener', eventName);
 	if (!coreEventsModule.eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}
@@ -94,7 +91,6 @@ coreEventsModule.removeEventListener = (eventName, eventListener) => {
 };
 
 coreEventsModule.triggerEvent = (eventName, ...args) => {
-	debug.log('triggerEvent', eventName, args);
 	if (!coreEventsModule.eventExists(eventName)) {
 		throw new Error(`Event ${eventName} doesn't exist.`);
 	}

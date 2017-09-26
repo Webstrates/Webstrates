@@ -265,7 +265,6 @@ function childListMutation(mutation, targetPathNode) {
 
 		var path = corePathTree.getPathNode(addedNode, parentNode).toPath();
 		var op = { li: coreJsonML.fromHTML(addedNode), p: path };
-		debug.log(op);
 		ops.push(op);
 
 		coreEvents.triggerEvent('DOMNodeInserted', addedNode, targetPathNode.DOMNode, true);

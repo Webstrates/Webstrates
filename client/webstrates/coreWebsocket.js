@@ -59,8 +59,6 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 	forceClose = false;
 
 	websocket.onopen = event => {
-		debug.log('Websocket opened', event);
-
 		// Drain queue and empty it.
 		queue.forEach(data => websocket.send(data));
 		queue = [];
@@ -71,7 +69,6 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 	};
 
 	websocket.onclose = event => {
-		debug.log('Websocket closed', event);
 		copies.forEach(({ websocket }) =>
 			typeof websocket.onclose === 'function' && websocket.onclose(event));
 
@@ -84,13 +81,11 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 	};
 
 	websocket.onconnecting = event => {
-		debug.log('Websocket connecting', event);
 		copies.forEach(({ websocket }) =>
 			typeof websocket.onconnecting === 'function' && websocket.onconnecting(event));
 	};
 
 	websocket.onmessage = event => {
-		debug.log('Websocket message', event);
 		let parsedData;
 
 		// If the message has a reply attached, it means it's an answer to a specific request, and not
@@ -125,7 +120,6 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 	};
 
 	websocket.onerror = event => {
-		debug.log('Websocket error', event);
 		copies.forEach(({ websocket }) =>
 			typeof websocket.onerror === 'function' && websocket.onerror(event));
 	};

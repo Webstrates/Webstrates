@@ -1,11 +1,7 @@
 'use strict';
 var assert = require('chai').assert;
 
-global.config = require('../config');
-global.config.VERBOSE_MODE = false;
-global.debug = require('../debug');
-
-const coreEvents = require('../webstrates/coreEvents');
+const coreEvents = require('../../client/webstrates/coreEvents');
 
 describe('Event management', function() {
 
