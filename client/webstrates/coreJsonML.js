@@ -71,7 +71,7 @@ function toHTML(elem, xmlNs, scripts) {
 				// guess the namespace itself. When adding it like we do with Webstrates, it won't. So
 				// to have Webstrates give us a more normal browser experience, we add the namespace
 				// manually.
-				if (!xmlNs && name === 'svg') {
+				if (name.toLowerCase() === 'svg') {
 					xmlNs = 'http://www.w3.org/2000/svg';
 				}
 
@@ -293,11 +293,11 @@ function fromHTML(elem, filter) {
 
 			jml.push(type.join(' '));
 
-		// filter result
+			// filter result
 			if ('function' === typeof filter) {
 				jml = filter(jml, elem);
 			}
-		// free references
+			// free references
 			elem = null;
 			return jml;
 		case Node.COMMENT_NODE: // comment node
@@ -310,12 +310,12 @@ function fromHTML(elem, filter) {
 			jml = ['!',
 				elem.nodeValue];
 
-		// filter result
+			// filter result
 			if ('function' === typeof filter) {
 				jml = filter(jml, elem);
 			}
 
-		// free references
+			// free references
 			elem = null;
 			return jml;
 		default: // etc.
