@@ -30,7 +30,7 @@ corePopulator.populate = function(rootElement, doc) {
 			'html', {},
 			[ 'head', {},
 				[ 'title', {}, webstrateId ] ],
-				[ 'body', {} ]
+			[ 'body', {} ]
 		]}];
 		doc.submitOp(op);
 	}

@@ -137,23 +137,23 @@ function handleSignal(payload) {
 			var peerConnection = new RTCPeerConnection(config.peerConnectionConfig);
 			peerConnectionsIn[message.streamId] = peerConnection;
 			peerConnection.setRemoteDescription(new RTCSessionDescription(message.description))
-			.then(function() {
-				peerConnection.createAnswer().then(function(description) {
-					peerConnection.setLocalDescription(description).then(function() {
-						webstrateObject.signal({
-							__internal_webrtc: 'answer',
-							streamId: message.streamId,
-							description: description
-						}, senderId);
+				.then(function() {
+					peerConnection.createAnswer().then(function(description) {
+						peerConnection.setLocalDescription(description).then(function() {
+							webstrateObject.signal({
+								__internal_webrtc: 'answer',
+								streamId: message.streamId,
+								description: description
+							}, senderId);
+						}).catch(function(err) {
+							console.error(err);
+						});
 					}).catch(function(err) {
 						console.error(err);
 					});
 				}).catch(function(err) {
 					console.error(err);
 				});
-			}).catch(function(err) {
-				console.error(err);
-			});
 
 			peerConnection.onicecandidate = function(event) {
 				if (!event.candidate) {
@@ -208,10 +208,10 @@ function handleSignal(payload) {
 	if (message.__internal_webrtc === 'answer' && peerConnectionsOut.has(message.streamId)) {
 		const peerConnection = peerConnectionsOut.get(message.streamId);
 		peerConnection.setRemoteDescription(new RTCSessionDescription(message.description))
-		.then(function() {
-		}).catch(function(err) {
-			console.error(err);
-		});
+			.then(function() {
+			}).catch(function(err) {
+				console.error(err);
+			});
 		return;
 
 	}

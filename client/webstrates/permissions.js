@@ -16,11 +16,11 @@ if (!coreUtils.getLocationObject().staticMode) {
 	coreEvents.createEvent('globalPermissions');
 	coreEvents.createEvent('userPermissions');
 
-// Create events for userland.
+	// Create events for userland.
 	globalObject.createEvent('permissionsChanged');
 
-// Delay the loaded event, until the 'globalPermissions' and 'userPermissions' events have been
-// triggered.
+	// Delay the loaded event, until the 'globalPermissions' and 'userPermissions' events have been
+	// triggered.
 	loadedEvent.delayUntil('globalPermissions', 'userPermissions');
 
 	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
@@ -28,7 +28,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 	permissionsModule.getUserPermissions = (username, provider) => {
 		let activePermissionList = permissionsList;
-	// If we found no permissions, resort to default permissions.
+		// If we found no permissions, resort to default permissions.
 		if (!permissionsList || Object.keys(permissionsList).length === 0) {
 		// If there's also no default permissions, we pretend every user has read-write permissions
 		// lest we lock everybody out. We append a question mark to let the system know that these are
@@ -40,14 +40,14 @@ if (!coreUtils.getLocationObject().staticMode) {
 		}
 
 		var user = activePermissionList.find(user =>
-		user.username === username && user.provider === provider);
+			user.username === username && user.provider === provider);
 
 		if (user) {
 			return user.permissions;
 		}
 
 		var anonymous = activePermissionList.find(user =>
-		user.username === 'anonymous' && user.provider === '');
+			user.username === 'anonymous' && user.provider === '');
 
 		return anonymous ? anonymous.permissions : '';
 	};
@@ -57,7 +57,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 		doc.data[1] && doc.data[1]['data-auth']) {
 			try {
 				return JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
-				.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+					.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
 			} catch (err) {
 				console.warn('Couldn\'t parse document permission');
 			}
@@ -65,7 +65,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 		return [];
 	};
 
-/*
+	/*
  * We need both doc, username, provider, permissionsList and defaultPermissionsList to be set before
  * we can emit permission events, so we create two promises, and wait until both have been resolved.
  */

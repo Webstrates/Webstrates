@@ -58,8 +58,8 @@ globalObject.publicObject.uploadAsset = (callback = () => {}) => {
 			headers: 'multipart/form-data',
 			body: formData
 		})
-		.then(res => callback(null, res))
-		.catch(err => callback(err));
+			.then(res => callback(null, res))
+			.catch(err => callback(err));
 	});
 
 	input.click();

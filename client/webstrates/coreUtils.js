@@ -12,7 +12,7 @@ coreUtilsModule.getLocationObject = () => {
 		return locationObject;
 	}
 
-	const pathRegex = /^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9_-]+)\/)?/i.exec(window.location.pathname);
+	const pathRegex = /^\/([A-Z0-9._-]+)\/(?:([A-Z0-9_-]+)\/)?/i.exec(window.location.pathname);
 	const [ , webstrateId, tagOrVersion] = pathRegex;
 
 	const parameters = {};
@@ -259,8 +259,8 @@ coreUtilsModule.sameParentDomain = () => {
 coreUtilsModule.sanitizeString = (string) => {
 	// See https://www.w3.org/TR/html5/syntax.html#syntax-tag-name and
 	// https://www.w3.org/TR/html5/syntax.html#syntax-attribute-name
-	var NAME_START_CHAR_REGEX = /\:|[A-Z]|\_|[a-z]/;
-	var NAME_CHAR_REGEX = /\-|\.|[0-9]/;
+	var NAME_START_CHAR_REGEX = /:|[A-Z]|_|[a-z]/;
+	var NAME_CHAR_REGEX = /-|.|[0-9]/;
 
 	return string.split('').map(function(char, index) {
 		if (NAME_START_CHAR_REGEX.test(char) || (index > 0 && NAME_CHAR_REGEX.test(char))) {
@@ -275,7 +275,7 @@ coreUtilsModule.sanitizeString = (string) => {
  * @param  {string} value Unescaped string.
  * @return {string}       Escaped string.
  */
-coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/\"/g, '&quot;');
+coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 /**
  * Replaces &amp; and &quot; with their respective characters (& and ").

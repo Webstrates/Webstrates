@@ -192,7 +192,7 @@ PathTree.prototype.check = function() {
 	}
 
 	var childNodes = this.DOMNode.hasChildNodes() ? this.DOMNode.childNodes
-			: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
+		: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
 	childNodes = Array.from(childNodes).filter(function(childNode) {
 		return !childNode.tagName || childNode.tagName.toLowerCase() !== 'transient'
 			|| elementIsTemplateDescendant(childNode);
