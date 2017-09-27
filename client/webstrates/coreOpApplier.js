@@ -43,6 +43,10 @@ function getNamespace(element) {
 		return undefined;
 	}
 
+	if (element.namespaceURI) {
+		return element.namespaceURI;
+	}
+
 	var namespace = element.getAttribute('xmlns');
 	return namespace ? namespace : getNamespace(element.parent);
 }
@@ -115,7 +119,9 @@ function insertNode(rootElement, path, value) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
 
+	console.log(parentElement);
 	const namespace = getNamespace(parentElement);
+	console.log(namespace);
 	const newElement = typeof value === 'string' ?
 		document.createTextNode(value) : coreJsonML.toHTML(value, namespace);
 
