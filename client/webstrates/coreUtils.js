@@ -274,6 +274,7 @@ coreUtilsModule.sanitizeString = (string) => {
  * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
  * @param  {string} value Unescaped string.
  * @return {string}       Escaped string.
+ * @public
  */
 coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
@@ -281,8 +282,25 @@ coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace
  * Replaces &amp; and &quot; with their respective characters (& and ").
  * @param  {string} value Escaped string.
  * @return {string}       Unescaped string.
+ * @public
  */
 coreUtilsModule.unescape = value => value && value.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
+/**
+ * Replaces "." with &dot;.
+ * @param  {string} value Unescaped string.
+ * @return {string}       Escaped string.
+ * @public
+ */
+coreUtilsModule.escapeDots = value => value && value.replace(/\./g, '&dot;');
+
+/**
+ * Replaces &dot; with ".".
+ * @param  {string} value Escaped string.
+ * @return {string}       Unescaped string.
+ * @public
+ */
+coreUtilsModule.unescapeDots = value => value && value.replace(/&dot;/g, '.');
 
 const widMap = new Map();
 /**

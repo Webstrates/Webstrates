@@ -101,7 +101,7 @@ function toHTML(elem, xmlNs, scripts) {
 					if (isSvgPath) {
 						selector.__d = value;
 					}
-					selector.setAttribute(index, value);
+					selector.setAttribute(coreUtils.unescapeDots(index), value);
 				}
 
 				// Add scripts to our scripts list, so we can execute them later synchronously. Only add

@@ -59,20 +59,22 @@ function getNamespace(element) {
  * @param {string} value          Attribute value.
  * @private
  */
-function setAttribute(rootElement, path, attributeName, newValue) {
+function setAttribute(rootElement, path, cleanAttributeName, newValue) {
 	const [childElement] = corePathTree.elementAtPath(rootElement, path);
 
-	if (config.isTransientAttribute(childElement, attributeName)) {
+	if (config.isTransientAttribute(childElement, cleanAttributeName)) {
 		return;
 	}
 
-	newValue = coreUtils.unescape(newValue);
-
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
-	if (attributeName === '__wid') {
+	if (cleanAttributeName === '__wid') {
 		coreUtils.setWidOnElement(childElement, newValue);
 		return;
 	}
+
+	// MongoDB doesn't support periods (.) inkeys, so we store them as &dot; instead.
+	const attributeName = coreUtils.unescapeDots(cleanAttributeName);
+	newValue = coreUtils.unescape(newValue);
 
 	const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
 	if (isSvgPath) childElement.__d = newValue;
@@ -119,9 +121,7 @@ function insertNode(rootElement, path, value) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
 
-	console.log(parentElement);
 	const namespace = getNamespace(parentElement);
-	console.log(namespace);
 	const newElement = typeof value === 'string' ?
 		document.createTextNode(value) : coreJsonML.toHTML(value, namespace);
 

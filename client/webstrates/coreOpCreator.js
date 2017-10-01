@@ -72,12 +72,13 @@ function attributeMutation(mutation, targetPathNode) {
 		return;
 	}
 
-	var targetPathNodeJsonML = targetPathNode.toPath();
-	var path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, mutation.attributeName];
-	var oldValue = mutation.oldValue;
-	var newValue = coreUtils.escape(mutation.target.getAttribute(mutation.attributeName));
-
-	var jsonmlAttrs = coreDatabase.elementAtPath([...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
+	// MongoDB doesn't support periods (.) i nkeys, so we store them as &dot; instead.
+	const cleanAttributeName = coreUtils.escapeDots(mutation.attributeName);
+	const targetPathNodeJsonML = targetPathNode.toPath();
+	const path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, cleanAttributeName];
+	const oldValue = mutation.oldValue;
+	const newValue = coreUtils.escape(mutation.target.getAttribute(mutation.attributeName));
+	const jsonmlAttrs = coreDatabase.elementAtPath([...targetPathNodeJsonML, ATTRIBUTE_INDEX]);
 
 	// If the new value is null, we are removing the attribute.
 	if (newValue === null) {
@@ -86,7 +87,7 @@ function attributeMutation(mutation, targetPathNode) {
 		return [{ od: oldValue, p: path }];
 	}
 
-	if (newValue === jsonmlAttrs[mutation.attributeName]) {
+	if (newValue === jsonmlAttrs[cleanAttributeName]) {
 		return [];
 	}
 
@@ -94,15 +95,15 @@ function attributeMutation(mutation, targetPathNode) {
 	// setting an attribute's value for the first time), we have to create the operation manually.
 	// The second condition should not be true without the first one, but it will if the changes
 	// happen so rapidly, that the browser skipped a MutationRecord. Or that's my theory, at least.
-	// We are lose about checking jsonmlAttrs[mutation.attributeName], because we don't want to
+	// We are lose about checking jsonmlAttrs[attributeName], because we don't want to
 	// diff, regardless of whether it's an empty string or it's null.
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
 	let ops;
-	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[mutation.attributeName]
+	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[cleanAttributeName]
 		|| !coreConfig.attributeValueDiffing) {
 		ops = [{ oi: newValue, p: path }];
 	} else {
-		ops = patchesToOps(path, jsonmlAttrs[mutation.attributeName], newValue);
+		ops = patchesToOps(path, jsonmlAttrs[cleanAttributeName], newValue);
 	}
 
 	coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
