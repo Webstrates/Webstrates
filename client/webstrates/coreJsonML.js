@@ -9,32 +9,13 @@ const coreUtils = require('./coreUtils');
 
 const coreJsonML = {};
 
-function getNs(elem) {
-	if (!elem) return undefined;
-	var ns;
-	for (var index in elem) {
-		if (index === 'xmlns') {
-			ns = elem[index];
-		}
-	}
-
-	if (ns !== undefined) {
-		return ns;
-	}
-
-	if (elem.parent === elem) {
-		return undefined;
-	}
-
-	return getNs(elem.parent);
-}
-
 function isPlainObject(obj) {
 	return obj && typeof obj === 'object'
 	// Previously, we did comparison like: Object.getPrototypeOf(obj) === Object.prototype, but we
 	// can no longer do that, because if we use the parent's ShareDB Connection, plain objects created
 	// in the outer frame will have used that frame's Object.prototype, which is not the same as the
-	// Object.prototype in the inner frame, even though they're identical.
+	// Object.prototype in the inner frame, even though they're identical. Basically:
+	// window.Object !== iframe.contentWindow.Object.
 	&& Object.prototype.toString.call(obj) === '[object Object]';
 }
 
@@ -57,15 +38,18 @@ function toHTML(elem, xmlNs, scripts) {
 	for (; i < elem.length; i++) {
 		// If array create new element
 		if (Array.isArray(elem[i])) {
+			// children of foreignobject element should use the default XHTML namespace
+			// ('http://www.w3.org/1999/xhtml'), so we set it to undefined. Curiously enough, if we
+			// actually do `xmlNs = "http://www.w3.org/1999/xhtml"`,
+			if (name.toLowerCase() === 'foreignobject') {
+				xmlNs = undefined;
+			}
 			fragment.appendChild(toHTML(elem[i], xmlNs, scripts));
 
 			// If object set element attributes
 		} else if (isPlainObject(elem[i])) {
 			if (name) {
 				name = coreUtils.sanitizeString(name);
-				if (!xmlNs) {
-					xmlNs = getNs(elem[i]);
-				}
 
 				// When loading a website with an SVG element without a namespace attribute, Chrome will
 				// guess the namespace itself. When adding it like we do with Webstrates, it won't. So
@@ -89,8 +73,7 @@ function toHTML(elem, xmlNs, scripts) {
 						coreUtils.setWidOnElement(selector, elem[i][index]);
 						continue;
 					}
-					var value = elem[i][index] && elem[i][index]
-						.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+					var value = coreUtils.unescape(elem[i][index]);
 					index = coreUtils.sanitizeString(index);
 					if (xmlNs) {
 						if (index === 'href' || index === 'xlink:href') {

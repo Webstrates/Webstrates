@@ -43,12 +43,11 @@ function getNamespace(element) {
 		return undefined;
 	}
 
-	if (element.namespaceURI) {
-		return element.namespaceURI;
+	if (element.closest('foreignObject') && !(element instanceof SVGForeignObjectElement)) {
+		return document.body.namespaceURI;
 	}
 
-	var namespace = element.getAttribute('xmlns');
-	return namespace ? namespace : getNamespace(element.parent);
+	return element.getAttribute('xmlns') ? element.getAttribute('xmlns') : element.namespaceURI;
 }
 
 /**
