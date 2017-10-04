@@ -11,214 +11,185 @@ coreEvents.addEventListener('populated', (rootElement, _webstrateId) => {
 	clientId = globalObject.publicObject.clientId;
 });
 
-// Mapping from wids to callbacks: string -> callback
-const readyToStream = new Map();
-const listeningForStreams = new Map();
-
-const peerConnectionsOut = new Map();
-const peerConnectionsIn = new Map();
 
 // Intercept streaming signals, so they're not processed as regular signals by the signaling module.
 signaling.addInterceptor(payload => {
 	const message = payload.m;
-	if (typeof message.__internal_webrtc === 'undefined') {
+	const senderClientId = payload.s;
+	// Only handle our own internal webrtc messages and also ignore our own messages.
+	if (typeof message.__internal_webrtc === 'undefined' || senderClientId === clientId) {
 		return false;
 	}
 
 	// No reason to do this all now, so we use setImmdiate.
-	setImmediate(handleSignal, payload);
+	setImmediate(handleSignal, payload.id, senderClientId, message);
 	return true;
 });
 
-function handleSignal(payload) {
-	const senderId = payload.s;
-	const message = payload.m;
-
-	// Ignore our own messages.
-	if (senderId === clientId) {
-		return;
-	}
-
-	const wid = payload.id;
+function handleSignal(wid, senderClientId, message) {
 	const node = coreUtils.getElementByWid(wid);
-	if (!node && wid !== 'document') {
-		return;
-	}
 
-	const webstrateObject = node ? node.webstrate : globalObject.publicObject;
-
-	// An offerRequestRequest if when somebody comes in wanting to stream, they can send out an
-	// offerRequestRequest. That is, a request for an offerRequest. The clients that may want to
-	// receive the stream can then send back and offerRequest and get an offer in return.
-	// It's like a guy walking into a bar, saying "hey, if anybody wants a beer, just as for it"
-	// (offerRequestRequest). Another guy then responds with "Yea, I want a bear" (offerRequest),
-	// and the first guy then says "Okay, you can have a beer" (offer). The offer is the stream.
-	// So when a client receives this and they're listening for a stream, they can send out an
-	// offerRequst as a reply.
-	if (message.__internal_webrtc === 'offerRequestRequest' && listeningForStreams.has(wid)) {
-		node.webstrate.signal({
-			__internal_webrtc: 'offerRequest'
+	if (message.requestForStreams) {
+		Array.from(wantToStreamCallbacks.get(wid).keys()).forEach(ownId => {
+			node.webstrate.signal({
+				__internal_webrtc: true,
+				wantToStream: true,
+				senderId: ownId,
+				recipientId: message.senderId
+			}, senderClientId);
 		});
 		return;
 	}
 
-	// Somebody wants to listen to our stream, so they send out an offer request (as described above),
-	// to which we reply with an offer.
-	if (message.__internal_webrtc === 'offerRequest' && readyToStream.has(wid)) {
-		const callback = readyToStream.get(wid);
+	// If we get a message from somebody wanting to stream, we ask all the people listening for
+	// streams. If they accept, we create the webrtcClient.
+	if (message.wantToStream) {
+		Array.from(wantToListenCallbacks.get(wid).values()).forEach(callback => {
+			const ownId = coreUtils.randomString();
+			// TODO: If client on the other end doesn't establish a connection, this object may never
+			// get used and should get deleted if still inactive after a timeout.
+			const webrtcClient = new WebRTCClient(ownId, message.senderId, senderClientId,
+				node, { listener: true });
+			webrtcClients.get(wid).set(ownId, webrtcClient);
+			callback(senderClientId, 'META_DATA_IS_DEPRECATED', clientAcceptCallback => {
 
-		callback(senderId, function(stream, meta, onConnectCallback) {
-			const peerConnection = new RTCPeerConnection(config.peerConnectionConfig);
-			const streamId = coreUtils.randomString();
-			peerConnectionsOut.set(streamId, peerConnection);
-
-			const onCloseCallbacks = [];
-
-			// Also send out any ICE candidates we might have.
-			peerConnection.onicecandidate = function(event) {
-				if (!event.candidate) {
-					return;
-				}
-				webstrateObject.signal({
-					__internal_webrtc: 'iceCandidate',
-					streamId: streamId,
-					iceCandidate: event.candidate
-				}, senderId);
-			};
-
-			peerConnection.oniceconnectionstatechange = function(event) {
-				switch (peerConnection.iceConnectionState) {
-					case 'connected':
-						onConnectCallback && onConnectCallback();
-						break;
-					case 'disconnected':
-						onCloseCallbacks.forEach(function(callback) {
-							callback();
-						});
-						break;
-				}
-			};
-
-			// Add the actual stream.
-			peerConnection.addStream(stream);
-
-			// Send offer to the client requesting to get our stream.
-			peerConnection.createOffer().then(function(description) {
-				peerConnection.setLocalDescription(description).then(function() {
-					webstrateObject.signal({
-						__internal_webrtc: 'offer',
-						streamId: streamId,
-						description: description,
-						meta: meta
-					}, senderId);
-				}).catch(function(err) {
-					console.error(err);
-				});
-			}).catch(function(err) {
-				console.error(err);
+				webrtcClient.onRemoteStream(clientAcceptCallback);
+				node.webstrate.signal({
+					__internal_webrtc: true,
+					wantToListen: true,
+					recipientId: message.senderId,
+					senderId: ownId,
+				}, senderClientId);
+				return webrtcClient.stub;
 			});
-
-			return {
-				close: function() {
-					return peerConnection.close();
-				},
-				onclose: function(callback) {
-					onCloseCallbacks.push(callback);
-				}
-			};
 		});
 		return;
 	}
 
-	// Client listening for stream receives an offer.
-	if (message.__internal_webrtc === 'offer' && listeningForStreams.has(wid)) {
-		const callback = listeningForStreams.get(wid);
-		callback(senderId, message.meta, function approveOffer(streamCallback) {
-			var peerConnection = new RTCPeerConnection(config.peerConnectionConfig);
-			peerConnectionsIn[message.streamId] = peerConnection;
-			peerConnection.setRemoteDescription(new RTCSessionDescription(message.description))
-				.then(function() {
-					peerConnection.createAnswer().then(function(description) {
-						peerConnection.setLocalDescription(description).then(function() {
-							webstrateObject.signal({
-								__internal_webrtc: 'answer',
-								streamId: message.streamId,
-								description: description
-							}, senderId);
-						}).catch(function(err) {
-							console.error(err);
-						});
-					}).catch(function(err) {
-						console.error(err);
-					});
-				}).catch(function(err) {
-					console.error(err);
-				});
-
-			peerConnection.onicecandidate = function(event) {
-				if (!event.candidate) {
-					return;
-				}
-				webstrateObject.signal({
-					__internal_webrtc: 'iceCandidate',
-					streamId: message.streamId,
-					iceCandidate: event.candidate
-				}, senderId);
-			};
-
-			// `onaddstream` is deprecated, but the replacement `ontrack` isn't implemented.
-			var stream;
-			peerConnection.onaddstream = function(event) {
-				stream = event.stream;
-			};
-
-			peerConnection.oniceconnectionstatechange = function(event) {
-				switch (peerConnection.iceConnectionState) {
-					case 'connected':
-						webstrateObject.off('signalStream', callback);
-						streamCallback(stream);
-						break;
-					case 'disconnected':
-						onCloseCallbacks.forEach(function(callback) {
-							callback();
-						});
-						break;
-				}
-			};
-
-			var onCloseCallbacks = [];
-			return {
-				close: function() {
-					return peerConnection.close();
-				},
-				onclose: function(callback) {
-					onCloseCallbacks.push(callback);
-				}
-			};
-		});
-		return;
-	}
-
-	if (message.__internal_webrtc === 'iceCandidate' && peerConnectionsOut.has(message.streamId)) {
-		const peerConnection = peerConnectionsOut.get(message.streamId);
-		peerConnection.addIceCandidate(new RTCIceCandidate(message.iceCandidate));
-		return;
-	}
-
-	if (message.__internal_webrtc === 'answer' && peerConnectionsOut.has(message.streamId)) {
-		const peerConnection = peerConnectionsOut.get(message.streamId);
-		peerConnection.setRemoteDescription(new RTCSessionDescription(message.description))
-			.then(function() {
-			}).catch(function(err) {
-				console.error(err);
+	if (message.wantToListen) {
+		const callback = wantToStreamCallbacks.get(wid).get(message.recipientId);
+		if (callback) {
+			callback(senderClientId, (localStream, meta, onConnectCallback) => {
+				const webrtcClient = new WebRTCClient(message.recipientId, message.senderId, senderClientId,
+					node, { streamer: true });
+				webrtcClient.onConnect(onConnectCallback);
+				webrtcClients.get(wid).set(message.recipientId, webrtcClient);
+				webrtcClient.start(localStream);
+				return webrtcClient.stub;
 			});
+		}
 		return;
-
 	}
+
+	if (message.sdp || message.ice) {
+		const webrtcClient = webrtcClients.get(wid).get(message.recipientId);
+		if (webrtcClient) {
+			webrtcClient.handleMessage(message);
+		} else {
+			console.error('Got message for invalid recipient', wid, message, webrtcClients);
+		}
+		return;
+	}
+
+}
+
+const wantToStreamCallbacks = new Map();
+const wantToListenCallbacks = new Map();
+const webrtcClients = new Map();
+
+function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, streamer }) {
+	let active = false, peerConnection, onRemoteStreamCallback, onConnectCallback, onCloseCallback;
+
+	const start = (localStream) => {
+		active = true;
+		peerConnection = new RTCPeerConnection(config.peerConnectionConfig);
+		peerConnection.onicecandidate = gotIceCandidate;
+		peerConnection.oniceconnectionstatechange = gotStateChange;
+		if (streamer) {
+			peerConnection.addStream(localStream);
+			peerConnection.createOffer().then(createdDescription).catch(errorHandler);
+		}
+		if (listener) {
+			peerConnection.onaddstream = gotRemoteStream;
+		}
+	};
+
+	const createdDescription = (description) => {
+		peerConnection.setLocalDescription(description).then(function() {
+			node.webstrate.signal({
+				sdp: peerConnection.localDescription,
+				__internal_webrtc: true,
+				senderId: ownId,
+				recipientId
+			});
+		}).catch(errorHandler);
+	};
+
+	const handleMessage = (message) => {
+		if(!peerConnection) start();
+
+		if(message.sdp) {
+			peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp)).then(function() {
+				// Only create answers in response to offers
+				if(message.sdp.type == 'offer') {
+					peerConnection.createAnswer().then(createdDescription).catch(errorHandler);
+				}
+			}).catch(errorHandler);
+		} else if(message.ice) {
+			peerConnection.addIceCandidate(new RTCIceCandidate(message.ice)).catch(errorHandler);
+		}
+	};
+
+	const gotIceCandidate = (event) => {
+		if(event.candidate != null) {
+			node.webstrate.signal({
+				ice: event.candidate,
+				__internal_webrtc: true,
+				senderId: ownId,
+				recipientId
+			});
+		}
+	};
+
+	const gotStateChange = event => {
+		switch (peerConnection.iceConnectionState) {
+			case 'connected':
+				onConnectCallback && onConnectCallback(event);
+				break;
+			case 'disconnected':
+			case 'failed':
+				onCloseCallback && onCloseCallback(event);
+				// TODO: Possibly delete this WebRTCClient object as it won't be reused.
+				break;
+		}
+	};
+
+	const gotRemoteStream = (event) => {
+		onRemoteStreamCallback(event.stream);
+	};
+
+	const errorHandler = (...error) => {
+		console.error(...error);
+	};
+
+	return {
+		id: ownId, active, listener, streamer,
+		onRemoteStream: callback => onRemoteStreamCallback = callback,
+		onConnect: callback => onConnectCallback = callback,
+		stub: {
+			close: () => peerConnection.close(),
+			onclose: callback => onCloseCallback = callback
+		},
+		start, handleMessage
+	};
 }
 
 function setupSignalStream(publicObject, eventObject) {
 	const wid = publicObject.id;
+
+	webrtcClients.set(wid, new Map());
+	wantToStreamCallbacks.set(wid, new Map());
+	wantToListenCallbacks.set(wid, new Map());
 
 	// Text nodes and transient elements won't have wids, meaning there's way for us to signal on
 	// them, and thus it'd be pointless to add a signaling method and event.
@@ -227,15 +198,17 @@ function setupSignalStream(publicObject, eventObject) {
 	// A mapping from user callbacks to our internal callbacks: fn -> fn.
 	//const callbacks = new Map();
 
+	const node = coreUtils.getElementByWid(wid);
+
 	Object.defineProperty(publicObject, 'signalStream', {
-		value: (callback, recipients) => {
-			readyToStream.set(wid, callback);
-			// Manually subscribe to signals on the node. We don't use the regular public on handler here,
-			// because we intercept all the signals ourselves anyway, so the callback would never get
-			// triggered.
+		value: (callback) => {
 			signaling.subscribe(wid);
-			publicObject.signal({
-				__internal_webrtc: 'offerRequestRequest'
+			const ownId = coreUtils.randomString();
+			wantToStreamCallbacks.get(wid).set(ownId, callback);
+			node.webstrate.signal({
+				__internal_webrtc: true,
+				wantToStream: true,
+				senderId: ownId
 			});
 		},
 		writable: false
@@ -243,28 +216,45 @@ function setupSignalStream(publicObject, eventObject) {
 
 	Object.defineProperty(publicObject, 'stopStreamSignal', {
 		value: (callback) => {
-			publicObject.off('signal', callback);
-			readyToStream.delete(wid);
+			// Find the ownId that was generated when adding this callback.
+			const streamers = Array.from(wantToStreamCallbacks.get(wid).entries());
+			const [ownId, ] = streamers.find(([ownId, callback]) => callback === callback);
+
+			if (ownId) {
+				wantToStreamCallbacks.get(wid).delete(ownId);
+			}
+
+			// "But what if somebody else is still listening? Then we shouldn't unsubscribe". Worry not,
+			// the signaling module keeps track of how many people are actually listening and doesn't
+			// unsubcribe unless we're the last/only listener.
+			signaling.unsubscribe(wid);
 		},
 		writable: false
 	});
 
 	eventObject.createEvent('signalStream', {
-		// TODO Should be possible to add multiple callbacks to each wid, so the structure should be
-		// Map<<wid>, Set<callback>>.
-		// TODO: Also note that since we don't trigger the signalStream event at all through the
-		// nodeObjects module, we could add some optmization here, so the callbacks aren't actually
-		// added to nodeObjects.
 		addListener: (callback) => {
-			listeningForStreams.set(wid, callback);
-			signaling.subscribe(wid);
-			publicObject.signal({
-				__internal_webrtc: 'offerRequest'
+			if (wantToListenCallbacks.get(wid).size === 0) {
+				signaling.subscribe(wid);
+			}
+			const ownId = coreUtils.randomString();
+			wantToListenCallbacks.get(wid).set(ownId, callback);
+			node.webstrate.signal({
+				__internal_webrtc: true,
+				requestForStreams: true,
+				senderId: ownId
 			});
 		},
 		removeListener: (callback) => {
+			// Find the ownId that was generated when adding this callback.
+			const listeners = Array.from(wantToListenCallbacks.get(wid).entries());
+			const [ownId, ] = listeners.find(([ownId, callback]) => callback === callback);
+
+			if (ownId) {
+				wantToListenCallbacks.get(wid).delete(ownId);
+			}
+
 			signaling.unsubscribe(wid);
-			listeningForStreams.delete(wid);
 		},
 	});
 }

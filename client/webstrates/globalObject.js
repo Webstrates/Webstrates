@@ -104,7 +104,6 @@ publicObject.off = (eventName, eventListener) => {
  */
 publicObject.restore = (tagOrVersion, callback) => {
 	if (publicObject.isStatic) {
-		console.log('fetch');
 		coreDatabase.fetch(publicObject.webstrateId, tagOrVersion).then(doc => {
 			corePopulator.populate(document, doc);
 		});

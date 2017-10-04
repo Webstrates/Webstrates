@@ -23,7 +23,7 @@ corePopulator.populate = function(rootElement, doc) {
 			console.log(`Creating new sharedb document: "${webstrateId}".`);
 			doc.create('json0');
 		} else {
-			console.log(`Document: "${webstrateId}" exists, but was empty. Recreating basic document.`);
+			console.warn(`Document: "${webstrateId}" exists, but was empty. Recreating basic document.`);
 		}
 
 		const op = [{ 'p': [], 'oi': [
@@ -38,7 +38,7 @@ corePopulator.populate = function(rootElement, doc) {
 	// All documents are persisted as JsonML, so we only know how to work with JSON documents.
 	if ((!staticMode && doc.type.name !== 'json0')
 		|| (staticMode && doc.type !== 'http://sharejs.org/types/JSONv0')) {
-		console.log(staticMode, doc.type);
+		console.error(staticMode, doc.type);
 		throw `Unsupported document type: ${doc.type.name}`;
 	}
 

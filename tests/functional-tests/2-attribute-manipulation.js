@@ -6,7 +6,7 @@ const util = require('../util.js');
 describe('Attribute Manipulation', function() {
 	this.timeout(10000);
 
-	const webstrateId = 'Hk_2hkkhZ'; //test-' + util.randomString();
+	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
 	let browser, pageA, pageB;
 
