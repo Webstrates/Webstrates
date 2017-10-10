@@ -25,7 +25,10 @@ util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 	try {
 		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);
 	} catch (e) {
-		return false;
+		if (e.message.match(/^waiting failed: timeout \d+ms exceeded$/)) {
+			return false;
+		}
+		throw e;
 	}
 	return true;
 };

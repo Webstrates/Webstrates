@@ -142,15 +142,22 @@ coreEvents.addEventListener('populated', targetElement => {
 	// We don't do this until after the document has been populated, because we just above attach
 	// webstrate objects on the entire DOM.
 	document.__createElementNS = document.createElementNS;
-	document.createElementNS = function(namespaceURI, qualifiedName) {
-		var element = document.__createElementNS(namespaceURI, qualifiedName);
+	document.createElementNS = function(namespaceURI, qualifiedName, ...unused) {
+		var element = document.__createElementNS(namespaceURI, qualifiedName, ...unused);
 		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
 		return element;
 	};
 
 	document.__createElement = document.createElement;
-	document.createElement = function(tagName, options) {
-		var element = document.__createElement(tagName, options);
+	document.createElement = function(tagName, options, ...unused) {
+		var element = document.__createElement(tagName, options, ...unused);
+		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
+		return element;
+	};
+
+	Element.prototype.__cloneNode = Element.prototype.cloneNode;
+	Element.prototype.cloneNode = function(deep, ...unused) {
+		var element = Element.prototype.__cloneNode.call(this, deep, ...unused);
 		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
 		return element;
 	};
