@@ -55,7 +55,6 @@ globalObject.publicObject.uploadAsset = (callback = () => {}) => {
 		fetch('', {
 			method: 'post',
 			credentials: 'include',
-			headers: 'multipart/form-data',
 			body: formData
 		})
 			.then(res => callback(null, res))
