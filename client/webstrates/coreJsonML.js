@@ -40,7 +40,7 @@ function toHTML(elem, xmlNs, scripts) {
 		if (Array.isArray(elem[i])) {
 			// children of foreignobject element should use the default XHTML namespace
 			// ('http://www.w3.org/1999/xhtml'), so we set it to undefined. Curiously enough, if we
-			// actually do `xmlNs = "http://www.w3.org/1999/xhtml"`,
+			// actually do `xmlNs = "http://www.w3.org/1999/xhtml"`, stuff won't be rendered properly.
 			if (name.toLowerCase() === 'foreignobject') {
 				xmlNs = undefined;
 			}
@@ -59,7 +59,9 @@ function toHTML(elem, xmlNs, scripts) {
 					xmlNs = 'http://www.w3.org/2000/svg';
 				}
 
-				if (xmlNs) {
+				// As also mentioned in regards to foreignobject, setting the namspace to the default
+				// ("http://www.w3.org/1999/xhtml") causes stuff to not render properly.
+				if (xmlNs && xmlNs !== 'http://www.w3.org/1999/xhtml') {
 					selector = document.createElementNS(xmlNs, name);
 				} else {
 					selector = document.createElement(name);
