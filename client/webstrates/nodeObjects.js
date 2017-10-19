@@ -155,10 +155,21 @@ coreEvents.addEventListener('populated', targetElement => {
 		return element;
 	};
 
+	document.__importNode = document.importNode;
+	document.importNode = function(externalNode, deep, ...unused) {
+		var element = document.__importNode(externalNode, deep, ...unused);
+		coreUtils.recursiveForEach(element, childNode => {
+			attachWebstrateObjectToNode(childNode, true); // true to trigger webstrateObjectAdded event.
+		});
+		return element;
+	};
+
 	Element.prototype.__cloneNode = Element.prototype.cloneNode;
 	Element.prototype.cloneNode = function(deep, ...unused) {
 		var element = Element.prototype.__cloneNode.call(this, deep, ...unused);
-		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
+		coreUtils.recursiveForEach(element, childNode => {
+			attachWebstrateObjectToNode(childNode, true); // true to trigger webstrateObjectAdded event.
+		});
 		return element;
 	};
 
