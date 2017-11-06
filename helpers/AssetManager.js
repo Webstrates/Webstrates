@@ -40,21 +40,12 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 
 			var source = `${req.user.userId} (${req.remoteAddress})`;
 
-			var uploadPromises = [];
-			req.files.forEach(function(asset) {
-				uploadPromises.push(new Promise(function(accept, reject) {
-					addAsset(req.webstrateId, asset, source, function(err, assetRecord) {
-						if (err) return reject(err);
-						accept(assetRecord);
-					});
-				}));
-			});
-
-			Promise.all(uploadPromises).then(function(assetRecords) {
+			module.addAssets(req.webstrateId, req.files, source, (err, assetRecords) => {
+				if (err) {
+					console.error(err);
+					return res.status(409).json({ error: String(err) });
+				}
 				res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
-			}).catch(function(err) {
-				console.error(err);
-				res.status(409).json({ error: String(err) });
 			});
 		});
 	};
@@ -264,10 +255,11 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 	 * added to the file name.
 	 * @param {string}   webstrateId WebstrateId.
 	 * @param {obj}      asset       Asset information.
+	 * @param {string}   source      Origin of assets (some client identifier)
 	 * @param {Function} next        Callback.
-	 * @private
+	 * @public
 	 */
-	function addAsset(webstrateId, asset, source, next) {
+	module.addAsset = function(webstrateId, asset, source, next) {
 		return documentManager.sendNoOp(webstrateId, "assetAdded", source, function() {
 			return documentManager.getDocumentVersion(webstrateId, function(err, version) {
 				db.assets.insert({
@@ -300,6 +292,32 @@ module.exports = function(permissionManager, clientManager, documentManager, db)
 			});
 		});
 	};
+
+	/**
+	 * Add assets uploaded to the database. Just calls module.addAsset a bunch of times.
+	 * @param {string}   webstrateId WebstrateId.
+	 * @param {array}    assets      Array of asset objects.
+	 * @param {string}   source      Origin of assets (some client identifier)
+	 * @param {Function} next        Callback.
+	 * @public
+	 */
+	module.addAssets = function(webstrateId, assets, source, next) {
+		var assetPromises = [];
+		assets.forEach(function(asset) {
+			assetPromises.push(new Promise(function(accept, reject) {
+				module.addAsset(webstrateId, asset, source, function(err, assetRecord) {
+					if (err) return reject(err);
+					accept(assetRecord);
+				});
+			}));
+		});
+
+		Promise.all(assetPromises).then(function(assetRecords) {
+			next(null, assetRecords.length === 1 ? assetRecords[0] : assetRecords);
+		}).catch(function(err) {
+			next(err);
+		});
+	}
 
 	/**
 	 * Filter Multer file uploads to ensure that the webstrate exists and that the user has the

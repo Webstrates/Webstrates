@@ -1,11 +1,15 @@
 "use strict";
 
 var archiver = require('archiver');
-var fs = require('fs')
+var crypto = require('crypto')
+var fs = require('fs');
 var jsonml = require('jsonml-tools');
 var jsonmlParse = require('jsonml-parse');
+var mime = require('mime-types');
 var request = require('request');
 var shortId = require('shortid');
+var tmp = require('tmp');
+var yauzl = require('yauzl');
 var SELFCLOSING_TAGS = ["area", "base", "br", "col", "embed", "hr", "img", "input", "keygen",
 	"link", "menuitem", "meta", "param", "source", "track", "wbr"];
 
@@ -501,6 +505,19 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 	}
 
 	/**
+	 * Transform a readable straem into a string
+	 * @param  {ReadableStream} stream Stream to read from.
+	 * @param  {Function} callback     Callback to call when stream has been read.
+	 * @return {string}                (async) String read from stream.
+	 * @private
+	 */
+	function streamToString(stream, callback) {
+		let str = "";
+		stream.on('data', chunk => str += chunk);
+		stream.on('end', () => callback(str));
+	}
+
+	/**
 	 * Handles requests to "/new".
 	 * @param {obj} req Express request object.
 	 * @param {obj} res Express response object.
@@ -511,8 +528,7 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 		// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
 
 		if ("prototypeUrl" in req.query) {
-			console.log(req.query.prorotypeUrl);
-			return request({url: req.query.prototypeUrl }, function(err, response, body) {
+			return request({url: req.query.prototypeUrl, encoding: 'binary' }, function(err, response, body) {
 				if (!err && response.statusCode !== 200) {
 					err = new Error("Invalid request. Received: " +
 						response.statusCode + " " + response.statusMessage);
@@ -521,27 +537,131 @@ module.exports = function(documentManager, permissionManager, assetManager) {
 					console.error(err);
 					return res.status(409).send(String(err));
 				}
+				if (response.headers['content-type'] === 'application/zip') {
+					return tmp.file((err, filePath, fd, cleanupFileCallback) => {
+						return fs.writeFile(filePath, body, 'binary', err => {
+							if (err) {
+								console.error(err);
+								return cleanupFileCallback();
+							}
+							yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
+								if (err) {
+									console.error(err);
+									cleanupFileCallback();
+								}
 
-				htmlToJson(body, function(err, jsonml) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					documentManager.createNewDocument({
-						webstrateId: req.query.id,
-						snapshot: {
-							type: 'http://sharejs.org/types/JSONv0',
-							data: jsonml
-						}
-					}, function(err, webstrateId) {
+								let webstrateId, htmlDocumentFound = false;
+								const assets = [];
+								zipFile.on("entry", entry => {
+									if (/\/$/.test(entry.fileName)) {
+										// Directory file names end with '/'.
+										// Note that entires for directories themselves are optional.
+										// An entry's fileName implicitly requires its parent directories to exist.
+										zipFile.readEntry();
+									} else {
+										// file entry
+										zipFile.openReadStream(entry, (err, readStream) => {
+											if (err) return console.error(err);
+											readStream.on("end", function() {
+												zipFile.readEntry();
+											});
+
+											if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
+												htmlDocumentFound = true;
+												streamToString(readStream, htmlDoc => {
+													htmlToJson(htmlDoc, function(err, jsonml) {
+														if (err) return;
+														documentManager.createNewDocument({
+															webstrateId: req.query.id,
+															snapshot: {
+																type: 'http://sharejs.org/types/JSONv0',
+																data: jsonml
+															}
+														}, function(err, _webstrateId) {
+															if (err) return;
+															webstrateId = _webstrateId;
+														});
+													});
+												});
+											}
+											else {
+												crypto.pseudoRandomBytes(16, (err, raw) => {
+													const fileName =  raw.toString('hex');
+													const filePath = assetManager.UPLOAD_DEST + fileName;
+													const writeStream = fs.createWriteStream(filePath);
+													readStream.pipe(writeStream);
+													assets.push({
+														filename: fileName,
+														originalname: entry.fileName.match(/([^\/]+)$/)[0],
+														size: entry.uncompressedSize,
+														mimetype: mime.lookup(entry.fileName)
+													});
+												});
+											}
+										});
+									}
+								});
+
+								function addAssetsToWebstrateOrDeleteTheAssets() {
+									if (!webstrateId) {
+										assets.forEach(asset => {
+											fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
+										});
+										return res.status(409).send(htmlDocumentFound
+											? "Unable to create webstrate from index.html file."
+											: "No index.html found.");
+									}
+
+									var source = `${req.user.userId} (${req.remoteAddress})`;
+									assetManager.addAssets(webstrateId, assets, source, (err, assetRecords) => {
+										res.redirect(`/${webstrateId}/`);
+									});
+								}
+
+								zipFile.once("end", function() {
+									zipFile.close();
+									cleanupFileCallback();
+
+									if (webstrateId) {
+										return addAssetsToWebstrateOrDeleteTheAssets();
+									}
+
+									// If no webstrateId exists, we're waiting for MongoDB, so we'll wait 500ms.
+									setTimeout(addAssetsToWebstrateOrDeleteTheAssets, 500);
+								});
+
+								zipFile.readEntry();
+							});
+						});
+					});
+				}
+
+				// `startsWith` and not a direct match, because the content-type often (always?) is followed
+				// by a charset declaration, which we don't care about.
+				if (response.headers['content-type'].startsWith('text/html')) {
+					return htmlToJson(body, function(err, jsonml) {
 						if (err) {
 							console.error(err);
 							return res.status(409).send(String(err));
 						}
-						console.log("Redirecting", webstrateId);
-						res.redirect(`/${webstrateId}/`);
-					})
-				})
+						documentManager.createNewDocument({
+							webstrateId: req.query.id,
+							snapshot: {
+								type: 'http://sharejs.org/types/JSONv0',
+								data: jsonml
+							}
+						}, function(err, webstrateId) {
+							if (err) {
+								console.error(err);
+								return res.status(409).send(String(err));
+							}
+							res.redirect(`/${webstrateId}/`);
+						});
+					});
+				}
+
+				res.status(405).send('Can only prototype from text/html or application/zip sources. ' +
+					'Received file with content-type: ' + response.headers['content-type']);
 			});
 		}
 
