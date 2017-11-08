@@ -1,20 +1,29 @@
 "use strict";
 
+var crypto = require('crypto')
+var fs = require('fs');
 var jsondiff = require('json0-ot-diff');
-var ot = require('sharedb/lib/ot');
-var sharedb = require('sharedb');
+var jsonmlParse = require('jsonml-parse');
+var mime = require('mime-types');
 var mongodb = require('mongodb');
+var ot = require('sharedb/lib/ot');
+var request = require('request');
+var sharedb = require('sharedb');
 var shortId = require('shortid');
+var tmp = require('tmp');
+var yauzl = require('yauzl');
+
 
 /**
  * DocumentManager constructor.
  * @constructor
- * @param {ClientManager} clientmanager ClientManager instace.
- * @param {ShareDBInstance} share       ShareDB instance.
- * @param {ShareDBAgent}    agent       ShareDB agent.
- * @param {MongoDb} db                  MongoDb instance for session log and webstrate tags.
+ * @param {ClientManager}   clientManager  ClientManager instance.
+ * @param {AssetManager}    assetManager   AssetManager instance.
+ * @param {ShareDBInstance} share          ShareDB instance.
+ * @param {ShareDBAgent}    agent          ShareDB agent.
+ * @param {MongoDb} db                     MongoDb instance for session log and webstrate tags.
  */
-module.exports = function(clientManager, share, agent, db) {
+module.exports = function(clientManager, assetManager, share, agent, db) {
 	var module = {};
 
 	/**
@@ -76,6 +85,198 @@ module.exports = function(clientManager, share, agent, db) {
 		});
 	};
 
+
+	/**
+	 * Applies callback recursively to every string in a nested data structure.
+	 * @param  {list}   xs         List to recurse.
+	 * @param  {Function} callback Function to apply to each string.
+	 * @return {list}              Resulting data structure.
+	 * @private
+	 */
+	function recurse(xs, callback) {
+		return xs.map(function(x) {
+			if (typeof x === "string") return callback(x, xs);
+			if (Array.isArray(x)) return recurse(x, callback);
+			return x;
+		});
+	}
+
+	/**
+	 * Convert HTML string to JsonML structure.
+	 * @param  {string}   html     HTML string.
+	 * @param  {Function} callback Callback.
+	 * @return {jsonml}            (Async) JsonML object.
+	 * @private
+	 */
+	function htmlToJson(html, callback) {
+		jsonmlParse(html.trim(), function(err, jsonml) {
+			if (err) return callback(err);
+			jsonml = recurse(jsonml, function(str, parent) {
+				//if (["script", "style"].includes(parent[0].toLowerCase())) { return str; }
+				return str.replace(/&gt;/g, ">").replace(/&lt;/g, "<").replace(/&amp;/g, "&");
+			});
+			callback(null, jsonml);
+		}, { preserveEntities: true });
+	}
+
+	/**
+	 * Transform a readable stream into a string.
+	 * @param  {ReadableStream} stream Stream to read from.
+	 * @param  {Function} callback     Callback to call when stream has been read.
+	 * @return {string}                (async) String read from stream.
+	 * @private
+	 */
+	function streamToString(stream, callback) {
+		let str = "";
+		stream.on('data', chunk => str += chunk);
+		stream.on('end', () => callback(str));
+	}
+
+	module.createDocumentFromURL = function(url, { webstrateId, source, documentExists }, next) {
+		request({url: url, encoding: 'binary' }, (err, response, body) => {
+			if (!err && response.statusCode !== 200) {
+				err = new Error("Invalid request. Received: " +
+					response.statusCode + " " + response.statusMessage);
+			}
+			if (err) return next(err);
+
+			if (response.headers['content-type'] === 'application/zip') {
+				return tmp.file((err, filePath, fd, cleanupFileCallback) => {
+					return fs.writeFile(filePath, body, 'binary', err => {
+						if (err) {
+							cleanupFileCallback();
+							return next(err);
+						}
+						yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
+							if (err) {
+								cleanupFileCallback();
+								return next(err);
+							}
+
+							let createdWebstrateId, htmlDocumentFound = false;
+							const assets = [];
+							zipFile.on("entry", entry => {
+								if (/\/$/.test(entry.fileName)) {
+									// Directory file names end with '/'.
+									// Note that entires for directories themselves are optional.
+									// An entry's fileName implicitly requires its parent directories to exist.
+									zipFile.readEntry();
+								} else {
+									// file entry
+									zipFile.openReadStream(entry, (err, readStream) => {
+										if (err) return console.error(err);
+										readStream.on("end", function() {
+											zipFile.readEntry();
+										});
+
+										if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
+											htmlDocumentFound = true;
+											streamToString(readStream, htmlDoc => {
+												htmlToJson(htmlDoc, function(err, jsonml) {
+													if (err) return next(err);
+													if (documentExists) {
+														transformDocumentToSnapshotData(webstrateId, jsonml,
+															"documentImport", source, (err, newVersion) => {
+															if (err) return next(err);
+															createdWebstrateId = webstrateId;
+														});
+													}
+													else {
+														module.createNewDocument({
+															webstrateId: webstrateId,
+															snapshot: {
+																type: 'http://sharejs.org/types/JSONv0',
+																data: jsonml
+															}
+														}, function(err, webstrateId) {
+															if (err) return next(err);
+															createdWebstrateId = webstrateId;
+														});
+													}
+												});
+											});
+										}
+										else {
+											crypto.pseudoRandomBytes(16, (err, raw) => {
+												const fileName =  raw.toString('hex');
+												const filePath = assetManager.UPLOAD_DEST + fileName;
+												const writeStream = fs.createWriteStream(filePath);
+												readStream.pipe(writeStream);
+												assets.push({
+													filename: fileName,
+													originalname: entry.fileName.match(/([^\/]+)$/)[0],
+													size: entry.uncompressedSize,
+													mimetype: mime.lookup(entry.fileName)
+												});
+											});
+										}
+									});
+								}
+							});
+
+							function addAssetsToWebstrateOrDeleteTheAssets() {
+								if (!createdWebstrateId && !documentExists) {
+									assets.forEach(asset => {
+										fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
+									});
+									next(new Error(htmlDocumentFound
+										? "Unable to create webstrate from index.html file."
+										: "No index.html found."));
+								}
+
+								assetManager.addAssets(createdWebstrateId, assets, source, (err, assetRecords) =>
+									next(err, createdWebstrateId));
+							}
+
+							zipFile.once("end", function() {
+								zipFile.close();
+								cleanupFileCallback();
+
+								if (createdWebstrateId) {
+									return addAssetsToWebstrateOrDeleteTheAssets();
+								}
+
+								// If no webstrateId exists, we're waiting for MongoDB, so we'll wait 500ms.
+								setTimeout(addAssetsToWebstrateOrDeleteTheAssets, 500);
+							});
+
+							zipFile.readEntry();
+						});
+					});
+				});
+			}
+
+			// `startsWith` and not a direct match, because the content-type often (always?) is followed
+			// by a charset declaration, which we don't care about.
+			if (response.headers['content-type'].startsWith('text/html')) {
+				return htmlToJson(body, function(err, jsonml) {
+					if (err) return next(err);
+
+					if (documentExists) {
+						transformDocumentToSnapshotData(webstrateId, jsonml, "documentImport", source,
+							(err, newVersion) => {
+							next(err, webstrateId);
+						});
+					}
+					else {
+						// webstrateId may be undefined below, in which case a random webstrateId is generated in
+						// createNewDocument.
+						module.createNewDocument({
+							webstrateId: webstrateId,
+							snapshot: {
+								type: 'http://sharejs.org/types/JSONv0',
+								data: jsonml
+							}
+						}, next);
+					}
+				});
+			}
+
+			next(new Error('Can only prototype from text/html or application/zip sources. ' +
+				'Received file with content-type: ' + response.headers['content-type']));
+		});
+	};
+
 	/**
 	 * Retrieve a document snapshot from the database.
 	 * @param  {string}   options.webstrateId WebstrateId.
@@ -122,7 +323,7 @@ module.exports = function(clientManager, share, agent, db) {
 	 * @param  {Function} next        Callback (optional).
 	 * @private
 	 */
-	function submitRawOp (webstrateId, op, next) {
+	function submitRawOp(webstrateId, op, next) {
 		var request = new sharedb.SubmitRequest(share, agent, 'webstrates', webstrateId, op);
 		request.submit(function(err) {
 			if (err) return next && next(new Error(err.message));
@@ -192,21 +393,10 @@ module.exports = function(clientManager, share, agent, db) {
 		module.getDocument({ webstrateId, version, tag }, function(err, oldVersion) {
 			if (err) return next && next(err);
 			var tag = oldVersion.label;
-			// Send a no-op so we can see when the document was restored, but also to make sure the
-			// restore command bumps the document version by at least one to avoid asset name conflicts.
-			return module.sendNoOp(webstrateId, "documentRestore", source, function(err) {
-				module.getDocument({ webstrateId, version: "head" }, function(err, currentVersion) {
-					if (err) return next && next(err);
-					var ops = jsondiff(currentVersion.data, oldVersion.data);
-					if (ops.length === 0) {
-						return module.tagDocument(webstrateId, currentVersion.v, tag + " (restored)", next);
-					}
-					module.submitOps(webstrateId, ops, source, function(err) {
-						if (err) return next && next(err);
-						var newVersion = currentVersion.v + ops.length + 1;
-						module.tagDocument(webstrateId, newVersion, tag + " (restored)", next);
-					});
-				});
+
+			transformDocumentToSnapshotData(webstrateId, oldVersion.data, "documentRestore",
+				source, (err, newVersion) => {
+				module.tagDocument(webstrateId, newVersion, tag + " (restored)", next);
 			});
 		});
 	};
@@ -444,6 +634,36 @@ module.exports = function(clientManager, share, agent, db) {
 			next && next(err, snapshot);
 		});
 	}
+
+
+	/**
+	 * Transform a webstrate (by webstrateId) into snapshot data (i.e. a jsonml representation).
+	 * @param  {string}   webstrateId      WebstrateId.
+	 * @param  {JsonML}   snapshotData     Desired JsonML document.
+	 * @param  {string}   transformMessage No-op text message to insert into history.
+	 * @param  {string}   source           Source of the operations.
+	 * @param  {Function} next             Callback.
+	 * @return {number}                    New version of document after transformation.
+	 * @private
+	 */
+	 function transformDocumentToSnapshotData(webstrateId, snapshotData, transformMessage,
+		source, next) {
+		// Send a no-op so we can see when the document was transformed, but also to make sure the
+		// transform command bumps the document version by at least one to avoid asset name conflicts.
+		return module.sendNoOp(webstrateId, transformMessage, source, function(err) {
+			module.getDocument({ webstrateId, version: "head" }, function(err, currentVersion) {
+				if (err) return next && next(err);
+				var ops = jsondiff(currentVersion.data, snapshotData);
+				if (ops.length === 0) return next && next(null, currentVersion.v);
+				module.submitOps(webstrateId, ops, source, function(err) {
+					if (err) return next && next(err);
+					var newVersion = currentVersion.v + ops.length + 1;
+					return next && next(null, newVersion);
+				});
+			});
+		});
+	};
+
 
 	/**
 	 * Get the most recent tag (including snapshot) before (or equal to) a version.

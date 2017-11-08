@@ -144,9 +144,8 @@ exports.fetch = (webstrateId, tagOrVersion) => {
  * Restore document to a previous version, either by version number or tag label.
  * Labels cannot begin with a digit whereas versions consist only of digits, so distinguishing
  * is easy.
- * This does not return a promise, as we do not have control over exactly when the document gets
- * reverted as this is ShareDB's job.
  * @param  {string} tagOrVersion Tag label or version number.
+ * @public
  */
 exports.restore = (webstrateId, tagOrVersion) => {
 	var msgObj = {
@@ -160,5 +159,21 @@ exports.restore = (webstrateId, tagOrVersion) => {
 		msgObj.l = tagOrVersion;
 	}
 
+	coreWebsocket.send(msgObj);
+};
+
+/**
+ * Make the server fetch a URL. The URL must be either a HTML page or a ZIP file containing an
+ * HTML page (and potentially other files). Restore the DOM with the HTML page and add the potential
+ * other files as assets.
+ * @param  {string} url URL to fetch.
+ * @public
+ */
+exports.import = (webstrateId, url) => {
+	var msgObj = {
+		wa: 'import',
+		d: webstrateId,
+		url: url
+	};
 	coreWebsocket.send(msgObj);
 };

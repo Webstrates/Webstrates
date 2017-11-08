@@ -102,13 +102,27 @@ publicObject.off = (eventName, eventListener) => {
  * is easy.
  * @param  {string} tagOrVersion Tag label or version number.
  */
-publicObject.restore = (tagOrVersion, callback) => {
+publicObject.restore = (tagOrVersion) => {
 	if (publicObject.isStatic) {
 		coreDatabase.fetch(publicObject.webstrateId, tagOrVersion).then(doc => {
 			corePopulator.populate(document, doc);
 		});
 	} else {
 		coreDatabase.restore(publicObject.webstrateId, tagOrVersion);
+	}
+};
+
+/**
+ * Make the server fetch a URL. The URL must be either a HTML page or a ZIP file containing an
+ * HTML page (and potentially other files). Restore the DOM with the HTML page and add the potential
+ * other files as assets.
+ * @param  {string} url URL to fetch.
+ */
+publicObject.import = (url) => {
+	if (publicObject.isStatic) {
+		throw new Error('Cannot import URL in static mode.');
+	} else {
+		coreDatabase.import(publicObject.webstrateId, url);
 	}
 };
 

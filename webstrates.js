@@ -85,14 +85,15 @@ var agent = share.connect();
 var db = require('./helpers/database.js')(global.config.db);
 
 // We initialize clientManager to allow for circular dependencies between messagingManager and
-// clientManager.
-var clientManager = {};
+// clientManager, and the same with assetManager and documentManager.
+var clientManager = {}, assetManager = {};
 var messagingManager = require('./helpers/MessagingManager.js')(clientManager, db, pubsub);
 Object.assign(clientManager, require("./helpers/ClientManager.js")(messagingManager, db, pubsub));
-var documentManager = require("./helpers/DocumentManager.js")(clientManager, share, agent, db);
+var documentManager = require("./helpers/DocumentManager.js")(clientManager, assetManager, share,
+	agent, db);
 var permissionManager = require("./helpers/PermissionManager.js")(documentManager, pubsub);
-var assetManager = require("./helpers/AssetManager.js")(permissionManager, clientManager,
-	documentManager, db);
+Object.assign(assetManager, require("./helpers/AssetManager.js")(permissionManager, clientManager,
+	documentManager, db));
 var sessionManager = require("./helpers/SessionManager.js")(db);
 var httpRequestController = require("./helpers/HttpRequestController.js")(documentManager,
 	permissionManager, assetManager);
@@ -763,6 +764,24 @@ wss.on('connection', function(client) {
 									break;
 								}
 								console.error("Can't restore, need either a tag label or version.");
+								break;
+
+							case "import":
+								if (!permissions.includes("w")) {
+									return console.error("Insufficient write permissions in", data.wa, "call");
+								}
+								var url = data.url;
+								var source = `${user.userId} (${stream.remoteAddress})`;
+								documentManager.createDocumentFromURL(url,
+									{ webstrateId, source, documentExists: true }, (err, webstrateId) => {
+										if (err) {
+											console.error(err);
+											if (data.token) {
+												client.send(JSON.stringify({ wa: "reply", token: data.token,
+													error: err.message }));
+											}
+										}
+								});
 								break;
 
 							default:
