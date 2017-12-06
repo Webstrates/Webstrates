@@ -413,7 +413,7 @@ function insertInText(rootElement, path, charIndex, value) {
 						fakeRange.startOffset += value.length;
 					}
 				}
-				// Update selection
+				// Update selection.
 				setSelectionRange(parentElement, fakeRange);
 			}
 
@@ -486,9 +486,9 @@ function deleteInText(rootElement, path, charIndex, value) {
 					if (fakeRange.startContainer === parentElement && fakeRange.startOffset >= charIndex) {
 						fakeRange.startOffset -= value.length;
 					}
-					// Update selection
-					setSelectionRange(parentElement, fakeRange);
 				}
+				// Update selection.
+				setSelectionRange(parentElement, fakeRange);
 			}
 
 			coreEvents.triggerEvent('DOMTextNodeDeletion', childElement, parentElement, charIndex, value);
