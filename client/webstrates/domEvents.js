@@ -58,6 +58,7 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	});
 
 	coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
+		if (!node.webstrate.id) return;
 		// Finding the event object of the parent instead of the node itself, as firing the event
 		// on the node itself isn't very useful.
 		const eventObject = nodes.get(parentElement);
@@ -68,6 +69,7 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	});
 
 	coreEvents.addEventListener('DOMNodeDeleted', (node, parentElement, local) => {
+		if (!node.webstrate.id) return;
 		// Finding the event object of the parent instead of the node itself, as firing the event
 		// on the node itself isn't very useful.
 		const eventObject = nodes.get(parentElement);

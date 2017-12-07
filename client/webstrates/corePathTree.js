@@ -100,7 +100,7 @@ function isTransientElement(DOMNode) {
 PathTree.create = function(DOMNode, parentPathTree, overwrite) {
 	// Transient elements are not supposed to be persisted, and should thus not be part of the
 	// PathTree. Unless the transient element is in a <template>.
-	if (isTransientElement(DOMNode)) {
+	if (isTransientElement(DOMNode) || (!parentPathTree && DOMNode !== document.documentElement)) {
 		return;
 	}
 
@@ -148,8 +148,6 @@ PathTree.prototype.remove = function(shallow) {
 		child.remove(true);
 	});
 	this.children = null;
-
-	return this;
 };
 
 /**

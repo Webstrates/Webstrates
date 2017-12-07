@@ -319,8 +319,19 @@ coreUtilsModule.setWidOnElement = (node, wid) => {
 	});
 };
 
-coreUtilsModule.getElementByWid = (wid) => {
-	return widMap.get(wid);
-};
+/**
+ * Remove element from wid map. Bye, bye, memory leak!
+ * @param  {string} wid wid.
+ * @public
+ */
+coreUtilsModule.removeWidFromElement = wid => widMap.delete(wid);
+
+/**
+ * Get element by wid.
+ * @param  {string} wid wid.
+ * @return {DOMNode}     DOM Element with given wid.
+ * @public
+ */
+coreUtilsModule.getElementByWid = wid => widMap.get(wid);
 
 module.exports = coreUtilsModule;

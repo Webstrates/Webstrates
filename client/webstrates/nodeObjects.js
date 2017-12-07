@@ -176,16 +176,26 @@ coreEvents.addEventListener('populated', targetElement => {
 	coreEvents.triggerEvent('webstrateObjectsAdded', nodeObjectsModule.nodes);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
-coreEvents.addEventListener('DOMNodeInserted', (node) => {
+coreEvents.addEventListener('DOMNodeInserted', node => {
 	coreUtils.recursiveForEach(node, childNode => {
 		// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 		attachWebstrateObjectToNode(childNode, true);
 	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
-coreEvents.addEventListener('DOMTextNodeInsertion', (node) => {
+coreEvents.addEventListener('DOMTextNodeInsertion', node => {
 	// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 	attachWebstrateObjectToNode(node, true);
+}, coreEvents.PRIORITY.IMMEDIATE);
+
+coreEvents.addEventListener('DOMNodeDeleted', node => {
+	coreUtils.recursiveForEach(node, child => {
+		nodeObjectsModule.nodes.delete(child);
+	});
+});
+
+coreEvents.addEventListener('DOMTextNodeDeletion', node => {
+	nodeObjectsModule.nodes.delete(node);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 module.exports = nodeObjectsModule;

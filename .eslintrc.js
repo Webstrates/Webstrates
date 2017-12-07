@@ -34,6 +34,9 @@ module.exports = {
 		quotes: ['error', 'single'],
 		// Always give an error with missing semicolons.
 		semi: ['error', 'always'],
+		// Only warn when escaping unnecessary characters in a regex (default is error).
+		'no-useless-escape': ['warn'],
+		// Only warn hen unreachable code exists (default is error).
 		'no-unreachable': ['warn'],
 		'no-unused-vars': ['warn', {
 			// Do not check arguments at all, e.g. so function(accept, reject) { ... } is okay even if

@@ -36,7 +36,7 @@ const dmp = new diffMatchPatch();
  * @return {Ops}             List of resulting operations.
  */
 function patchesToOps(path, oldValue, newValue) {
-	var ops = [];
+	const ops = [];
 
 	var patches = dmp.patch_make(oldValue, newValue);
 
@@ -68,7 +68,7 @@ function patchesToOps(path, oldValue, newValue) {
  *                                   mutation.
  */
 function attributeMutation(mutation, targetPathNode) {
-	if (config.isTransientAttribute(mutation.target, mutation.attributeName)) {
+	if (!targetPathNode || config.isTransientAttribute(mutation.target, mutation.attributeName)) {
 		return;
 	}
 
@@ -111,7 +111,6 @@ function attributeMutation(mutation, targetPathNode) {
 	return ops;
 }
 
-
 /**
  * Creates string insertion and string deletion operations from mutation.
  * @param  {MutationRecord} mutation MutationRecord created by MutationObserver.
@@ -119,10 +118,18 @@ function attributeMutation(mutation, targetPathNode) {
  *                                   mutation.
  */
 function characterDataMutation(mutation, targetPathNode) {
-	var isComment = mutation.target.nodeType === document.COMMENT_NODE;
-	var path = targetPathNode.toPath();
-	var oldValue = mutation.oldValue;
-	var newValue = mutation.target.data;
+	const oldValue = mutation.oldValue;
+	const newValue = mutation.target.data;
+
+	// No pathNode means transient, therefore not in the JsonML, so creating an op isn't possible and
+	// also doesn't make sense.
+	if (!targetPathNode) {
+		return;
+	}
+
+	const isComment = mutation.target.nodeType === document.COMMENT_NODE;
+	const path = targetPathNode.toPath();
+
 
 	if (!isComment && coreDatabase.elementAtPath(path) !== oldValue) {
 		// This should not happen, but it will if a text node is inserted and then altered right
@@ -221,8 +228,9 @@ function childListMutation(mutation, targetPathNode) {
 				}
 
 				// The element may being moved, and thus already is in the DOM and has a wid. We don't want
-				// to redefine this.
-				if (!childNode.__wid) {
+				// to redefine this. Also, the element can't be transient, i.e. its parent has to be in
+				// the JsonML (targetPathNode must exist) and the element itself can't be transient.
+				if (!childNode.__wid && targetPathNode && !config.isTransientElement(childNode)) {
 					const wid = coreUtils.randomString();
 					coreUtils.setWidOnElement(childNode, wid);
 				}
@@ -239,6 +247,7 @@ function childListMutation(mutation, targetPathNode) {
 		// an op for it doesn't make sense. This happens for instance with transient elements.
 		var newPathNode = corePathTree.create(addedNode, targetPathNode);
 		if (!newPathNode) {
+			coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
 			return;
 		}
 
@@ -264,24 +273,24 @@ function childListMutation(mutation, targetPathNode) {
 			targetPathNode.children.push(newPathNode);
 		}
 
-		var path = corePathTree.getPathNode(addedNode, parentNode).toPath();
-		var op = { li: coreJsonML.fromHTML(addedNode), p: path };
+		const path = corePathTree.getPathNode(addedNode, parentNode).toPath();
+		const op = { li: coreJsonML.fromHTML(addedNode), p: path };
 		ops.push(op);
 
-		coreEvents.triggerEvent('DOMNodeInserted', addedNode, targetPathNode.DOMNode, true);
+		coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
 	});
 
 	Array.from(mutation.removedNodes).forEach(function(removedNode) {
 		var removedPathNode = corePathTree.getPathNode(removedNode, mutation.target);
+
 		// If an element has no path node, it hasn't been registered in the JsonML at all, so it won't
 		// exist on other clients, and therefore creating an op to delete it wouldn't make sense.
 		if (!removedPathNode) {
+			coreEvents.triggerEvent('DOMNodeDeleted', removedNode, mutation.target, true);
 			return;
 		}
 
-		coreEvents.triggerEvent('DOMNodeDeleted', removedNode, removedPathNode.parent.DOMNode, true);
-
-		var path = removedPathNode.toPath();
+		const path = removedPathNode.toPath();
 		removedPathNode.remove();
 		var jsonmlElement = coreDatabase.elementAtPath(path);
 		// If the element doesn't exist in the JsonML, we can't create an op for its deletion, and we
@@ -291,8 +300,10 @@ function childListMutation(mutation, targetPathNode) {
 			return;
 		}
 
-		var op = { ld: jsonmlElement, p: path };
+		const op = { ld: jsonmlElement, p: path };
 		ops.push(op);
+
+		coreEvents.triggerEvent('DOMNodeDeleted', removedNode, mutation.target, true);
 	});
 
 	return ops;
@@ -300,13 +311,7 @@ function childListMutation(mutation, targetPathNode) {
 
 coreOpCreator.emitOpsFromMutations = () => {
 	coreEvents.addEventListener('mutation', (mutation) => {
-		var targetPathNode = corePathTree.getPathNode(mutation.target);
-		// It doesn't make sense to create operation for a node that doesn't exist, so we return.
-		// This may happen if another user performs an operation on an element that we have just
-		// deleted.
-		if (!targetPathNode) {
-			return;
-		}
+		const targetPathNode = corePathTree.getPathNode(mutation.target);
 
 		let ops;
 		switch (mutation.type) {
@@ -330,6 +335,7 @@ coreOpCreator.emitOpsFromMutations = () => {
 function addWidToElement(node) {
 	if (node.nodeType === document.ELEMENT_NODE && !node.__wid) {
 		const pathNode = corePathTree.getPathNode(node);
+		// Anything without a pathNode is transient and therefore doesn't need a wid.
 		if (pathNode) {
 			const wid = coreUtils.randomString();
 			coreUtils.setWidOnElement(node, wid);
@@ -347,5 +353,11 @@ coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
 	// If local is set, this node was inserted by ourself and thus already has a wid (if it needs to).
 	if (!local) addWidToElement(node);
 }, coreEvents.PRIORITY.IMMEDIATE);
+
+coreEvents.addEventListener('DOMNodeDeleted', node => {
+	if (node.__wid) {
+		coreUtils.removeWidFromElement(node.__wid);
+	}
+});
 
 module.exports = coreOpCreator;
