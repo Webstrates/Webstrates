@@ -70,7 +70,6 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 			addEventListenerListeners[eventName](eventListener);
 		}
 	};
-
 	node.webstrate.off = (eventName, eventListener) => {
 		if (!eventExists(eventName)) {
 			throw new Error(`Event ${eventName} doesn't exist.`);
@@ -192,10 +191,6 @@ coreEvents.addEventListener('DOMNodeDeleted', node => {
 	coreUtils.recursiveForEach(node, child => {
 		nodeObjectsModule.nodes.delete(child);
 	});
-});
-
-coreEvents.addEventListener('DOMTextNodeDeletion', node => {
-	nodeObjectsModule.nodes.delete(node);
-}, coreEvents.PRIORITY.IMMEDIATE);
+}, coreEvents.PRIORITY.LAST);
 
 module.exports = nodeObjectsModule;
