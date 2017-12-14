@@ -62,7 +62,14 @@ if (config.basicAuth) {
 		return callback(username === config.basicAuth.username
 			&& password === config.basicAuth.password);
 	});
-	app.use(httpAuth.connect(basic));
+	app.use((req, res, next) => {
+		if (!req.ws) {
+			httpAuth.connect(basic)(req, res, next);
+		}
+		else {
+			next();
+		}
+	});
 }
 
 if (config.auth) {
