@@ -3,7 +3,7 @@ const assert = require('chai').assert;
 const config = require('../config.js');
 const util = require('../util.js');
 
-describe('SVG namespace', function() {
+describe('SVG Namespace', function() {
 	this.timeout(10000);
 
 	const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';

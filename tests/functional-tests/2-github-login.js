@@ -44,7 +44,10 @@ describe('GitHub Login', function() {
 
 	it('should redirect to Webstrates frontpage', async () => {
 		const url = await pageA.url();
-		assert.equal(url, config.server_address + 'frontpage/');
+		// config.server_address may start something like http://web:strate@..., but the page URL
+		// won't include the login basic auth credentials, so we use util.cleanServerAddress, which
+		// has those parts removed.
+		assert.equal(url, util.cleanServerAddress + 'frontpage/');
 	});
 
 	let userObject;

@@ -45,5 +45,3 @@ else {
 		});
 	});
 }
-
-// TODO: Delete Webstrate handler

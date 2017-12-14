@@ -10,7 +10,10 @@ describe('Transclusion', function() {
 	const webstrateIdInner = webstrateId + '-inner';
 	const url = config.server_address + webstrateId;
 	const urlInner = config.server_address + webstrateIdInner;
+	// Remove HTTP basic auth credentials from URL when it's being used as an iframe src attribute.
+	const cleanUrlInner = util.cleanServerAddress + webstrateIdInner;
 	let browser, pageA, pageB;
+
 
 	before(async () => {
 		browser = await puppeteer.launch();
@@ -27,18 +30,16 @@ describe('Transclusion', function() {
 	});
 
 	it('body should initially be empty', async () => {
-		const bodyContents = await pageA.evaluate(() => {
-			return document.body.innerHTML;
-		});
+		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
 		assert.isEmpty(bodyContents, "");
 	});
 
 	it('iframe transcluded event gets triggered', async () => {
 		const webstrateObjectAvailable = await util.waitForFunction(pageA, () => window.webstrate);
 
-		await pageA.evaluate(urlInner => {
+		await pageA.evaluate(cleanUrlInner => {
 			const iframe = document.createElement('iframe');
-			iframe.src = urlInner;
+			iframe.src = cleanUrlInner;
 
 			iframe.webstrate.on('transcluded', (webstrateId, clientId) => {
 				window.__test_transcluded = true;
@@ -46,7 +47,7 @@ describe('Transclusion', function() {
 				window.__test_transcluded_clientId = clientId;
 			});
 			document.body.appendChild(iframe);
-		}, urlInner);
+		}, cleanUrlInner);
 
 		const transcludedEventGetsTriggered = await util.waitForFunction(pageA,
 			() => window.__test_transcluded);
@@ -115,11 +116,11 @@ describe('Transclusion', function() {
 	});
 
 	it('new iframe\'s content should match initial iframe\'s contents', async () => {
-		await pageA.evaluate(urlInner => {
+		await pageA.evaluate(cleanUrlInner => {
 			const iframe = document.createElement('iframe');
-			iframe.src = urlInner;
+			iframe.src = cleanUrlInner;
 			document.body.appendChild(iframe);
-		}, urlInner);
+		}, cleanUrlInner);
 
 		await util.waitForFunction(pageA, () => {
 			let [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));

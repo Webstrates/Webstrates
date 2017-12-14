@@ -21,6 +21,12 @@ util.escapeRegExp = function(s) {
 	return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
 };
 
+// Remove HTTP basic auth credentials from the server address, e.g. http://web:strate@domain.tld/
+// becomes http://domain.tld/. Useful for comparing page URL with server address and for iframes,
+// as having credentials in iframe src attributes is prohibited.
+util.cleanServerAddress = config.server_address.replace(/^(https?:\/\/)([^@]+@)/, '$1');
+
+
 util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 	try {
 		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);

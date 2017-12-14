@@ -67,7 +67,8 @@ describe('Messages', function() {
 		assert.isFalse(messageObjectsExistsC);
 	});
 
-	it('should be able to send and receive message from client sending message using clientId',
+	// pageA sends message to itself, verifies the message's existence and contents and sender.
+	it('should be able to send and receive message from logged-in client to itself using clientId',
 		async () => {
 		await pageA.evaluate(messageValue1 =>
 			webstrate.message(messageValue1, webstrate.clientId),
@@ -87,6 +88,9 @@ describe('Messages', function() {
 		assert.propertyVal(message, 'senderId', userId);
 	});
 
+	// pageB verifies its ability to receive message sent from pageA to itself. pageA and pageB are
+	// logged in as the same user, so both should receive the message, even though it was addressed to
+	// a clientId (e.g. "HJz8bmVbf"), not a userId (e.g. "kbadk:github").
 	it('should be able to receive message from other client', async () => {
 		const messageExists = await util.waitForFunction(pageB, messageValue1 =>
 			webstrate.messages.some(message => message.message === messageValue1),
@@ -102,15 +106,21 @@ describe('Messages', function() {
 		assert.propertyVal(message, 'senderId', userId);
 	});
 
+	// pageC verifies that it has not received the message sent from pageA. pageC is not logged in as
+	// the same user as pageA/pageB and thus shouldn't receive anything. In fact, pageC isn't logged
+	// in at all.
 	it('should not be able to receive message from not-logged in client', async () => {
 		const messageExists = await util.waitForFunction(pageC, messageValue1 =>
-			webstrate.messages.some(message => message.message === messageValue1),
+			webstrate.messages && webstrate.messages.some(message => message.message === messageValue1),
 		undefined, messageValue1);
 
 		assert.isFalse(messageExists);
 	});
 
-	it('should be able to set messageReceied event listener on all clients', async () => {
+	// Even though pageC's messageReceived event listener can never get triggered -- because you can't
+	// send messages to a not-logged in client --  we still allow the listener to get added to make
+	// the API easier to use.
+	it('should be able to set messageReceived event listener on all clients', async () => {
 		await Promise.all([pageA.evaluate(() => {
 			window.__test_messageReceived = false;
 			webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
@@ -125,6 +135,7 @@ describe('Messages', function() {
 		})]);
 	});
 
+	// Not-logged in clients can't receive messages, so the event should never trigger.
 	it('sending message should trigger messageReceived event listener on logged in clients only',
 		async () => {
 		await pageA.evaluate(messageValue2 =>
@@ -144,6 +155,7 @@ describe('Messages', function() {
 		assert.isFalse(messageReceivedTriggeredC);
 	});
 
+	// Well, duh.
 	it('messageReceived should trigger with correct values on logged-in clients', async () => {
 		const messageA = await pageA.evaluate(() => window.__test_messageReceived);
 		const messageB = await pageB.evaluate(() => window.__test_messageReceived);
@@ -152,14 +164,8 @@ describe('Messages', function() {
 		assert.equal(messageValue2, messageB);
 	});
 
-	it('webstrate.messages should be identical on logged-in clients', async () => {
-		const messagesA = await pageA.evaluate(() => webstrate.messages);
-		const messagesB = await pageB.evaluate(() => webstrate.messages);
-
-		assert.deepEqual(messagesA, messagesB);
-	});
-
 	let message1, message2;
+	// Make sure the messages are also what we expect on pageB (could be pageA as well).
 	it('messages should exist in webstrate.messages', async () => {
 		const messages = await pageB.evaluate(() => webstrate.messages);
 
@@ -170,7 +176,17 @@ describe('Messages', function() {
 		assert.exists(message2);
 	});
 
-	it('can delete message by messageId', async () => {
+	// The messages list should be identical on pageA and pageB as they are logged into the same
+	// GitHub account and therefore share userId.
+	it('webstrate.messages should be identical on clients logged in to same account', async () => {
+		const messagesA = await pageA.evaluate(() => webstrate.messages);
+		const messagesB = await pageB.evaluate(() => webstrate.messages);
+
+		assert.deepEqual(messagesA, messagesB);
+	});
+
+	// Deleting a message on pageA should be reflected on pageB.
+	it('should be possible delete message by messageId', async () => {
 		await pageA.evaluate(messageId1 => webstrate.deleteMessage(messageId1), message1.messageId);
 
 		const messageId1DeletedA = await util.waitForFunction(pageA, messageId1 =>
@@ -184,13 +200,20 @@ describe('Messages', function() {
 		assert.isTrue(messageId1DeletedB, 'deleted on page B');
 	});
 
-	it('webstrate.messages should still be identical on logged-in clients', async () => {
+	// Verify messages on pageA and pageB match. This test is somewhat redundant before we have the
+	// one above, but let's just be sure that we didn't accidentally delete all messages on pageB or
+	// something.
+	it('webstrate.messages should still be identical on logged-in clients after message deletion',
+		async () => {
 		const messagesA = await pageA.evaluate(() => webstrate.messages);
 		const messagesB = await pageB.evaluate(() => webstrate.messages);
 
 		assert.deepEqual(messagesA, messagesB);
 	});
 
+	// Even though pageC's messageDeleted event listener can never get triggered -- because you can't
+	// send messages to a not-logged in client --  we still allow the listener to get added to make
+	// the API easier to use.
 	it('should be able to set messageDeleted event listener on all clients', async () => {
 		await Promise.all([pageA.evaluate(() => {
 			window.__test_messageDeleted = false;
@@ -206,6 +229,9 @@ describe('Messages', function() {
 		})]);
 	});
 
+	// Not-logged in clients can't receive messages, so there can't be anything to delete, thus the
+	// deletion event should never trigger. Furthermore, the event certainly shouldn't trigger when
+	// messages are deleted on an unrelated client.
 	it('deleting message should trigger messageDeleted event listener on logged in clients only',
 		async () => {
 		await pageB.evaluate(messageId2 => webstrate.deleteMessage(messageId2), message2.messageId);
@@ -223,6 +249,7 @@ describe('Messages', function() {
 		assert.isFalse(messageDeletedTriggeredC, 'not triggered on page C');
 	});
 
+	// Duh.
 	it('messageReceived should trigger with correct values on logged-in clients', async () => {
 		const messageId2A = await pageA.evaluate(() => window.__test_messageDeleted);
 		const messageId2B = await pageB.evaluate(() => window.__test_messageDeleted);

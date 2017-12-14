@@ -90,7 +90,7 @@ describe('Webstrate Object', function() {
 			document.body.querySelector('transient > div').webstrate.id,
 		.1);
 
-		assert.isFalse(transientChildHasId, 'webstrate.id does not exist on transient element child');
+		assert.isFalse(transientChildHasId, 'webstrate.id does not exists on transient element child');
 	});
 
 	const randomElementId = util.randomString();

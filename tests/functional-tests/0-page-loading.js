@@ -60,12 +60,16 @@ describe('Page Loading', function() {
 		assert.equal(webstrateObjectWebstrateId, webstrateId);
 	});
 
-	it('/new redirects to random webstrateId matching /[A-z0-9-]{8,10}/', async () => {
+	const webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
+		? "([a-z]{2,13}-[a-z]{2,13}-\\d{1,2})"
+		: "([A-z0-9-]{8,10})";
+
+	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
 		pageB = await browser.newPage();
 		await pageB.goto(config.server_address + 'new', { waitUntil: 'networkidle' });
 
 		const redirectedUrl = pageB.url();
-		const regex = "^" + util.escapeRegExp(config.server_address) + "([A-z0-9-_]{8,10})\/$";
+		const regex = "^" + util.escapeRegExp(config.server_address) + webstrateIdRegex + "\/$";
 		assert.match(redirectedUrl, new RegExp(regex));
 	});
 
