@@ -20,10 +20,10 @@ function isPlainObject(obj) {
 }
 
 function toHTML(elem, xmlNs, scripts) {
-	var fragment = document.createDocumentFragment();
-	var i = 0;
-	var selector;
-	var name = null;
+	const fragment = document.createDocumentFragment();
+	let i = 0;
+	let name = null;
+	let selector;
 
 	// Check if is an element or array of elements
 	if (typeof elem[0] == 'string') {
@@ -68,21 +68,21 @@ function toHTML(elem, xmlNs, scripts) {
 				}
 
 				// Add attributes to the element.
-				for (var index in elem[i]) {
+				for (let index in elem[i]) {
 					// The __wid attribute is a unique ID assigned each node and should not be in the DOM, but
 					// instead be a property on the DOM element.
 					if (index.toLowerCase() === '__wid') {
 						coreUtils.setWidOnElement(selector, elem[i][index]);
 						continue;
 					}
-					var value = coreUtils.unescape(elem[i][index]);
+					const value = coreUtils.unescape(elem[i][index]);
 					index = coreUtils.sanitizeString(index);
 					if (xmlNs) {
 						if (index === 'href' || index === 'xlink:href') {
 							selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
 						}
 					}
-					var isSvgPath = selector.tagName.toLowerCase() === 'path' && index === 'd';
+					const isSvgPath = selector.tagName.toLowerCase() === 'path' && index === 'd';
 					if (isSvgPath) {
 						selector.__d = value;
 					}
@@ -135,12 +135,11 @@ function toHTML(elem, xmlNs, scripts) {
 coreJsonML.toHTML = toHTML;
 
 function addChildren(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
-	var childNodes = coreUtils.getChildNodes(elem);
+	const childNodes = coreUtils.getChildNodes(elem);
 	if (childNodes.length === 0) return false;
 
-	for (var i=0; i<childNodes.length; i++) {
-		var child = childNodes[i];
-		child = fromHTML(child, filter);
+	for (let i=0; i<childNodes.length; i++) {
+		const child = fromHTML(childNodes[i], filter);
 		if (child) {
 			jml.push(child);
 		}
@@ -162,16 +161,16 @@ function fromHTML(elem, filter) {
 		return (elem = null);
 	}
 
-	var i, jml;
+	let i, jml;
 	switch (elem.nodeType) {
 		case document.ELEMENT_NODE:
 		case document.DOCUMENT_NODE:
-		case document.DOCUMENT_FRAGMENT_NODE:
+		case document.DOCUMENT_FRAGMENT_NODE: {
 			jml = [elem.tagName||''];
 
-			var attr = elem.attributes,
-				props = {},
-				hasAttrib = false;
+			const attr = elem.attributes;
+			let props = {};
+			let hasAttrib = false;
 
 			for (i=0; attr && i<attr.length; i++) {
 				// Transient attributes should not be added to the JsonML.
@@ -199,7 +198,7 @@ function fromHTML(elem, filter) {
 
 			jml.push(props); //Webstrates always assumes that an element has attributes.
 
-			var child, childNodes;
+			let child, childNodes;
 			switch (jml[0].toLowerCase()) {
 				case 'frame':
 				case 'iframe':
@@ -257,16 +256,18 @@ function fromHTML(elem, filter) {
 			// free references
 			elem = null;
 			return jml;
+		}
 		case Node.TEXT_NODE: // text node
-		case Node.CDATA_SECTION_NODE: // CDATA node
-			var str = String(elem.nodeValue);
+		case Node.CDATA_SECTION_NODE: { // CDATA node
+			const str = String(elem.nodeValue);
 			// free references
 			elem = null;
 			return str;
-		case Node.DOCUMENT_TYPE_NODE: // doctype
+		}
+		case Node.DOCUMENT_TYPE_NODE: { // doctype
 			jml = ['!'];
 
-			var type = ['DOCTYPE', (elem.name || 'html').toLowerCase()];
+			const type = ['DOCTYPE', (elem.name || 'html').toLowerCase()];
 
 			if (elem.publicId) {
 				type.push('PUBLIC', '"' + elem.publicId + '"');
@@ -285,7 +286,8 @@ function fromHTML(elem, filter) {
 			// free references
 			elem = null;
 			return jml;
-		case Node.COMMENT_NODE: // comment node
+		}
+		case Node.COMMENT_NODE: { // comment node
 			if ((elem.nodeValue||'').indexOf('DOCTYPE') !== -1) {
 			// free references
 				elem = null;
@@ -303,9 +305,11 @@ function fromHTML(elem, filter) {
 			// free references
 			elem = null;
 			return jml;
-		default: // etc.
-		// free references
+		}
+		default: { // etc.
+			// free references
 			return (elem = null);
+		}
 	}
 }
 

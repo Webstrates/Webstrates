@@ -132,59 +132,48 @@ coreUtilsModule.recursiveForEach = function(node, callback, parent = null) {
  * is specified, the element is inserted before the referenceNode.
  * @param {DOMNode} parentElement Parent element.
  * @param {DOMNode} childElement  Child element.
+ * @param {DOMNode} referenceNode Node to insert before.
  * @public
  */
-coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement,
-	referenceNode) => {
-	// Remove all children, so we can later insert them. This way, we can prevent script execution.
-	const childElementsChildren = [];
-	while (childElement.firstChild) {
-		childElementsChildren.push(childElement.removeChild(childElement.firstChild));
+coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement, referenceNode) =>
+{
+	// We just insert text nodes right away, we're only interested in doing fancy stuff with elements
+	// that may have scripts as children.
+	if (!(childElement instanceof HTMLElement)) {
+		return parentElement.insertBefore(childElement, referenceNode || null);
 	}
 
 	// To prevent scripts from being executed when inserted, we use a little hack. Before inserting
 	// the script, we replace the actual script with dummy content, causing that to be executed
 	// instead of the actual script. If it's an inline script, we insert a script with dummy content
-	// ("// Execution prevention"), and then replace the innerHTML afterwards. If the script is from
-	// an external resource, set the src attribute "about:blank", and then set it to the actual src.
-	// This way, only "about:blank" will be loaded.
+	// ('// Execution prevention'), and then replace the innerHTML afterwards.
 	// To prevent issues with any other attributes (e.g. crossorigin and integrity), we also remove
 	// all those attributes and insert them later.
-	if (childElement instanceof HTMLScriptElement) {
-		// Save all attributes and innerHTML.
+	const scriptMap = new Map();
+	const scripts = (childElement instanceof HTMLScriptElement) ? [ childElement ]
+		: [ ...childElement.querySelectorAll('script') ];
+
+	scripts.forEach(script => {
 		const attrs = [];
-		Array.from(childElement.attributes).forEach(function(attr) {
+		Array.from(script.attributes).forEach(attr => {
 			attrs.push([ attr.nodeName, attr.nodeValue ]);
-			childElement.removeAttribute(attr.nodeName);
+			script.removeAttribute(attr.nodeName);
 		});
+		const text = script.innerHTML;
+		script.innerHTML = '// Execution prevention';
+		scriptMap.set(script, [ attrs, text ]);
+	});
 
-		const innerHTML = childElement.innerHTML;
-		childElement.innerHTML = '// Execution prevention';
+	parentElement.insertBefore(childElement, referenceNode || null);
 
-		// Now insert a bare script (dummy content and empty src).
-		parentElement.insertBefore(childElement, referenceNode || null);
-
-		// And re-add attributes and real content.
-		attrs.forEach(function(attr) {
+	scripts.forEach(script => {
+		const [ attrs, text ] = scriptMap.get(script);
+		attrs.forEach(attr => {
 			const [nodeName, nodeValue] = attr;
-			childElement.setAttribute(nodeName, nodeValue);
+			script.setAttribute(nodeName, nodeValue);
 		});
-		childElement.innerHTML = innerHTML;
-	} else {
-		// If parentElement.content exists, parentElement contains a documentFragment, and we should
-		// be adding the content to this documentFragment instead. This happens when parentElement is
-		// a <template>.
-		if (parentElement.content &&
-			parentElement.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-			parentElement = parentElement.content;
-		}
-		parentElement.insertBefore(childElement, referenceNode || null);
-	}
-
-	let childElemensChild;
-	while ((childElemensChild = childElementsChildren.shift())) {
-		coreUtilsModule.appendChildWithoutScriptExecution(childElement, childElemensChild);
-	}
+		script.innerHTML = text;
+	});
 };
 
 /**

@@ -27,9 +27,7 @@ describe('Basic DOM Manipulation', function() {
 	});
 
 	it('body shouldn\'t initially contain "Hello, world!"', async () => {
-		const innerHTML = await pageA.evaluate(() => {
-			return document.body.innerHTML;
-		});
+		const innerHTML = await pageA.evaluate(() => document.body.innerHTML);
 		assert.notEqual(innerHTML, "Hello, world!");
 	});
 
@@ -46,8 +44,49 @@ describe('Basic DOM Manipulation', function() {
 		const bodyContainsHelloWorld = await util.waitForFunction(pageA,
 			() => document.body.innerHTML === 'Hello, world!');
 		assert.isTrue(bodyContainsHelloWorld);
-
-		return true;
 	});
+
+	it('select element with selected attribute should be selected after on inserting client',
+		async () => {
+		await pageA.evaluate(() => {
+			document.body.innerHTML += `
+				<select>
+					<option value="value1">Value 1</option>
+					<option value="value2" selected>Value 2</option>
+					<option value="value3">Value 3</option>
+				</select>`;
+		});
+
+		const selectedOption = await pageA.evaluate(() =>
+			document.querySelector('select').selectedOptions[0].getAttribute('value'));
+		const shouldBeSelectedOption = await pageA.evaluate(() =>
+			document.querySelector('select > option[selected]').getAttribute('value'));
+
+		assert.equal(selectedOption, shouldBeSelectedOption);
+	});
+
+	it('select element with selected attribute should be selected after on other client',
+		async () => {
+		await util.waitForFunction(pageB, () => document.querySelector('select'));
+
+		const selectedOption = await pageB.evaluate(() =>
+			document.querySelector('select').selectedOptions[0].getAttribute('value'));
+		const shouldBeSelectedOption = await pageB.evaluate(() =>
+			document.querySelector('select > option[selected]').getAttribute('value'));
+
+		assert.equal(selectedOption, shouldBeSelectedOption);
+	});
+
+	it('select element with selected attribute should be selected after reload', async () => {
+		await pageA.reload({ waitUntil: 'networkidle' });
+
+		const selectedOption = await pageA.evaluate(() =>
+			document.querySelector('select').selectedOptions[0].getAttribute('value'));
+		const shouldBeSelectedOption = await pageA.evaluate(() =>
+			document.querySelector('select > option[selected]').getAttribute('value'));
+
+		assert.equal(selectedOption, shouldBeSelectedOption);
+	});
+
 
 });
