@@ -346,7 +346,7 @@ function addWidToElement(node) {
 }
 
 coreOpCreator.ensureExistenceOfWids = (targetElement) => {
-	coreUtils.recursiveForEach(targetElement, (node) => addWidToElement(node));
+	coreUtils.recursiveForEach(targetElement, node => addWidToElement(node));
 };
 
 coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {

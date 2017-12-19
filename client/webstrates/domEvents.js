@@ -29,8 +29,8 @@ function createEventsOnEventObject(node, eventObject) {
 	}
 }
 
-// This gets triggered when the page has loaded initially and and nodes have had webstrate
-// objects added.
+// This gets triggered (in nodeObjects) when the page has loaded initially and and nodes have had
+// webstrate objects added.
 coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	nodes.forEach((eventObject, node) => createEventsOnEventObject(node, eventObject));
 
@@ -58,7 +58,6 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	});
 
 	coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
-		if (!node.webstrate.id) return;
 		// Finding the event object of the parent instead of the node itself, as firing the event
 		// on the node itself isn't very useful.
 		const eventObject = nodes.get(parentElement);
@@ -69,7 +68,6 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	});
 
 	coreEvents.addEventListener('DOMNodeDeleted', (node, parentElement, local) => {
-		if (!node.webstrate.id) return;
 		// Finding the event object of the parent instead of the node itself, as firing the event
 		// on the node itself isn't very useful.
 		const eventObject = nodes.get(parentElement);
@@ -121,10 +119,12 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 	coreEvents.addEventListener('DOMTextNodeDeletion', (node, parentElement, position, value,
 		local) => {
 		let eventObject = nodes.get(node);
-		if (!local) {
-			eventObject.triggerEvent('deleteText', position, value, !!local);
+		if (eventObject) {
+			if (!local) {
+				eventObject.triggerEvent('deleteText', position, value, !!local);
+			}
+			eventObject.triggerEvent('deleteText*', position, value, !!local);
 		}
-		eventObject.triggerEvent('deleteText*', position, value, !!local);
 		// Also trigger on parent.
 		if (parentElement.nodeType === document.ELEMENT_NODE) {
 			eventObject = nodes.get(parentElement);

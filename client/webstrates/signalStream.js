@@ -187,13 +187,13 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 function setupSignalStream(publicObject, eventObject) {
 	const wid = publicObject.id;
 
-	webrtcClients.set(wid, new Map());
-	wantToStreamCallbacks.set(wid, new Map());
-	wantToListenCallbacks.set(wid, new Map());
-
 	// Text nodes and transient elements won't have wids, meaning there's way for us to signal on
 	// them, and thus it'd be pointless to add a signaling method and event.
 	if (!wid) return;
+
+	webrtcClients.set(wid, new Map());
+	wantToStreamCallbacks.set(wid, new Map());
+	wantToListenCallbacks.set(wid, new Map());
 
 	// A mapping from user callbacks to our internal callbacks: fn -> fn.
 	//const callbacks = new Map();

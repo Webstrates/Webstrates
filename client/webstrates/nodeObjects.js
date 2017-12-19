@@ -19,10 +19,15 @@ loadedEvent.delayUntil('webstrateObjectsAdded');
  * @private
  */
 function attachWebstrateObjectToNode(node, triggerEvent) {
-	const webstrateObjectExists = !!node.webstrate;
+	const eventObjectExists = nodeObjectsModule.nodes.get(node);
 
-	// If object doesn't exist, we create it.
-	if (!webstrateObjectExists) {
+	// If an event object doesn't exist, we recreate the webstrate object itself to avoid confusion.
+	// This can happen if an element has been removed from the DOM, then re-added. In this case, all
+	// event listeners will have been removed, so it might cause confusion when the same webstrate
+	// object persists when all event listeners are gone.
+	// By doing this, we also prevent other modules from trying to redefine read-only properties on
+	// a webstrate object that has been "recycled".
+	if (!eventObjectExists) {
 		node.webstrate = {};
 	}
 
@@ -44,9 +49,11 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 		});
 	}
 
-	// If the object existed when we started, the below stuff will already have been defined, so we
-	// can terminate.
-	if (webstrateObjectExists) {
+	// Only continue if the event object doesn't exist. We can't just check for the existence of
+	// the webstrate object here, because an element that has been deleted and then reinserted
+	// may still have a webstrate object, but won't have an event object, as the event object gets
+	// deleted whenever an element gets removed from the DOM.
+	if (eventObjectExists) {
 		return;
 	}
 
@@ -134,7 +141,7 @@ coreEvents.addEventListener('populated', targetElement => {
 		attachWebstrateObjectToNode(childNode, false);
 	});
 
-	// All nodes get a Webstrate object attached after they enter the DOM. It may, however, be
+	// All nodes get a webstrate object attached after they enter the DOM. It may, however, be
 	// useful to access the Webstrate object before the element has been added to the DOM.
 	// Therefore, we add Webstrate objects to all nodes created with document.createElement and
 	// document.createElementNS immediately here.

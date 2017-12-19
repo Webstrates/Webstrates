@@ -192,7 +192,7 @@ function fromHTML(elem, filter) {
 			}
 
 			if (elem.__wid) {
-				props['__wid'] = elem.__wid;
+				props.__wid = elem.__wid;
 				hasAttrib = true;
 			}
 
