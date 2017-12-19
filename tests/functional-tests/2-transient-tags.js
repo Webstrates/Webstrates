@@ -16,7 +16,7 @@ describe('Transient Tags', function() {
 		pageA = await browser.newPage();
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle' });
 	});
 
@@ -28,7 +28,7 @@ describe('Transient Tags', function() {
 		const bodyContents = await pageA.evaluate(() => {
 			return document.body.innerHTML;
 		});
-		assert.equal(bodyContents, "");
+		assert.equal(bodyContents, '');
 	});
 
 	it('can insert transient tag into body', async () => {

@@ -17,7 +17,7 @@ describe('Attribute Manipulation', function() {
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 		pageA.on('console', (...args) => console.log(...args));
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle' });
 	});
 

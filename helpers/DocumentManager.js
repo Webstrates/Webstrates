@@ -2,7 +2,6 @@
 
 const jsondiff = require('json0-ot-diff');
 const ot = require('sharedb/lib/ot');
-const shortId = require('shortid');
 const db = require(APP_PATH + '/helpers/database.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const ShareDbWrapper = require(APP_PATH + '/helpers/ShareDBWrapper.js');
@@ -11,7 +10,7 @@ const ShareDbWrapper = require(APP_PATH + '/helpers/ShareDBWrapper.js');
  * Creates a new document and returns the id. Note that if the document to be created is not to be
  * prototyped off of another document, we don't actually create the document, we just return a new
  * id. The document will instead be created when it is first visited.
- * @param {string}   ptions.webstrateId WebstrateId (name of new document).
+ * @param {string}   webstrateId         WebstrateId (name of new document).
  * @param {string}   options.prototypeId Name of the webstrate document to base the prototype on.
  * @param {string}   options.version     Version of the prototype to base the new document on.
  * @param {string}   options.tag         Tag of the prototype to base the new document on. Either
@@ -25,10 +24,6 @@ const ShareDbWrapper = require(APP_PATH + '/helpers/ShareDBWrapper.js');
  */
 module.exports.createNewDocument = function({ webstrateId, prototypeId, version, tag, snapshot },
 	next) {
-	if (!webstrateId) {
-		webstrateId = shortId.generate();
-	}
-
 	// If we're not prototyping (or creating from a snapshot), we can just return a new id. We don't
 	// have to build anything.
 	if (!prototypeId && !snapshot) {

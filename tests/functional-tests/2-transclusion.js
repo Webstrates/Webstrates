@@ -21,7 +21,7 @@ describe('Transclusion', function() {
 		pageA = await browser.newPage();
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		await pageB.goto(urlInner, { waitUntil: 'networkidle' });
 	});
 
@@ -31,11 +31,11 @@ describe('Transclusion', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents, "");
+		assert.isEmpty(bodyContents, '');
 	});
 
 	it('iframe transcluded event gets triggered', async () => {
-		const webstrateObjectAvailable = await util.waitForFunction(pageA, () => window.webstrate);
+		await util.waitForFunction(pageA, () => window.webstrate);
 
 		await pageA.evaluate(cleanUrlInner => {
 			const iframe = document.createElement('iframe');
@@ -94,7 +94,7 @@ describe('Transclusion', function() {
 
 		const bodyMatchesSetBodyContents = await util.waitForFunction(pageB, bodyContents =>
 			document.body.innerHTML === bodyContents,
-			undefined, bodyContents);
+		undefined, bodyContents);
 
 		assert.isTrue(bodyMatchesSetBodyContents);
 	});
@@ -123,12 +123,12 @@ describe('Transclusion', function() {
 		}, cleanUrlInner);
 
 		await util.waitForFunction(pageA, () => {
-			let [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
+			const [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
 			return iniIfrm.contentDocument.body.innerHTML === newIfrm.contentDocument.body.innerHTML;
 		}, 4 /* Higher timeout, it can take a little while for the iframe to load and everything. */);
 
-		[iniIframeBodyContents, newIframeBoddyContents] = await pageA.evaluate(() => {
-			let [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
+		const [iniIframeBodyContents, newIframeBoddyContents] = await pageA.evaluate(() => {
+			const [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
 			return [iniIfrm.contentDocument.body.innerHTML, newIfrm.contentDocument.body.innerHTML];
 		});
 
@@ -143,7 +143,7 @@ describe('Transclusion', function() {
 		}, bodyContents);
 
 		const bodyContentsMatch = await util.waitForFunction(pageA, () => {
-			let [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
+			const [iniIfrm, newIfrm] = Array.from(document.querySelectorAll('iframe'));
 			return iniIfrm.contentDocument.body.innerHTML === newIfrm.contentDocument.body.innerHTML;
 		});
 

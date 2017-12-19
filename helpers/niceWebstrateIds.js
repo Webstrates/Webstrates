@@ -32,7 +32,7 @@ function getRandomElement(list) {
 // Keep track of the last recent 8 letters generated animals from and try to avoid reusing those.
 // We fill the list to begin with, so we don't have to keep track of length. Instead, we can always
 // just shift and push (remove and add).
-let = recentlyUsedLetters = new Array(8);
+let recentlyUsedLetters = new Array(8);
 /**
  * Get random element starting with letter if specified.
  * @param  {char} letter Letter the animal should start with.

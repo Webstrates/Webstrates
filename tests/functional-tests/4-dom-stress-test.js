@@ -6,7 +6,7 @@ const util = require('../util.js');
 describe('DOM Stress Test', function() {
 	this.timeout(30000);
 
-	const webstrateId = 'SJJUN6Pib' // test-' + util.randomString();
+	const webstrateId = 'SJJUN6Pib'; // test-' + util.randomString();
 	const url = config.server_address + webstrateId;
 
 	let browserA, browserB, pages, pageA;

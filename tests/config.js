@@ -1,4 +1,4 @@
-global.APP_PATH = __dirname + "/../";
+global.APP_PATH = __dirname + '/../';
 
 module.exports = {
 	server_address: 'http://web:strate@localhost:7007/',

@@ -18,7 +18,7 @@ util.allEquals = function(x, y, ...rest) {
 };
 
 util.escapeRegExp = function(s) {
-	return s.replace(/[-\/\\^$*+?.()|[\]{}]/g, '\\$&');
+	return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 };
 
 // Remove HTTP basic auth credentials from the server address, e.g. http://web:strate@domain.tld/
@@ -48,8 +48,8 @@ util.showLogs = (page, ...pages) => {
 
 util.logInToGithub = async function(page) {
 	if (!config.username || !config.password) {
-		throw new Error("No GitHub login credentials provided. Update `config.js` to run GitHub " +
-			"tests.");
+		throw new Error('No GitHub login credentials provided. Update `config.js` to run GitHub ' +
+			'tests.');
 	}
 
 	let url = await page.url();

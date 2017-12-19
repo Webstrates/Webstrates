@@ -17,7 +17,7 @@ describe('Webstrate Object', function() {
 		pageA.on('console', (...args) => console.log(...args));
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle' });
 	});
 
@@ -50,7 +50,7 @@ describe('Webstrate Object', function() {
 	});
 
 	it('webstrate object exists on object created with document.createElement', async () => {
-		const webstrate = await pageA.evaluate(() => document.createElement('div').webstrate)
+		const webstrate = await pageA.evaluate(() => document.createElement('div').webstrate);
 		assert.containsAllKeys(webstrate, ['on', 'off']);
 		// Elements should not have a wid attached until after they've been added to the DOM.
 		assert.notProperty(webstrate, 'id');
@@ -58,7 +58,7 @@ describe('Webstrate Object', function() {
 
 	it('webstrate object exists on object created with document.createElementNS', async () => {
 		const webstrate = await pageA.evaluate(() =>
-			document.createElementNS('http://www.w3.org/1999/xhtml', 'div').webstrate)
+			document.createElementNS('http://www.w3.org/1999/xhtml', 'div').webstrate);
 		assert.containsAllKeys(webstrate, ['on', 'off']);
 		assert.notProperty(webstrate, 'id');
 	});
@@ -83,18 +83,17 @@ describe('Webstrate Object', function() {
 
 	it('webstrate objects on children of transient elements do not contain id after insertion',
 		async () => {
-		await pageA.evaluate(() =>
-			document.body.querySelector('transient').appendChild(document.createElement('div')));
+			await pageA.evaluate(() =>
+				document.body.querySelector('transient').appendChild(document.createElement('div')));
 
-		const transientChildHasId = await util.waitForFunction(pageA, () =>
-			document.body.querySelector('transient > div').webstrate.id,
-		.1);
+			const transientChildHasId = await util.waitForFunction(pageA, () =>
+				document.body.querySelector('transient > div').webstrate.id,
+			.1);
 
-		assert.isFalse(transientChildHasId, 'webstrate.id does not exists on transient element child');
-	});
+			assert.isFalse(transientChildHasId, 'webstrate.id does not exist on transient element child');
+		});
 
 	const randomElementId = util.randomString();
-	let wid;
 	it('webstrate object exists on other client after insertion with matching wid', async () => {
 		await pageA.evaluate(randomElementId => {
 			var div = document.createElement('div');

@@ -63,43 +63,43 @@ describe('Messages', function() {
 		const messageObjectsExistsC = await util.waitForFunction(pageC, () =>
 			typeof window.webstrate.messages !== 'undefined' &&
 			typeof window.webstrate.message !== 'undefined',
-			.1 /* 100 ms. There shouldn't be any reason to wait all, but let's be safe. */);
+		.1 /* 100 ms. There shouldn't be any reason to wait all, but let's be safe. */);
 		assert.isFalse(messageObjectsExistsC);
 	});
 
 	// pageA sends message to itself, verifies the message's existence and contents and sender.
 	it('should be able to send and receive message from logged-in client to itself using clientId',
 		async () => {
-		await pageA.evaluate(messageValue1 =>
-			webstrate.message(messageValue1, webstrate.clientId),
-		messageValue1);
+			await pageA.evaluate(messageValue1 =>
+				window.webstrate.message(messageValue1, window.webstrate.clientId),
+			messageValue1);
 
-		const messageExists = await util.waitForFunction(pageA, messageValue1 =>
-			webstrate.messages.some(message => message.message === messageValue1),
-		undefined, messageValue1);
+			const messageExists = await util.waitForFunction(pageA, messageValue1 =>
+				window.webstrate.messages.some(message => message.message === messageValue1),
+			undefined, messageValue1);
 
-		assert.isTrue(messageExists);
+			assert.isTrue(messageExists);
 
-		const message = await pageA.evaluate(messageValue1 =>
-			webstrate.messages.find(message => message.message === messageValue1),
-		messageValue1);
+			const message = await pageA.evaluate(messageValue1 =>
+				window.webstrate.messages.find(message => message.message === messageValue1),
+			messageValue1);
 
-		assert.propertyVal(message, 'message', messageValue1);
-		assert.propertyVal(message, 'senderId', userId);
-	});
+			assert.propertyVal(message, 'message', messageValue1);
+			assert.propertyVal(message, 'senderId', userId);
+		});
 
 	// pageB verifies its ability to receive message sent from pageA to itself. pageA and pageB are
 	// logged in as the same user, so both should receive the message, even though it was addressed to
 	// a clientId (e.g. "HJz8bmVbf"), not a userId (e.g. "kbadk:github").
 	it('should be able to receive message from other client', async () => {
 		const messageExists = await util.waitForFunction(pageB, messageValue1 =>
-			webstrate.messages.some(message => message.message === messageValue1),
+			window.webstrate.messages.some(message => message.message === messageValue1),
 		undefined, messageValue1);
 
 		assert.isTrue(messageExists);
 
 		const message = await pageB.evaluate(messageValue1 =>
-			webstrate.messages.find(message => message.message === messageValue1),
+			window.webstrate.messages.find(message => message.message === messageValue1),
 		messageValue1);
 
 		assert.propertyVal(message, 'message', messageValue1);
@@ -111,7 +111,8 @@ describe('Messages', function() {
 	// in at all.
 	it('should not be able to receive message from not-logged in client', async () => {
 		const messageExists = await util.waitForFunction(pageC, messageValue1 =>
-			webstrate.messages && webstrate.messages.some(message => message.message === messageValue1),
+			window.webstrate.messages && window.webstrate.messages.some(message =>
+				message.message === messageValue1),
 		undefined, messageValue1);
 
 		assert.isFalse(messageExists);
@@ -123,37 +124,37 @@ describe('Messages', function() {
 	it('should be able to set messageReceived event listener on all clients', async () => {
 		await Promise.all([pageA.evaluate(() => {
 			window.__test_messageReceived = false;
-			webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
+			window.webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
 		}),
 		pageB.evaluate(() => {
 			window.__test_messageReceived = false;
-			webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
+			window.webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
 		}),
 		pageC.evaluate(() => {
 			window.__test_messageReceived = false;
-			webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
+			window.webstrate.on('messageReceived', message =>  window.__test_messageReceived = message);
 		})]);
 	});
 
 	// Not-logged in clients can't receive messages, so the event should never trigger.
 	it('sending message should trigger messageReceived event listener on logged in clients only',
 		async () => {
-		await pageA.evaluate(messageValue2 =>
-			webstrate.message(messageValue2, webstrate.user.userId),
-		messageValue2);
+			await pageA.evaluate(messageValue2 =>
+				window.webstrate.message(messageValue2, window.webstrate.user.userId),
+			messageValue2);
 
-		const messageReceivedTriggeredA = await util.waitForFunction(pageA, () =>
-			window.__test_messageReceived);
-		const messageReceivedTriggeredB = await util.waitForFunction(pageB, () =>
-			window.__test_messageReceived);
-		const messageReceivedTriggeredC = await util.waitForFunction(pageC, () =>
-			window.__test_messageReceived,
-		.1 /* 100 ms. There shouldn't be any reason to wait all, but let's be safe. */);
+			const messageReceivedTriggeredA = await util.waitForFunction(pageA, () =>
+				window.__test_messageReceived);
+			const messageReceivedTriggeredB = await util.waitForFunction(pageB, () =>
+				window.__test_messageReceived);
+			const messageReceivedTriggeredC = await util.waitForFunction(pageC, () =>
+				window.__test_messageReceived,
+			.1 /* 100 ms. There shouldn't be any reason to wait all, but let's be safe. */);
 
-		assert.isTrue(messageReceivedTriggeredA);
-		assert.isTrue(messageReceivedTriggeredB);
-		assert.isFalse(messageReceivedTriggeredC);
-	});
+			assert.isTrue(messageReceivedTriggeredA);
+			assert.isTrue(messageReceivedTriggeredB);
+			assert.isFalse(messageReceivedTriggeredC);
+		});
 
 	// Well, duh.
 	it('messageReceived should trigger with correct values on logged-in clients', async () => {
@@ -166,8 +167,8 @@ describe('Messages', function() {
 
 	let message1, message2;
 	// Make sure the messages are also what we expect on pageB (could be pageA as well).
-	it('messages should exist in webstrate.messages', async () => {
-		const messages = await pageB.evaluate(() => webstrate.messages);
+	it('messages should exist in window.webstrate.messages', async () => {
+		const messages = await pageB.evaluate(() => window.webstrate.messages);
 
 		message1 = messages.find(message => message.message === messageValue1);
 		message2 = messages.find(message => message.message === messageValue2);
@@ -178,22 +179,24 @@ describe('Messages', function() {
 
 	// The messages list should be identical on pageA and pageB as they are logged into the same
 	// GitHub account and therefore share userId.
-	it('webstrate.messages should be identical on clients logged in to same account', async () => {
-		const messagesA = await pageA.evaluate(() => webstrate.messages);
-		const messagesB = await pageB.evaluate(() => webstrate.messages);
+	it('window.webstrate.messages should be identical on clients logged in to same account',
+		async () => {
+			const messagesA = await pageA.evaluate(() => window.webstrate.messages);
+			const messagesB = await pageB.evaluate(() => window.webstrate.messages);
 
-		assert.deepEqual(messagesA, messagesB);
-	});
+			assert.deepEqual(messagesA, messagesB);
+		});
 
 	// Deleting a message on pageA should be reflected on pageB.
 	it('should be possible delete message by messageId', async () => {
-		await pageA.evaluate(messageId1 => webstrate.deleteMessage(messageId1), message1.messageId);
+		await pageA.evaluate(messageId1 =>
+			window.webstrate.deleteMessage(messageId1), message1.messageId);
 
 		const messageId1DeletedA = await util.waitForFunction(pageA, messageId1 =>
-			webstrate.messages.every(message => message.messageId !== messageId1),
+			window.webstrate.messages.every(message => message.messageId !== messageId1),
 		undefined, message1.messageId);
 		const messageId1DeletedB = await util.waitForFunction(pageB, messageId1 =>
-			webstrate.messages.every(message => message.messageId !== messageId1),
+			window.webstrate.messages.every(message => message.messageId !== messageId1),
 		undefined, message1.messageId);
 
 		assert.isTrue(messageId1DeletedA, 'deleted on page A');
@@ -203,13 +206,13 @@ describe('Messages', function() {
 	// Verify messages on pageA and pageB match. This test is somewhat redundant before we have the
 	// one above, but let's just be sure that we didn't accidentally delete all messages on pageB or
 	// something.
-	it('webstrate.messages should still be identical on logged-in clients after message deletion',
+	it('webstrate.messages should still be identical on logged-in clients after messagedeletion',
 		async () => {
-		const messagesA = await pageA.evaluate(() => webstrate.messages);
-		const messagesB = await pageB.evaluate(() => webstrate.messages);
+			const messagesA = await pageA.evaluate(() => window.webstrate.messages);
+			const messagesB = await pageB.evaluate(() => window.webstrate.messages);
 
-		assert.deepEqual(messagesA, messagesB);
-	});
+			assert.deepEqual(messagesA, messagesB);
+		});
 
 	// Even though pageC's messageDeleted event listener can never get triggered -- because you can't
 	// send messages to a not-logged in client --  we still allow the listener to get added to make
@@ -217,15 +220,15 @@ describe('Messages', function() {
 	it('should be able to set messageDeleted event listener on all clients', async () => {
 		await Promise.all([pageA.evaluate(() => {
 			window.__test_messageDeleted = false;
-			webstrate.on('messageDeleted', messageId => window.__test_messageDeleted = messageId)
+			window.webstrate.on('messageDeleted', messageId => window.__test_messageDeleted = messageId);
 		}),
 		pageB.evaluate(() => {
 			window.__test_messageDeleted = false;
-			webstrate.on('messageDeleted', messageId =>  window.__test_messageDeleted = messageId);
+			window.webstrate.on('messageDeleted', messageId =>  window.__test_messageDeleted = messageId);
 		}),
 		pageC.evaluate(() => {
 			window.__test_messageDeleted = false;
-			webstrate.on('messageDeleted', messageId =>  window.__test_messageDeleted = messageId);
+			window.webstrate.on('messageDeleted', messageId =>  window.__test_messageDeleted = messageId);
 		})]);
 	});
 
@@ -234,20 +237,21 @@ describe('Messages', function() {
 	// messages are deleted on an unrelated client.
 	it('deleting message should trigger messageDeleted event listener on logged in clients only',
 		async () => {
-		await pageB.evaluate(messageId2 => webstrate.deleteMessage(messageId2), message2.messageId);
+			await pageB.evaluate(messageId2 =>
+				window.webstrate.deleteMessage(messageId2), message2.messageId);
 
-		const messageDeletedTriggeredA = await util.waitForFunction(pageA, () =>
-			window.__test_messageDeleted);
-		const messageDeletedTriggeredB = await util.waitForFunction(pageB, () =>
-			window.__test_messageDeleted);
-		const messageDeletedTriggeredC = await util.waitForFunction(pageC, () =>
-			window.__test_messageDeleted,
+			const messageDeletedTriggeredA = await util.waitForFunction(pageA, () =>
+				window.__test_messageDeleted);
+			const messageDeletedTriggeredB = await util.waitForFunction(pageB, () =>
+				window.__test_messageDeleted);
+			const messageDeletedTriggeredC = await util.waitForFunction(pageC, () =>
+				window.__test_messageDeleted,
 			.1 /* 100 ms. There shouldn't be any reason to wait all, but let's be safe. */);
 
-		assert.isTrue(messageDeletedTriggeredA, 'triggered on page A');
-		assert.isTrue(messageDeletedTriggeredB, 'triggered on page B');
-		assert.isFalse(messageDeletedTriggeredC, 'not triggered on page C');
-	});
+			assert.isTrue(messageDeletedTriggeredA, 'triggered on page A');
+			assert.isTrue(messageDeletedTriggeredB, 'triggered on page B');
+			assert.isFalse(messageDeletedTriggeredC, 'not triggered on page C');
+		});
 
 	// Duh.
 	it('messageReceived should trigger with correct values on logged-in clients', async () => {

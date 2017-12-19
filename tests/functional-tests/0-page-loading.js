@@ -8,7 +8,7 @@ describe('Page Loading', function() {
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
-	let browser, pageA, pageB, pageC;
+	let browser, pageA, pageB;
 
 	after(async () => {
 		await browser.close();
@@ -31,7 +31,7 @@ describe('Page Loading', function() {
 		const webstrateObjectAvailable = await util.waitForFunction(pageA, () => {
 			if (!window.webstrate) return false;
 
-			webstrate.on('loaded', webstrateId => {
+			window.webstrate.on('loaded', webstrateId => {
 				window.__test_pageLoaded = true;
 				window.__test_webstrateId = webstrateId;
 			});
@@ -61,15 +61,15 @@ describe('Page Loading', function() {
 	});
 
 	const webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
-		? "([a-z]{2,13}-[a-z]{2,13}-\\d{1,2})"
-		: "([A-z0-9-]{8,10})";
+		? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,2})'
+		: '([A-z0-9-]{8,10})';
 
 	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
 		pageB = await browser.newPage();
 		await pageB.goto(config.server_address + 'new', { waitUntil: 'networkidle' });
 
 		const redirectedUrl = pageB.url();
-		const regex = "^" + util.escapeRegExp(config.server_address) + webstrateIdRegex + "\/$";
+		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
 		assert.match(redirectedUrl, new RegExp(regex));
 	});
 

@@ -33,7 +33,7 @@ describe('Client Events', function() {
 
 	it('clientJoin event should get triggered when another client joins', async () => {
 		pageA.evaluate(() => {
-			webstrate.on('clientJoin', clientId => {
+			window.webstrate.on('clientJoin', clientId => {
 				window.__test_joiningClientId = clientId;
 			});
 		});
@@ -67,7 +67,7 @@ describe('Client Events', function() {
 
 	it('clientPart event should get triggered when another client parts', async () => {
 		pageA.evaluate(() => {
-			webstrate.on('clientPart', clientId => {
+			window.webstrate.on('clientPart', clientId => {
 				window.__test_partingClientId = clientId;
 			});
 		});

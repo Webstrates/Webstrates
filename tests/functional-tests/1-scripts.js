@@ -17,7 +17,7 @@ describe('Script Insertion and Execution', function() {
 		//pageA.on('console', (...args) => console.log(...args));
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		//pageB.on('console', (...args) => console.log(...args));
 		await pageB.goto(url, { waitUntil: 'networkidle' });
 	});

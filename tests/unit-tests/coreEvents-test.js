@@ -147,16 +147,16 @@ describe('Listener Priority', function() {
 			}, coreEvents.PRIORITY.HIGH);
 		}));
 
-		result.push("beforeTrigger");
+		result.push('beforeTrigger');
 		coreEvents.triggerEvent('testEvent4');
-		result.push("afterTrigger");
+		result.push('afterTrigger');
 
 		Promise.all(promises).then(function() {
 			try {
 				assert.deepEqual(result, [
-					"beforeTrigger",
+					'beforeTrigger',
 					coreEvents.PRIORITY.IMMEDIATE,
-					"afterTrigger",
+					'afterTrigger',
 					coreEvents.PRIORITY.HIGH,
 					coreEvents.PRIORITY.HIGH,
 					coreEvents.PRIORITY.MEDIUM,

@@ -18,7 +18,7 @@ describe('SVG Namespace', function() {
 		pageA = await browser.newPage();
 		await pageA.goto(url, { waitUntil: 'networkidle' });
 
-		pageB = await browser.newPage()
+		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle' });
 	});
 
@@ -28,11 +28,11 @@ describe('SVG Namespace', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents, "");
+		assert.isEmpty(bodyContents, '');
 	});
 
 	it('inserted svg element should show up on all clients', async () => {
-		const bodyContents = await pageA.evaluate((svgNs) =>
+		await pageA.evaluate((svgNs) =>
 			document.body.appendChild(document.createElementNS(svgNs, 'svg')),
 		SVG_NAMESPACE);
 
@@ -60,9 +60,9 @@ describe('SVG Namespace', function() {
 	});
 
 	it('an inserted rect element should show up on all clients', async () => {
-		const namespaceA = await pageA.evaluate(() => {
+		await pageA.evaluate(() => {
 			const svg = document.querySelector('svg');
-			svg.appendChild(document.createElementNS(svg.namespaceURI, 'rect'))
+			svg.appendChild(document.createElementNS(svg.namespaceURI, 'rect'));
 		});
 
 		const rectElementExistsA = await util.waitForFunction(pageA, () =>
@@ -90,31 +90,31 @@ describe('SVG Namespace', function() {
 
 	it('an inserted foreignObject (with p child) should show up on all clients',
 		async () => {
-		await pageA.evaluate((svgNs) => {
-			const foreignObject = document.createElementNS(svgNs, 'foreignObject');
-			foreignObject.appendChild(document.createElement('p'));
-			document.querySelector('svg').appendChild(foreignObject);
-		}, SVG_NAMESPACE);
+			await pageA.evaluate((svgNs) => {
+				const foreignObject = document.createElementNS(svgNs, 'foreignObject');
+				foreignObject.appendChild(document.createElement('p'));
+				document.querySelector('svg').appendChild(foreignObject);
+			}, SVG_NAMESPACE);
 
-		const foreignObjectExistsA = await util.waitForFunction(pageA, () =>
-			document.querySelector('svg > foreignObject > p'));
-		const foreignObjectExistsB = await util.waitForFunction(pageB, () =>
-			document.querySelector('svg > foreignObject > p'));
+			const foreignObjectExistsA = await util.waitForFunction(pageA, () =>
+				document.querySelector('svg > foreignObject > p'));
+			const foreignObjectExistsB = await util.waitForFunction(pageB, () =>
+				document.querySelector('svg > foreignObject > p'));
 
-		assert.isTrue(foreignObjectExistsA, 'exists on page A');
-		assert.isTrue(foreignObjectExistsB, 'exists on page B');
-	});
+			assert.isTrue(foreignObjectExistsA, 'exists on page A');
+			assert.isTrue(foreignObjectExistsB, 'exists on page B');
+		});
 
 	it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" on all clients',
 		async () => {
-		const namespaceA = await pageA.evaluate(() =>
-			document.querySelector('svg > foreignObject').namespaceURI);
-		const namespaceB = await pageB.evaluate(() =>
-			document.querySelector('svg > foreignObject').namespaceURI);
+			const namespaceA = await pageA.evaluate(() =>
+				document.querySelector('svg > foreignObject').namespaceURI);
+			const namespaceB = await pageB.evaluate(() =>
+				document.querySelector('svg > foreignObject').namespaceURI);
 
-		assert.equal(namespaceA, SVG_NAMESPACE, 'proper foreignObject namespace on page A');
-		assert.equal(namespaceB, SVG_NAMESPACE, 'proper foreignObject namespace on page B');
-	});
+			assert.equal(namespaceA, SVG_NAMESPACE, 'proper foreignObject namespace on page A');
+			assert.equal(namespaceB, SVG_NAMESPACE, 'proper foreignObject namespace on page B');
+		});
 
 	it('p element namespace should be "' + XHTML_NAMESPACE + '" on all clients', async () => {
 		const namespaceA = await pageA.evaluate(() =>
@@ -126,7 +126,8 @@ describe('SVG Namespace', function() {
 		assert.equal(namespaceB, XHTML_NAMESPACE, 'proper p namespace on page B');
 	});
 
-	/*it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" after reload', async () => {
+	it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" after reload',
+		async () => {
 		await pageA.reload({ waitUntil: 'networkidle' });
 		const namespace = await pageA.evaluate(() =>
 			document.querySelector('svg > foreignObject').namespaceURI);
@@ -138,6 +139,6 @@ describe('SVG Namespace', function() {
 		const namespace = await pageA.evaluate(() =>
 			document.querySelector('svg > foreignObject > p').namespaceURI);
 		assert.equal(namespace, XHTML_NAMESPACE, 'proper rect namespace after reload on page A');
-	});*/
+	});
 
 });

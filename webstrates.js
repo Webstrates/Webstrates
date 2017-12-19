@@ -1,7 +1,6 @@
 'use strict';
 
 const argv = require('optimist').argv;
-const redis = require('redis');
 const bodyParser = require('body-parser');
 const cluster = require('cluster');
 const express = require('express');

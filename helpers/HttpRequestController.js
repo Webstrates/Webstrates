@@ -18,12 +18,12 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
 
-function generateWebstrateId(req, callback) {
+function generateWebstrateId(req) {
 	if (config.niceWebstrateIds) {
 		const startingLetter = req.user.userId !== 'anonymous:' && req.user.username.charAt(0);
-		callback(niceWebstrateIds.generate(startingLetter));
+		return niceWebstrateIds.generate(startingLetter);
 	} else {
-		callback(shortId.generate());
+		return shortId.generate();
 	}
 }
 
@@ -367,7 +367,7 @@ function serveTokenList(req, res) {
  * @private
  */
 function copyWebstrate(req, res, snapshot) {
-	var webstrateId = req.query.copy;
+	let webstrateId = req.query.copy || generateWebstrateId(req);
 
 	// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
 	// otherwise just delete all permissions on the new document.
@@ -584,7 +584,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 													htmlToJson(htmlDoc, function(err, jsonml) {
 														if (err) return;
 														documentManager.createNewDocument({
-															webstrateId: req.query.id,
+															webstrateId: req.query.id || generateWebstrateId(req),
 															snapshot: {
 																type: 'http://sharejs.org/types/JSONv0',
 																data: jsonml
@@ -697,7 +697,6 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 		return res.status(403).send('Write permissions are required to create a new document');
 	}
 
-	generateWebstrateId(req, webstrateId => {
-		res.redirect(`/${webstrateId}/`);
-	});
+	const webstrateId = generateWebstrateId(req);
+	res.redirect(`/${webstrateId}/`);
 };
