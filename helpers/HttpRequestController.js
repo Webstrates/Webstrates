@@ -583,12 +583,30 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 												streamToString(readStream, htmlDoc => {
 													htmlToJson(htmlDoc, function(err, jsonml) {
 														if (err) return;
+														let snapshot = {
+															type: 'http://sharejs.org/types/JSONv0',
+															data: jsonml
+														};
+														const userPermissions = permissionManager
+															.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
+																snapshot);
+														// If user doesn't have write permissions to the docuemnt, add them if
+														// the user is logged in, otherwise just delete all permissions on the
+														// new document.
+														console.log(userPermissions);
+														if (!userPermissions.includes('w')) {
+															if (req.user.username === 'anonymous' && req.user.provider === '') {
+																snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+																console.log('clearing permissions');
+															} else {
+																snapshot = permissionManager
+																	.addPermissionsToSnapshot(req.user.username, req.user.provider,
+																		'rw', snapshot);
+															}
+														}
 														documentManager.createNewDocument({
 															webstrateId: req.query.id || generateWebstrateId(req),
-															snapshot: {
-																type: 'http://sharejs.org/types/JSONv0',
-																data: jsonml
-															}
+															snapshot
 														}, function(err, _webstrateId) {
 															if (err) return;
 															webstrateId = _webstrateId;
