@@ -308,6 +308,32 @@ function serveJsonMLWebstrate(req, res, snapshot) {
 }
 
 /**
+ * Replaces `&dot;`s with periods in attribute names.
+ * MongoDB doesn't support periods in keys, so we substitute them with the string `&dot;` to store
+ * them. This function reverts that. We only do this when sending raw documents, as the client side
+ * Webstrate code usually handles this.
+ * @param  {JsonML} snapshot Document snapshot.
+ * @return {JsonML}          Same snapshot, but where `&dot`s have been replaced by periods in
+ *                           attribute names.
+ * @private
+ */
+function replaceDotAttrs(snapshot) {
+	if (Array.isArray(snapshot)) {
+		return snapshot.map(replaceDotAttrs);
+	}
+	if (typeof snapshot === 'object') {
+		for (const key in snapshot) {
+			const cleanKey = key.replace(/&dot;/g, '.');
+			snapshot[cleanKey] = replaceDotAttrs(snapshot[key]);
+			if (cleanKey !== key) {
+				delete snapshot[key];
+			}
+		}
+	}
+	return snapshot;
+}
+
+/**
  * Requesting a raw webstrate by calling `/<id>?raw`.
  * @param {obj}      req      Express request object.
  * @param {obj}      res      Express response object.
@@ -315,7 +341,7 @@ function serveJsonMLWebstrate(req, res, snapshot) {
  * @private
  */
 function serveRawWebstrate(req, res, snapshot) {
-	res.send('<!doctype html>\n' + jsonml.toXML(snapshot.data, SELFCLOSING_TAGS));
+	res.send('<!doctype html>\n' + jsonml.toXML(replaceDotAttrs(snapshot.data), SELFCLOSING_TAGS));
 }
 
 /**
