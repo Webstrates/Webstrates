@@ -135,7 +135,8 @@ exports.fetch = (webstrateId, tagOrVersion) => {
 		// The second parameter is `sendWhenReady` and true means to queue the message until the
 		// websocket is open rather than to throw and error if the websocket isn't ready. This is not
 		// part of the WebSocket specification, but has been implemented in coreWebsocket anyway.
-		coreWebsocket.send(msgObj, doc => {
+		coreWebsocket.send(msgObj, (err, doc) => {
+			if (err) return reject(err);
 			coreEvents.triggerEvent('receivedDocument', doc, { static: true });
 			resolve(doc);
 		}, { waitForOpen: true });
