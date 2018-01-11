@@ -42,7 +42,7 @@ module.exports.assetUploadHandler = function(req, res) {
 		if (req.body.searchable) {
 			// Options don't have types, so if 'searchable' is the literal string true, we make every CSV
 			// file uploaded searchable.
-			if (req.body.searchable === "true") {
+			if (req.body.searchable === 'true') {
 				searchables = req.files
 					.filter(file => file.originalname.endsWith('.csv'))
 					.map(file => file.originalname);

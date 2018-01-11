@@ -197,7 +197,7 @@ exports.onmessage = (ws, req, data, next) => {
 				case 'assetSearch': {
 					try {
 						const result = await searchableAssets.search(webstrateId, data.assetName,
-							data.assetVersion, data.query, data.sort, data.limit);
+							data.assetVersion, data.query, data.sort, data.limit, data.skip);
 						ws.send(JSON.stringify({ wa: 'reply', token: data.token, reply: result }));
 					} catch (error) {
 						ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: error.message }));

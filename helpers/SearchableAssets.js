@@ -47,7 +47,7 @@ const batchInsertJsonToMongo = (filePath, assetId) => new Promise((accept, rejec
 module.exports.makeSearchable = async (assetId, filePath) => {
 	const startTime = Date.now();
 	await batchInsertJsonToMongo(filePath, assetId);
-	console.log("Insertion of", assetId, "took", (Date.now() - startTime) / 1000 + 's');
+	console.log('Insertion of', assetId, 'took', (Date.now() - startTime) / 1000 + 's');
 	return db.assets.update({ _id: assetId }, { $set: { searchable: true }});
 };
 
@@ -89,17 +89,18 @@ const isValidValue = value => ['string', 'number'].includes(typeof value)
  *  * Search in a searchable asset.
  * @param  {string} webstrateId  WebstrateId.
  * @param  {string} assetName    Asset file name.
- * @param  {[type]} assetVersion Version of asset to query. Can be any version the asset is active
+ * @param  {Number} assetVersion Version of asset to query. Can be any version the asset is active
  *                               for, e.g. if the asset is uploaded at version 5, it'll also be
  *                               active for version 6, unless it was "overwritten".
  * @param  {Object} query        MongoDB search query object.
  * @param  {Object} sort         Mongodb sort object.
  * @param  {Number} limit        Max number of records.
+ * @param  {Number} skip         Number of records to skip over (useful for pagination).
  * @return {Array}               (async) Search result.
  * @public
  */
 module.exports.search = async (webstrateId, assetName, assetVersion,
-	query = {}, sort = {}, limit = 10) => {
+	query = {}, sort = {}, limit = 10, skip = 0) => {
 	const asset = await assetManager.getAsset({ webstrateId, assetName, version: assetVersion });
 	if (!asset)
 		throw new Error('Asset not found');
@@ -116,7 +117,15 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 	if (!Number.isInteger(limit) || limit < 1 || limit > 1000)
 		throw new Error('Invalid limit');
 
+	if (!Number.isInteger(skip) || skip < 0)
+		throw new Error('Invalid skip');
+
 	query._assetId = asset._id;
 
-	return db.assetsCsv.find(query, { _id: 0, _assetId: 0 }).limit(limit).sort(sort).toArray();
+	return db.assetsCsv
+		.find(query, { _id: 0, _assetId: 0 })
+		.limit(limit)
+		.sort(sort)
+		.skip(skip)
+		.toArray();
 };
