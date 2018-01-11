@@ -99,7 +99,7 @@ module.exports.requestHandler = function(req, res) {
 		webstrateId: req.webstrateId,
 		version: req.version,
 		tag: req.tag
-	}, function(err, snapshot) {
+	}, async function(err, snapshot) {
 		if (err) {
 			console.error(err);
 			return res.status(409).send(String(err));
@@ -121,15 +121,12 @@ module.exports.requestHandler = function(req, res) {
 
 		// Requesting an asset.
 		if (req.assetName) {
-			return assetManager.getAsset({
-				webstrateId: req.webstrateId,
-				assetName: req.assetName,
-				version: snapshot.v
-			}, function(err, asset) {
-				if (err) {
-					console.error(err);
-					return res.status(409).send(String(err));
-				}
+			try {
+				const asset = await assetManager.getAsset({
+					webstrateId: req.webstrateId,
+					assetName: req.assetName,
+					version: snapshot.v
+				});
 
 				if (!asset) {
 					return res.status(404).send(`Asset "${req.assetName}" not found.`);
@@ -142,7 +139,11 @@ module.exports.requestHandler = function(req, res) {
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
 				var maxAge = req.version ? (config.maxAge || '1d') : '1m';
 				res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
-			});
+				return;
+			} catch (error) {
+				console.error(err);
+				return res.status(409).send(String(err));
+			}
 		}
 
 		// Requesting current document version number by calling `/<id>?v` or `/<id>?version`.
@@ -366,7 +367,15 @@ function serveCompressedWebstrate(req, res, snapshot) {
 		assets.forEach(function(asset) {
 			var filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
 			if (fs.existsSync(filePath)) {
-				archive.file(filePath, { name: `${req.webstrateId}/${asset.originalFileName}` });
+				archive.file(filePath,
+					{ name: `${req.webstrateId}/${asset.originalFileName}` });
+
+				// If the file is searchable, we create a dummy file with the contents 'searchable', so we
+				// know to make the file searchable if the archive is uploaded again (or to another server).
+				if (asset.searchable) {
+					archive.append('searchable',
+						{ name: `${req.webstrateId}/${asset.originalFileName}.searchable` });
+				}
 			} else {
 				console.warn(`Asset ${filePath} (${asset.originalFileName}) for Webstrate ` +
 					`${req.webstrateId} doesn't exist. Deleting it from database.`);
@@ -589,7 +598,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 								}
 
 								let webstrateId, htmlDocumentFound = false;
-								const assets = [];
+								let assets = [];
 								zipFile.on('entry', entry => {
 									if (/\/$/.test(entry.fileName)) {
 									// Directory file names end with '/'.
@@ -619,11 +628,9 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 														// If user doesn't have write permissions to the docuemnt, add them if
 														// the user is logged in, otherwise just delete all permissions on the
 														// new document.
-														console.log(userPermissions);
 														if (!userPermissions.includes('w')) {
 															if (req.user.username === 'anonymous' && req.user.provider === '') {
 																snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
-																console.log('clearing permissions');
 															} else {
 																snapshot = permissionManager
 																	.addPermissionsToSnapshot(req.user.username, req.user.provider,
@@ -669,9 +676,31 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 									}
 
 									var source = `${req.user.userId} (${req.remoteAddress})`;
-									assetManager.addAssets(webstrateId, assets, source, (err, assetRecords) => {
-										res.redirect(`/${webstrateId}/`);
+									// Assets ending in .searchable aren't real assets, but just an indication that
+									// the asset they're referring to should be searchable. E.g. if two assets
+									// data.csv and data.csv.searchable are uploaded, the ladder just serves to let us
+									// know that the former should be made searchable.
+									let searchables = assets.filter(asset =>
+										asset.originalname.endsWith('.searchable'));
+
+									// Remove dummy files from assets list.
+									assets = assets.filter(asset =>
+										!asset.originalname.endsWith('.searchable'));
+
+									// Delete the dummy files from the system.
+									searchables.forEach(asset => {
+										fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
 									});
+
+									// Now create a simple list (no objects, just asset nameS) of the asset names
+									// that should be searchable. We remember to remove the 11-character long
+									// '.searchable'  prefix.
+									searchables = searchables.map(asset => asset.originalname.slice(0, -11));
+									console.log(searchables, assets);
+									assetManager.addAssets(webstrateId, assets, searchables, source,
+										(err, assetRecords) => {
+											res.redirect(`/${webstrateId}/`);
+										});
 								}
 
 								zipFile.once('end', function() {

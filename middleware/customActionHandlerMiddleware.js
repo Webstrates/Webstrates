@@ -2,6 +2,7 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const messagingManager = require(APP_PATH + '/helpers/MessagingManager.js');
+const searchableAssets = require(APP_PATH + '/helpers/SearchableAssets.js');
 
 exports.onmessage = (ws, req, data, next) => {
 	if (!data.wa || 'noop' in req.query) return next();
@@ -52,7 +53,7 @@ exports.onmessage = (ws, req, data, next) => {
 	}
 
 	permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
-		function(err, permissions) {
+		async function(err, permissions) {
 			if (err) return console.error(err, data);
 
 			if (!permissions.includes('r')) {
@@ -192,7 +193,17 @@ exports.onmessage = (ws, req, data, next) => {
 					console.error('Can\'t restore, need either a tag label or version.');
 					break;
 				}
-
+				// Search CSV assets.
+				case 'assetSearch': {
+					try {
+						const result = await searchableAssets.search(webstrateId, data.assetName,
+							data.assetVersion, data.query, data.sort, data.limit);
+						ws.send(JSON.stringify({ wa: 'reply', token: data.token, reply: result }));
+					} catch (error) {
+						ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: error.message }));
+					}
+					break;
+				}
 				default:
 					console.warn('Unknown command from %s on %s: %o', user.userId, webstrateId, data);
 			}

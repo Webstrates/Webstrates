@@ -97,7 +97,7 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 			if (token && callbacks.has(token)) {
 				const callback = callbacks.get(token);
 				callbacks.delete(token);
-				callback(parsedData.reply);
+				callback(parsedData.error, parsedData.reply);
 			}
 			return;
 		}

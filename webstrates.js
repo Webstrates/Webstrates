@@ -12,6 +12,7 @@ const sessions = require('client-sessions');
 global.WORKER_ID = (cluster.worker && cluster.worker.id) || 1;
 global.APP_PATH = __dirname;
 
+
 require('console-stamp')(console, {
 	metadata: () => (new Error().stack.split('\n')[3]).trim().substr(3),
 	pattern: 'HH:MM:ss',
@@ -20,6 +21,10 @@ require('console-stamp')(console, {
 		label: 'blue',
 		metadata: 'grey'
 	}
+});
+
+process.on('unhandledRejection', (reason, p) => {
+	console.error('Unhandled Rejection at:', p, 'reason:', reason);
 });
 
 const configHelper = require(APP_PATH + '/helpers/ConfigHelper.js');
@@ -43,6 +48,7 @@ if (typeof config.threads !== 'undefined') {
 			for (var i = 0; i < threadCount; ++i) {
 				cluster.fork();
 			}
+			return;
 		}
 	}
 }

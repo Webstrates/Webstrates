@@ -16,6 +16,8 @@ MongoClient.connect(global.config.db, function(err, _db) {
 	db.tags.ensureIndex({ webstrateId: 1, v: 1 }, { unique: true });
 	db.assets = _db.collection('assets');
 	db.assets.ensureIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
+	db.assetsCsv = _db.collection('assetsCsv');
+	db.assetsCsv.ensureIndex({ _assetId: 1 });
 	db.sessions = _db.collection('sessions');
 	db.sessions.ensureIndex({ userId: 1, createdAt: 1/*, *expireAfterSeconds: 60 * 60 * 24 * 365 */});
 	db.messages = _db.collection('messages');

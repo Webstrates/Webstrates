@@ -42,13 +42,15 @@ Object.defineProperty(globalObject.publicObject, 'assets', {
  *                             be null on success.
  * @public
  */
-globalObject.publicObject.uploadAsset = (callback = () => {}) => {
+globalObject.publicObject.uploadAsset = (callback = () => {}, options = {}) => {
 	const input = document.createElement('input');
 	input.setAttribute('multiple', true);
 	input.setAttribute('type', 'file');
 
 	input.addEventListener('change', event => {
 		const formData = new FormData();
+		Object.entries(options).forEach(([key, value]) => formData.append(key, value));
+
 		for (let i=0; i < input.files.length; i++) {
 			formData.append('file[]', input.files.item(i));
 		}
@@ -62,6 +64,15 @@ globalObject.publicObject.uploadAsset = (callback = () => {}) => {
 	});
 
 	input.click();
+};
+
+globalObject.publicObject.searchAsset = (assetIdentifier, query = {}, callback) => {
+	if (typeof callback !== 'function') throw new Error('Must provide callback function');
+
+	const [assetName, assetVersion] = assetIdentifier.split('/');
+	websocket.send({ wa: 'assetSearch', d: webstrateId, assetName, assetVersion: +assetVersion,
+		query: query.query, sort: query.sort, limit: query.limit },
+	callback);
 };
 
 module.exports = assetsModule;

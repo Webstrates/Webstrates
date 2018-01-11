@@ -6,6 +6,7 @@ const db = require(APP_PATH + '/helpers/database.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
+const searchableAssets = require(APP_PATH + '/helpers/SearchableAssets.js');
 
 module.exports.UPLOAD_DEST = `${APP_PATH}/uploads/`;
 
@@ -36,13 +37,33 @@ module.exports.assetUploadHandler = function(req, res) {
 
 		const source = `${req.user.userId} (${req.remoteAddress})`;
 
-		module.exports.addAssets(req.webstrateId, req.files, source, (err, assetRecords) => {
-			if (err) {
-				console.error(err);
-				return res.status(409).json({ error: String(err) });
+		// If searac
+		let searchables = [];
+		if (req.body.searchable) {
+			// Options don't have types, so if 'searchable' is the literal string true, we make every CSV
+			// file uploaded searchable.
+			if (req.body.searchable === "true") {
+				searchables = req.files
+					.filter(file => file.originalname.endsWith('.csv'))
+					.map(file => file.originalname);
+			} else {
+				// Or if the posted searchable actually is an array of file names to be made searchable,
+				// then we just use that.
+				if (Array.isArray(req.body.searchable)) {
+					searchables = req.body.searchable;
+				}
 			}
-			res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
-		});
+		}
+
+		module.exports.addAssets(req.webstrateId, req.files, searchables, source,
+			(err, assetRecords) => {
+				if (err) {
+					console.error(err);
+					return res.status(409).json({ error: String(err) });
+				}
+
+				res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
+			});
 	});
 };
 
@@ -84,11 +105,11 @@ module.exports.getCurrentAssets = function(webstrateId, next) {
  * @return {obj}                          (async) Asset object.
  * @public
  */
-module.exports.getAsset = function({ webstrateId, assetName, version }, next) {
-	var query = { webstrateId, originalFileName: assetName, v: { $lte: version } };
-	db.assets.find(query).sort({'v': -1}).limit(1).toArray(function(err, assets) {
-		next(err, assets[0]);
-	});
+module.exports.getAsset = async function({ webstrateId, assetName, version }) {
+	var query = { webstrateId, originalFileName: assetName };
+	if (version) query.v = { $lte: +version };
+	const assets = await db.assets.find(query).sort({'v': -1}).limit(1).toArray();
+	return assets[0];
 };
 
 /**
@@ -183,7 +204,7 @@ module.exports.restoreAssets = function({ webstrateId, version, tag, newVersion 
  * @return {[type]}               [description]
  */
 module.exports.deleteAssets = function(webstrateId, next) {
-	db.assets.find({ webstrateId }, { _id: 0, fileName: 1 }).toArray(function(err, assets) {
+	db.assets.find({ webstrateId }, { fileName: 1 }).toArray(function(err, assets) {
 		if (err) return next && next(err);
 		// Transform array of objects into primitive array.
 		assets.forEach(function(asset, index) {
@@ -203,6 +224,7 @@ module.exports.deleteAssets = function(webstrateId, next) {
 			var promises = [];
 			// Run through the files and delete them.
 			assetsToBeDeleted.forEach(function(asset) {
+				promises.push(searchableAssets.deleteSearchable(asset._id));
 				promises.push(new Promise(function(resolve, reject) {
 					fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`, function(err) {
 						// We print out errors, but we don't stop execution. If a file fails to delete, we
@@ -255,18 +277,26 @@ function filterNewestAssets(assets) {
  * @param {Function} next        Callback.
  * @public
  */
-module.exports.addAsset = function(webstrateId, asset, source, next) {
+module.exports.addAsset = function(webstrateId, asset, searchable, source, next) {
 	return documentManager.sendNoOp(webstrateId, 'assetAdded', source, function() {
 		return documentManager.getDocumentVersion(webstrateId, function(err, version) {
 			db.assets.insert({
 				webstrateId,
 				v: version,
+				// asset.filename is the name of the file on our system, originalname is what the file was
+				// called on the uploading client's system.
 				fileName: asset.filename,
 				originalFileName: asset.originalname,
 				fileSize: asset.size,
 				mimeType: asset.mimetype
-			}, function(err) {
+			}, async function(err, result) {
 				if (err) return next && next(err);
+
+				if (searchable && asset.mimetype === 'text/csv') {
+					const assetId = result.ops[0]._id;
+					await searchableAssets.makeSearchable(assetId,
+						module.exports.UPLOAD_DEST + asset.filename);
+				}
 
 				asset = {
 					v: version,
@@ -292,16 +322,19 @@ module.exports.addAsset = function(webstrateId, asset, source, next) {
 /**
  * Add assets uploaded to the database. Just calls module.exports.addAsset a bunch of times.
  * @param {string}   webstrateId WebstrateId.
- * @param {array}    assets      Array of asset objects.
+ * @param {array}    assets      List of asset objects to add to the database.
+ * @param {array}    searchables List of assets file names to make searchable. All file names here
+ *                               should be a subset of the file names in the assets list.
  * @param {string}   source      Origin of assets (some client identifier)
  * @param {Function} next        Callback.
  * @public
  */
-module.exports.addAssets = function(webstrateId, assets, source, next) {
+module.exports.addAssets = function(webstrateId, assets, searchables, source, next) {
 	var assetPromises = [];
 	assets.forEach(function(asset) {
 		assetPromises.push(new Promise(function(accept, reject) {
-			module.exports.addAsset(webstrateId, asset, source, function(err, assetRecord) {
+			const searchable = searchables.includes(asset.originalname);
+			module.exports.addAsset(webstrateId, asset, searchable, source, function(err, assetRecord) {
 				if (err) return reject(err);
 				accept(assetRecord);
 			});
