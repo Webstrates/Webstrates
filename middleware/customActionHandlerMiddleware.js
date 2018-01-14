@@ -200,6 +200,7 @@ exports.onmessage = (ws, req, data, next) => {
 							data.assetVersion, data.query, data.sort, data.limit, data.skip);
 						ws.send(JSON.stringify({ wa: 'reply', token: data.token, reply: result }));
 					} catch (error) {
+						console.error(webstrateId, data, error);
 						ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: error.message }));
 					}
 					break;

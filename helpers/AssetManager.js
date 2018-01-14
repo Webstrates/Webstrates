@@ -75,7 +75,7 @@ module.exports.assetUploadHandler = function(req, res) {
  * @public
  */
 module.exports.getAssets = function(webstrateId, next) {
-	return db.assets.find({ webstrateId }, { _id: 0, webstrateId: 0 })
+	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
 		.toArray(function(err, assets) {
 			if (err) return next && next(err);
 			assets.forEach(function(asset) {
@@ -88,7 +88,7 @@ module.exports.getAssets = function(webstrateId, next) {
 };
 
 module.exports.getCurrentAssets = function(webstrateId, next) {
-	return db.assets.find({ webstrateId }, { _id: 0, webstrateId: 0 })
+	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
 		.toArray(function(err, assets) {
 			if (err) return next && next(err);
 			assets = filterNewestAssets(assets);
@@ -108,7 +108,7 @@ module.exports.getCurrentAssets = function(webstrateId, next) {
 module.exports.getAsset = async function({ webstrateId, assetName, version }) {
 	var query = { webstrateId, originalFileName: assetName };
 	if (version) query.v = { $lte: +version };
-	const assets = await db.assets.find(query).sort({'v': -1}).limit(1).toArray();
+	const assets = await db.assets.find(query).sort({ v: -1 }).limit(1).toArray();
 	return assets[0];
 };
 
@@ -139,7 +139,7 @@ module.exports.deleteAssetFromDatabase = function(fileName) {
  */
 module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }, next) {
 	var query = { webstrateId: fromWebstrateId, v: { $lte: version } };
-	db.assets.find(query, { _id: 0 }).toArray(function(err, assets) {
+	db.assets.find(query).toArray(function(err, assets) {
 		if (err) return next && next(err);
 		assets = filterNewestAssets(assets);
 
@@ -152,6 +152,12 @@ module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }
 		assets.forEach(function(asset) {
 			asset.v = 0;
 			asset.webstrateId = toWebstrateId;
+			// Keep a reference to the old asset. If _originalId already exists, it means the asset we're
+			// copying itself is a copy, so we keep a reference to the *real* original. This is needed for
+			// asset CSV searching, as we identify CSV rows by their assetId, and when copying a
+			// webstrate, we don't copy all the CSV rows.
+			asset._originalId = asset._originalId || asset._id;
+			delete asset._id;
 		});
 		db.assets.insertMany(assets, next);
 	});
@@ -189,9 +195,7 @@ module.exports.restoreAssets = function({ webstrateId, version, tag, newVersion 
 		if (err) return next && next(err);
 		assets = filterNewestAssets(assets);
 		// Bump the version of all copied assets.
-		assets.forEach(function(asset) {
-			asset.v = newVersion;
-		});
+		assets.forEach(asset => asset.v = newVersion);
 		db.assets.insertMany(assets, next);
 	});
 };
@@ -217,9 +221,7 @@ module.exports.deleteAssets = function(webstrateId, next) {
 			webstrateId: { $ne: webstrateId }
 		}, function(err, assetsBeingUsed) {
 			// Don't delete assets being used by other webstrates.
-			var assetsToBeDeleted = assets.filter(function(asset) {
-				return !assetsBeingUsed.includes(asset);
-			});
+			var assetsToBeDeleted = assets.filter(asset =>  !assetsBeingUsed.includes(asset));
 
 			var promises = [];
 			// Run through the files and delete them.

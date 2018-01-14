@@ -102,6 +102,7 @@ const isValidValue = value => ['string', 'number'].includes(typeof value)
 module.exports.search = async (webstrateId, assetName, assetVersion,
 	query = {}, sort = {}, limit = 10, skip = 0) => {
 	const asset = await assetManager.getAsset({ webstrateId, assetName, version: assetVersion });
+
 	if (!asset)
 		throw new Error('Asset not found');
 
@@ -120,8 +121,9 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 	if (!Number.isInteger(skip) || skip < 0)
 		throw new Error('Invalid skip');
 
-	query._assetId = asset._id;
-
+	// If this webstrate is a copy of another webstrate, the CSV assets will be associated with the
+	// original webstrate, so we use that ID instead.
+	query._assetId = asset._originalId || asset._id;
 	return db.assetsCsv
 		.find(query, { _id: 0, _assetId: 0 })
 		.limit(limit)
