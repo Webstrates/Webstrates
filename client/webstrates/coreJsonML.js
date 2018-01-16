@@ -49,6 +49,7 @@ function toHTML(elem, xmlNs, scripts) {
 			// If object set element attributes
 		} else if (isPlainObject(elem[i])) {
 			if (name) {
+
 				name = coreUtils.sanitizeString(name);
 
 				// When loading a website with an SVG element without a namespace attribute, Chrome will
@@ -77,7 +78,7 @@ function toHTML(elem, xmlNs, scripts) {
 					}
 					const value = coreUtils.unescape(elem[i][index]);
 					index = coreUtils.sanitizeString(index);
-					if (xmlNs) {
+					if (xmlNs === 'http://www.w3.org/2000/svg') {
 						if (index === 'href' || index === 'xlink:href') {
 							selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
 						}
