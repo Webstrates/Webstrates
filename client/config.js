@@ -7,6 +7,7 @@ module.exports = {
 		'cookies',
 		'nodeObjects',
 		'databaseErrors',
+		'dataSavedEvent',
 		'domEvents',
 		'transclusionEvent',
 		'connectionEvents',

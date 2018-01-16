@@ -10,6 +10,7 @@ const COLLECTION_NAME = 'webstrates';
 coreEvents.createEvent('receivedDocument');
 coreEvents.createEvent('receivedOps');
 coreEvents.createEvent('databaseError');
+coreEvents.createEvent('opsAcknowledged');
 
 let doc, conn;
 
@@ -103,6 +104,14 @@ exports.subscribe = (webstrateId) => {
 				if (opsSource !== source) {
 					coreEvents.triggerEvent('receivedOps', ops);
 				}
+			});
+
+			// This event gets triggered after all ops have been successfully been received by the
+			// server and submitted to the database. There's 'nothing pending' in the submission queue.
+			// If a user is making changes to the DOM, we can't guarantee that they have been recorded
+			// after this event has happened.
+			doc.on('nothing pending', () => {
+				coreEvents.triggerEvent('opsAcknowledged');
 			});
 
 			doc.on('error', error => {
