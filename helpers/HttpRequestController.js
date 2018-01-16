@@ -1,16 +1,17 @@
 'use strict';
 
-var archiver = require('archiver');
-var crypto = require('crypto');
-var fs = require('fs');
-var jsonml = require('jsonml-tools');
-var jsonmlParse = require('jsonml-parse');
-var mime = require('mime-types');
-var request = require('request');
-var shortId = require('shortid');
-var tmp = require('tmp');
-var yauzl = require('yauzl');
-var SELFCLOSING_TAGS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
+const archiver = require('archiver');
+const crypto = require('crypto');
+const fs = require('fs');
+const jsonml = require('jsonml-tools');
+const jsonmlParse = require('jsonml-parse');
+const mime = require('mime-types');
+const request = require('request');
+const shortId = require('shortid');
+const tmp = require('tmp');
+const url = require('url');
+const yauzl = require('yauzl');
+const SELFCLOSING_TAGS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
 	'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr'];
 
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
@@ -92,7 +93,12 @@ module.exports.requestHandler = function(req, res) {
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrtag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
 	if (req.query.v && !req.versionOrTag) {
-		return res.redirect(`/${req.webstrateId}/${req.query.v}/?copy`);
+		const version = req.query.v;
+		delete req.query.v;
+		return res.redirect(url.format({
+			pathname: `/${req.webstrateId}/${version}/`,
+			query: req.query
+		}));
 	}
 
 	return documentManager.getDocument({
@@ -421,6 +427,7 @@ function copyWebstrate(req, res, snapshot) {
 			return res.status(409).send(String(err));
 		}
 
+
 		// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
 		// will always be set, even if no version is specified, or the user is accessing the webstrate
 		// through a tag.
@@ -433,7 +440,11 @@ function copyWebstrate(req, res, snapshot) {
 				console.error(err);
 				return res.status(409).send(String(err));
 			}
-			return res.redirect(`/${webstrateId}/`);
+			delete req.query.copy;
+			return res.redirect(url.format({
+				pathname:`/${webstrateId}/`,
+				query: req.query
+			}));
 		});
 	});
 }
@@ -478,7 +489,11 @@ function restoreWebstrate(req, res, snapshot) {
 						console.error(err);
 						return res.status(409).send(String(err));
 					}
-					return res.redirect(`/${req.webstrateId}/`);
+					delete req.query.restore;
+					return res.redirect(url.format({
+						pathname:`/${req.webstrateId}/`,
+						query: req.query
+					}));
 				});
 		});
 }
@@ -740,7 +755,12 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 								console.error(err);
 								return res.status(409).send(String(err));
 							}
-							res.redirect(`/${webstrateId}/`);
+							delete req.query.prototypeUrl;
+							delete req.query.id;
+							res.redirect(url.format({
+								pathname:`/${webstrateId}/`,
+								query: req.query
+							}));
 						});
 					});
 				}
@@ -752,14 +772,17 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 
 	if (req.query.prototype) {
 		var path = `/${req.query.prototype}/`;
+		delete req.query.prototype;
 		if (req.query.v) {
 			path += `${req.query.v}/`;
+			delete req.query.v;
 		}
-		path += '?copy';
-		if (req.query.id) {
-			path += `=${req.query.id}`;
-		}
-		return res.redirect(path);
+		req.query.copy = req.query.id;
+		delete req.query.id;
+		return res.redirect(url.format({
+			pathname: path,
+			query: req.query
+		}));
 	}
 
 	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
@@ -771,5 +794,8 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 	}
 
 	const webstrateId = generateWebstrateId(req);
-	res.redirect(`/${webstrateId}/`);
+	res.redirect(url.format({
+		pathname: `/${webstrateId}/`,
+		query: req.query
+	}));
 };
