@@ -106,10 +106,22 @@ publicObject.restore = (tagOrVersion, callback) => {
 	if (publicObject.isStatic) {
 		coreDatabase.fetch(publicObject.webstrateId, tagOrVersion).then(doc => {
 			corePopulator.populate(document, doc);
+			callback();
 		});
 	} else {
-		coreDatabase.restore(publicObject.webstrateId, tagOrVersion);
+		coreDatabase.restore(publicObject.webstrateId, tagOrVersion, callback);
 	}
+};
+
+/**
+ * Get a range of ops from the document.
+ * @param  {Number}   fromVersion Version to start the op range from (inclusive).
+ * @param  {Number}   toVersion   Version to end the op range at (exclusive).
+ * @param  {Function} callback    Callback.
+ * @return {Array}                (async) Array of ops in the range.
+ */
+publicObject.getOps = (fromVersion, toVersion, callback) => {
+	coreDatabase.getOps(publicObject.webstrateId, fromVersion, toVersion, callback);
 };
 
 window.webstrate = publicObject;

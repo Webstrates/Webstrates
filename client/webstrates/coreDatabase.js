@@ -174,3 +174,20 @@ exports.restore = (webstrateId, tagOrVersion) => {
 
 	coreWebsocket.send(msgObj);
 };
+
+/**
+ * Get a range of ops from a specific webstrate.
+ * @param  {string}   webstrateId Webstrate to get ops from .
+ * @param  {Number}   fromVersion Version to start the op range from (inclusive).
+ * @param  {Number}   toVersion   Version to end the op range at (exclusive).
+ * @param  {Function} callback    Callback.
+ * @return {Array}                (async) Array of ops in the range.
+ */
+exports.getOps = (webstrateId, fromVersion, toVersion, callback) => {
+	coreWebsocket.send({
+		wa: 'getOps',
+		d: webstrateId,
+		from: fromVersion,
+		to: toVersion
+	}, callback);
+};

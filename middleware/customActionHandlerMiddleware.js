@@ -61,22 +61,37 @@ exports.onmessage = (ws, req, data, next) => {
 			}
 
 			switch (data.wa) {
-			// Request a snapshot.
+				// Request a snapshot.
 				case 'fetchdoc': {
+					if (!data.token) break;
 					const version = data.v;
 					const tag = data.l;
-					if (data.token) {
-						documentManager.getDocument({ webstrateId, tag, version }, function(err,
-							snapshot) {
-							const responseObj = { wa: 'reply', token: data.token };
-							if (err) {
-								responseObj.error = err.message;
-							} else {
-								responseObj.reply = snapshot;
-							}
-							ws.send(JSON.stringify(responseObj));
-						});
-					}
+					documentManager.getDocument({ webstrateId, tag, version }, function(err,
+						snapshot) {
+						const responseObj = { wa: 'reply', token: data.token };
+						if (err) {
+							responseObj.error = err.message;
+						} else {
+							responseObj.reply = snapshot;
+						}
+						ws.send(JSON.stringify(responseObj));
+					});
+					break;
+				}
+				// Request a range of ops.
+				case 'getOps': {
+					if (!data.token) break;
+					const initialVersion = data.from;
+					const version = data.to;
+					documentManager.getOps({ webstrateId, initialVersion, version }, function(err, ops) {
+						const responseObj = { wa: 'reply', token: data.token };
+						if (err) {
+							responseObj.error = err.message;
+						} else {
+							responseObj.reply = ops;
+						}
+						ws.send(JSON.stringify(responseObj));
+					});
 					break;
 				}
 				// Subscribe to signals.
