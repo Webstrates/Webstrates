@@ -603,12 +603,14 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 											if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
 												htmlDocumentFound = true;
 												streamToString(readStream, htmlDoc => {
-													const jsonml = htmlToJsonML(htmlDoc);
+													let jsonml = htmlToJsonML(htmlDoc);
+													// MongoDB doesn't accept periods in keys, so we replace them with
+													// `&dot;`s when storing them in the database.
+													jsonml = replaceInKeys(jsonml, '.', '&dot;');
 													let snapshot = {
 														type: 'http://sharejs.org/types/JSONv0',
 														data: jsonml
 													};
-													//console.log(JSON.stringify(snapshot));
 													const userPermissions = permissionManager
 														.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
 															snapshot);
