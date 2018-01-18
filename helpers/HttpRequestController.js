@@ -3,8 +3,8 @@
 const archiver = require('archiver');
 const crypto = require('crypto');
 const fs = require('fs');
-const jsonml = require('jsonml-tools');
-const jsonmlParse = require('jsonml-parse');
+const jsonmlTools = require('jsonml-tools');
+const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
 const request = require('request');
 const shortId = require('shortid');
@@ -315,32 +315,6 @@ function serveJsonMLWebstrate(req, res, snapshot) {
 }
 
 /**
- * Replaces `&dot;`s with periods in attribute names.
- * MongoDB doesn't support periods in keys, so we substitute them with the string `&dot;` to store
- * them. This function reverts that. We only do this when sending raw documents, as the client side
- * Webstrate code usually handles this.
- * @param  {JsonML} snapshot Document snapshot.
- * @return {JsonML}          Same snapshot, but where `&dot`s have been replaced by periods in
- *                           attribute names.
- * @private
- */
-function replaceDotAttrs(snapshot) {
-	if (Array.isArray(snapshot)) {
-		return snapshot.map(replaceDotAttrs);
-	}
-	if (typeof snapshot === 'object') {
-		for (const key in snapshot) {
-			const cleanKey = key.replace(/&dot;/g, '.');
-			snapshot[cleanKey] = replaceDotAttrs(snapshot[key]);
-			if (cleanKey !== key) {
-				delete snapshot[key];
-			}
-		}
-	}
-	return snapshot;
-}
-
-/**
  * Requesting a raw webstrate by calling `/<id>?raw`.
  * @param {obj}      req      Express request object.
  * @param {obj}      res      Express response object.
@@ -348,7 +322,11 @@ function replaceDotAttrs(snapshot) {
  * @private
  */
 function serveRawWebstrate(req, res, snapshot) {
-	res.send('<!doctype html>\n' + jsonml.toXML(replaceDotAttrs(snapshot.data), SELFCLOSING_TAGS));
+	// MongoDB doesn't support periods in keys, so we substitute them with the string `&dot;` to
+	// store them. This function reverts that. We only do this when sending raw documents, as the
+	// client side Webstrate code already handles this otherwise.
+	res.send('<!doctype html>\n' + jsonmlTools.toXML(replaceInKeys(snapshot.data, '&dot;', '.'),
+		SELFCLOSING_TAGS));
 }
 
 /**
@@ -367,7 +345,7 @@ function serveCompressedWebstrate(req, res, snapshot) {
 
 		var format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		var archive = archiver(format, { store: true });
-		archive.append('<!doctype html>\n' + jsonml.toXML(snapshot.data, SELFCLOSING_TAGS),
+		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
 			{ name: `${req.webstrateId}/index.html` });
 
 		assets.forEach(function(asset) {
@@ -535,34 +513,28 @@ function serveWebstrate(req, res) {
 }
 
 /**
- * Applies callback recursively to every string in a nested data structure.
- * @param  {list}   xs         List to recurse.
- * @param  {Function} callback Function to apply to each string.
- * @return {list}              Resulting data structure.
+ * Replaces a string with another string in the attribute names of a JsonML structure.
+ * Webstrate code usually handles this.
+ * @param  {JsonML} snapshot    JsonML structure.
+ * @param  {string} search      String to search for. Regex also works.
+ * @param  {string} replacement String to replace search with.
+ * @return {JsonML}             JsonML with replacements.
+ * @private
  */
-function recurse(xs, callback) {
-	return xs.map(function(x) {
-		if (typeof x === 'string') return callback(x, xs);
-		if (Array.isArray(x)) return recurse(x, callback);
-		return x;
-	});
-}
-
-/**
- * Convert HTML string to JsonML structure.
- * @param  {string}   html     HTML string.
- * @param  {Function} callback Callback.
- * @return {jsonml}            (Async) JsonML object.
- */
-function htmlToJson(html, callback) {
-	jsonmlParse(html.trim(), function(err, jsonml) {
-		if (err) return callback(err);
-		jsonml = recurse(jsonml, function(str, parent) {
-			if (['script', 'style'].includes(parent[0].toLowerCase())) { return str; }
-			return str.replace(/&gt;/g, '>').replace(/&lt;/g, '<').replace(/&amp;/g, '&');
-		});
-		callback(null, jsonml);
-	}, { preserveEntities: true });
+function replaceInKeys(jsonml, search, replacement) {
+	if (Array.isArray(jsonml)) {
+		return jsonml.map(e => replaceInKeys(e, search, replacement));
+	}
+	if (typeof jsonml === 'object') {
+		for (const key in jsonml) {
+			const cleanKey = key.replace(search, replacement);
+			jsonml[cleanKey] = replaceInKeys(jsonml[key], search, replacement);
+			if (cleanKey !== key) {
+				delete jsonml[key];
+			}
+		}
+	}
+	return jsonml;
 }
 
 /**
@@ -631,34 +603,36 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 											if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
 												htmlDocumentFound = true;
 												streamToString(readStream, htmlDoc => {
-													htmlToJson(htmlDoc, function(err, jsonml) {
-														if (err) return;
-														let snapshot = {
-															type: 'http://sharejs.org/types/JSONv0',
-															data: jsonml
-														};
-														const userPermissions = permissionManager
-															.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
-																snapshot);
-														// If user doesn't have write permissions to the docuemnt, add them if
-														// the user is logged in, otherwise just delete all permissions on the
-														// new document.
-														if (!userPermissions.includes('w')) {
-															if (req.user.username === 'anonymous' && req.user.provider === '') {
-																snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
-															} else {
-																snapshot = permissionManager
-																	.addPermissionsToSnapshot(req.user.username, req.user.provider,
-																		'rw', snapshot);
-															}
+													const jsonml = htmlToJsonML(htmlDoc);
+													let snapshot = {
+														type: 'http://sharejs.org/types/JSONv0',
+														data: jsonml
+													};
+													//console.log(JSON.stringify(snapshot));
+													const userPermissions = permissionManager
+														.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
+															snapshot);
+													// If user doesn't have write permissions to the docuemnt, add them if
+													// the user is logged in, otherwise just delete all permissions on the
+													// new document.
+													if (!userPermissions.includes('w')) {
+														if (req.user.username === 'anonymous' && req.user.provider === '') {
+															snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+														} else {
+															snapshot = permissionManager
+																.addPermissionsToSnapshot(req.user.username, req.user.provider,
+																	'rw', snapshot);
 														}
-														documentManager.createNewDocument({
-															webstrateId: req.query.id || generateWebstrateId(req),
-															snapshot
-														}, function(err, _webstrateId) {
-															if (err) return;
-															webstrateId = _webstrateId;
-														});
+													}
+													documentManager.createNewDocument({
+														webstrateId: req.query.id || generateWebstrateId(req),
+														snapshot
+													}, function(err, _webstrateId) {
+														if (err) {
+															console.error(err);
+															return;
+														}
+														webstrateId = _webstrateId;
 													});
 												});
 											}
@@ -711,7 +685,6 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 									// that should be searchable. We remember to remove the 11-character long
 									// '.searchable'  prefix.
 									searchables = searchables.map(asset => asset.originalname.slice(0, -11));
-									console.log(searchables, assets);
 									assetManager.addAssets(webstrateId, assets, searchables, source,
 										(err, assetRecords) => {
 											res.redirect(`/${webstrateId}/`);
@@ -739,29 +712,24 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 				// `startsWith` and not a direct match, because the content-type often (always?) is followed
 				// by a charset declaration, which we don't care about.
 				if (response.headers['content-type'].startsWith('text/html')) {
-					return htmlToJson(body, function(err, jsonml) {
+					jsonml = htmlToJsonML(body);
+					documentManager.createNewDocument({
+						webstrateId: req.query.id,
+						snapshot: {
+							type: 'http://sharejs.org/types/JSONv0',
+							data: jsonml
+						}
+					}, function(err, webstrateId) {
 						if (err) {
 							console.error(err);
 							return res.status(409).send(String(err));
 						}
-						documentManager.createNewDocument({
-							webstrateId: req.query.id,
-							snapshot: {
-								type: 'http://sharejs.org/types/JSONv0',
-								data: jsonml
-							}
-						}, function(err, webstrateId) {
-							if (err) {
-								console.error(err);
-								return res.status(409).send(String(err));
-							}
-							delete req.query.prototypeUrl;
-							delete req.query.id;
-							res.redirect(url.format({
-								pathname:`/${webstrateId}/`,
-								query: req.query
-							}));
-						});
+						delete req.query.prototypeUrl;
+						delete req.query.id;
+						res.redirect(url.format({
+							pathname:`/${webstrateId}/`,
+							query: req.query
+						}));
 					});
 				}
 

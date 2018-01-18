@@ -44,6 +44,7 @@ function toHTML(elem, xmlNs, scripts) {
 			if (name.toLowerCase() === 'foreignobject') {
 				xmlNs = undefined;
 			}
+
 			fragment.appendChild(toHTML(elem[i], xmlNs, scripts));
 
 			// If object set element attributes
