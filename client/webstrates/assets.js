@@ -72,7 +72,7 @@ globalObject.publicObject.searchAsset = (assetIdentifier, query = {}, callback) 
 	const [assetName, assetVersion] = assetIdentifier.split('/');
 	websocket.send({ wa: 'assetSearch', d: webstrateId, assetName, assetVersion: +assetVersion,
 		query: query.query, sort: query.sort, limit: query.limit, skip: query.skip },
-	callback);
+	(err, result) => callback(err, result.records, result.count));
 };
 
 module.exports = assetsModule;

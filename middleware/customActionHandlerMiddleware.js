@@ -211,9 +211,9 @@ exports.onmessage = (ws, req, data, next) => {
 				// Search CSV assets.
 				case 'assetSearch': {
 					try {
-						const result = await searchableAssets.search(webstrateId, data.assetName,
+						const { records, count } = await searchableAssets.search(webstrateId, data.assetName,
 							data.assetVersion, data.query, data.sort, data.limit, data.skip);
-						ws.send(JSON.stringify({ wa: 'reply', token: data.token, reply: result }));
+						ws.send(JSON.stringify({ wa: 'reply', token: data.token, reply: { records, count } }));
 					} catch (error) {
 						console.error(webstrateId, data, error);
 						ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: error.message }));

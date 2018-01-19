@@ -124,10 +124,12 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 	// If this webstrate is a copy of another webstrate, the CSV assets will be associated with the
 	// original webstrate, so we use that ID instead.
 	query._assetId = asset._originalId || asset._id;
-	return db.assetsCsv
+	const result = db.assetsCsv
 		.find(query, { _id: 0, _assetId: 0 })
 		.limit(limit)
 		.sort(sort)
-		.skip(skip)
-		.toArray();
+		.skip(skip);
+
+	// 'count' is the the number of all records matching the query, disregarding the limit we've set.
+	return { records: await result.toArray(), count: await result.count() };
 };
