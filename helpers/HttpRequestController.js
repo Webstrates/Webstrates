@@ -90,7 +90,7 @@ function extractVersionOrTag(versionOrTag) {
  * @public
  */
 module.exports.requestHandler = function(req, res) {
-	// Support for legacy syntax: /<webstrateId>?v=<versionOrtag>, which is equivalent to
+	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
 	if (req.query.v && !req.versionOrTag) {
 		const version = req.query.v;
@@ -322,6 +322,12 @@ function serveJsonMLWebstrate(req, res, snapshot) {
  * @private
  */
 function serveRawWebstrate(req, res, snapshot) {
+	// A specific version of webstrate is immutable, so we can cache a request to a specific version
+	// indefinitely. Tags can be moved, so we can't do the same there.
+	if (req.version) {
+		// In reality, we just cache for a year.
+		res.setHeader('Cache-Control', 'public, max-age=31557600');
+	}
 	// MongoDB doesn't support periods in keys, so we substitute them with the string `&dot;` to
 	// store them. This function reverts that. We only do this when sending raw documents, as the
 	// client side Webstrate code already handles this otherwise.
