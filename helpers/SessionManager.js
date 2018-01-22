@@ -1,4 +1,5 @@
 'use strict';
+
 const db = require(APP_PATH + '/helpers/database.js');
 
 /**

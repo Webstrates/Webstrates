@@ -1,4 +1,5 @@
 'use strict';
+
 const redis = require('redis');
 const sharedb = require('sharedb');
 const sharedbMongo = require('sharedb-mongo');

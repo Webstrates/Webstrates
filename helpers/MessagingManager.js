@@ -1,4 +1,5 @@
 'use strict';
+
 const shortId = require('shortid');
 const redis = require('redis');
 const db = require(APP_PATH + '/helpers/database.js');
@@ -49,7 +50,7 @@ var socketUserMap = new Map();
  * Creates a mapping from socketId to userId. Called by ClientManager.
  * @param  {string} socketId SocketId.
  * @param  {string} userId   UserId.
- * @param  {bool} local      Whether the request is done locally or note.
+ * @param  {bool} local      Whether the request is done locally or remotely.
  * @public
  */
 module.exports.clientAdded = function(socketId, userId, local) {
@@ -68,7 +69,7 @@ module.exports.clientAdded = function(socketId, userId, local) {
  * @param  {mixed} recipients Recipient or list of recipients. Either socketIds or userId.
  * @param  {mixed} message    Messages (any type).
  * @param  {[type]} senderId  SenderId
- * @param  {bool} local       Whether the request is done locally or note.
+ * @param  {bool} local       Whether the request is done locally or remotely.
  * @public
  */
 module.exports.sendMessage = function(recipients, message, senderId, local) {

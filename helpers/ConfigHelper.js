@@ -1,4 +1,5 @@
 'use strict';
+
 const fss = require('fs-sync');
 
 /** Create config file if it doesn't already exist by copying config-sample. */

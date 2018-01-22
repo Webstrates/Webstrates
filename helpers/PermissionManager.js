@@ -1,4 +1,5 @@
 'use strict';
+
 const shortId = require('shortid');
 const redis = require('redis');
 const documentManager = require(global.APP_PATH + '/helpers/DocumentManager.js');

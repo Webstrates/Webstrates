@@ -1,3 +1,5 @@
+'use strict';
+
 const animals = require('human-readable-ids/assets/animals').humanReadableIds.animals;
 const adjectives = require('human-readable-ids/assets/adjectives').humanReadableIds.adjectives;
 

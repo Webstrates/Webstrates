@@ -1,3 +1,5 @@
+'use strict';
+
 const csv = require('csvtojson');
 const db = require(APP_PATH + '/helpers/database.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
