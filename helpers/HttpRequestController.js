@@ -59,9 +59,10 @@ module.exports.trailingSlashAppendHandler = function(req, res) {
  * @public
  */
 module.exports.extractQuery = function(req, res, next) {
-	var [webstrateId, versionOrTag, assetName] = Object.keys(req.params).map(i => req.params[i]);
-	var { version, tag } = extractVersionOrTag(versionOrTag);
-	Object.assign(req, { webstrateId, versionOrTag, assetName, version, tag });
+	const [webstrateId, versionOrTag, assetName, assetPath]
+		= Object.keys(req.params).map(i => req.params[i]);
+	const { version, tag } = extractVersionOrTag(versionOrTag);
+	Object.assign(req, { webstrateId, versionOrTag, assetName, assetPath, version, tag });
 	next();
 };
 
@@ -138,14 +139,42 @@ module.exports.requestHandler = function(req, res) {
 					return res.status(404).send(`Asset "${req.assetName}" not found.`);
 				}
 
-				res.type(asset.mimeType);
+				if (req.assetPath) {
+					let entryFound = false;
+					return yauzl.open(APP_PATH + '/uploads/' + asset.fileName, { lazyEntries: true },
+						(err, zipFile) => {
+							if (err) {
+								return res.status(400).send(`"${req.assetName}" is not a valid ZIP file.`);
+							}
+							zipFile.on('entry', entry => {
+								if (req.assetPath !== entry.fileName) {
+									return zipFile.readEntry();
+								}
+
+								zipFile.openReadStream(entry, (err, readStream) => {
+									// Getting this from a ZIP might be a little heavy, so we cache it for a year,
+									// even though the ZIP asset could in fact get overwritten.
+									res.setHeader('Cache-Control', 'public, max-age=31557600');
+									readStream.pipe(res);
+								});
+							});
+							zipFile.readEntry();
+
+							zipFile.once('end', () => {
+								if (!entryFound) {
+									res.status(404).send(`File "${req.assetPath}" not found in asset ` +
+										`"${req.assetName}".`);
+								}
+							});
+						});
+				}
 
 				// `/<webstrateId>/<asset>` may not always refer to the same asset, but to optimize rapid
 				// requests, we set a maxAge anyway. If the requested asset includes a specific version,
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
-				var maxAge = req.version ? (config.maxAge || '1d') : '1m';
-				res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
-				return;
+				var maxAge = req.version ? '1y' : (config.maxAge || '1m');
+				res.type(asset.mimeType);
+				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
 			} catch (error) {
 				console.error(err);
 				return res.status(409).send(String(err));
@@ -607,7 +636,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 								zipFile.on('entry', entry => {
 									if (/\/$/.test(entry.fileName)) {
 									// Directory file names end with '/'.
-									// Note that entires for directories themselves are optional.
+									// Note that entries for directories themselves are optional.
 									// An entry's fileName implicitly requires its parent directories to exist.
 										zipFile.readEntry();
 									} else {
