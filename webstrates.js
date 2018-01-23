@@ -48,7 +48,6 @@ if (typeof config.threads !== 'undefined') {
 			for (var i = 0; i < threadCount; ++i) {
 				cluster.fork();
 			}
-			/* eslint-disable-next-line */
 			return;
 		}
 	}

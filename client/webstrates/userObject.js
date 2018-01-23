@@ -19,15 +19,44 @@ if (!coreUtils.getLocationObject().staticMode) {
 	// Public user object
 	const publicObject = {};
 
+	let clientId;
+
 	userObjectModule.publicObject = publicObject;
 	globalObject.publicObject.user = publicObject;
 
 	websocket.onjsonmessage = (message) => {
-		if (message.wa === 'hello') {
-			// Merge the incoming information with the existing user object. We don't overwrite it, as
-			// other modules may already have added their own stuff.
-			Object.assign(publicObject, message.user);
-			coreEvents.triggerEvent('userObjectAdded');
+		switch (message.wa) {
+			case 'hello': {
+				// Merge the incoming information with the existing user object. We don't overwrite it, as
+				// other modules may already have added their own stuff.
+				Object.assign(publicObject, message.user);
+				clientId = message.id;
+				coreEvents.triggerEvent('userObjectAdded');
+				break;
+			}
+
+			case 'userClientJoin': {
+				const joiningClientId = message.id;
+				const isOwnJoin = clientId === joiningClientId;
+				// Own join will already be in the client list.
+				if (!isOwnJoin && publicObject.clients) {
+					publicObject.clients.push(joiningClientId);
+				}
+				break;
+			}
+
+			// There is no specific 'userClientPart' command, because we can just try to remove all
+			// parting clients from the user clients list.
+			case 'clientPart': {
+				if (publicObject.clients) {
+					const partingClientId = message.id;
+					const userIdx = publicObject.clients.indexOf(partingClientId);
+					if (userIdx !== -1) {
+						publicObject.clients.splice(userIdx, 1);
+					}
+				}
+				break;
+			}
 		}
 	};
 }

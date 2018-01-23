@@ -10,27 +10,29 @@ const pubsub = global.config.pubsub && {
 	subscriber: redis.createClient(global.config.pubsub)
 };
 
-var PUBSUB_CHANNEL = 'webstratesClients';
+const PUBSUB_CHANNEL = 'webstratesClients';
 
 // One-to-one mapping from socketIds to client sockets as well as one-to-many mapping from
 // socketId to webstrateIds. clients holds all clients connected to this server instance, but not
 // remote clients.
-var clients = {};
+const clients = {};
 
-// One-to-many mapping from webstrateIds to socketIds. webstrates holds a list of all clients
-// connected in all webstrates, including remote clients.
-var webstrates = {};
+// One-to-many mapping from webstrateIds to socketIds, as well as a one-to-one mapping from those
+// socket Ids to userIds. this variable holds a list of all clients connected in all webstrates,
+// including remote clients.
+const webstrates = {};
 
 // One-to-many mapping from webstrateIds to nodeIds as well as one-to-many mapping from nodeIds
 // to socketIds.
-var nodeIds = {};
+const nodeIds = {};
 
 // One-to-one mapping from socketIds to `clientJoin` trigger function and its associated
 // setTimeout id.
-var joinTimeouts = {};
+const joinTimeouts = {};
 
-// One-to-many mapping from userId to socketIds. Used for communicating cookie updates.
-var userIds = {};
+// One-to-many mapping from userId to socketIds. Used for communicating cookie updates. Only local
+// clients.
+const userIds = {};
 
 // Listen for events happening on other server instances. This is only used when using multi-
 // threading and Redis.
@@ -46,7 +48,7 @@ if (pubsub) {
 
 		switch (message.action) {
 			case 'clientJoin':
-				module.exports.addClientToWebstrate(message.socketId, message.webstrateId);
+				module.exports.addClientToWebstrate(message.socketId, message.userId, message.webstrateId);
 				break;
 			case 'clientPart':
 				module.exports.removeClientFromWebstrate(message.socketId, message.webstrateId);
@@ -138,40 +140,62 @@ module.exports.triggerJoin = function(socketId) {
  *                             continuously send the same join back and forth between instances.
  * @public
  */
-module.exports.addClientToWebstrate = function(socketId, webstrateId, local) {
+module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, local) {
 	if (!webstrates[webstrateId]) {
-		webstrates[webstrateId] = [];
+		webstrates[webstrateId] = new Map();
 	}
 
-	webstrates[webstrateId].push(socketId);
+	webstrates[webstrateId].set(socketId, userId);
 
-	var clientJoinMsgObj = {
+	// Message to be sent to all other clients in the webstrate.
+	const clientJoinMsgObj = {
 		wa: 'clientJoin',
 		id: socketId,
 		d: webstrateId
 	};
 
+	// Additional message sent to all of the user's other clients. This is used to keep
+	// webstrate.user.clients updated in the frontend.
+	const userClientJoinMsgObj = {
+		wa: 'userClientJoin',
+		id: socketId,
+		d: webstrateId
+	};
+
 	if (!local) {
+		if (userId !== 'anonymous:') {
+			broadcastToUserClientsInWebstrate(webstrateId, userId, userClientJoinMsgObj);
+		}
 		broadcastToWebstrateClients(webstrateId, clientJoinMsgObj);
 		return;
 	}
 
-	var helloMsgObj = {
+	const user = Object.assign({}, clients[socketId].user);
+
+	// Add a list of all the user's connected clients to the user object.
+	if (userId !== 'anonymous:') {
+		user.clients = [];
+		webstrates[webstrateId].forEach((assUserId, socketId) => {
+			if (assUserId === userId) user.clients.push(socketId);
+		});
+	}
+
+	// Message to be sent to client joining the webstrate.
+	const helloMsgObj = {
 		wa: 'hello',
 		id: socketId,
 		d: webstrateId,
-		defaultPermissions: global.config.auth && global.config.auth.defaultPermissions,
-		user: clients[socketId].user,
-		clients: webstrates[webstrateId],
+		defaultPermissions: global.config.auth.defaultPermissions,
+		user: user,
+		clients: Array.from(webstrates[webstrateId].keys())
 	};
-
-	var userId = clients[socketId].user.userId;
 
 	// If no userId is defined, the user isn't logged in and therefore can't have cookies attached,
 	// so let's not waste time looking for them.
 	if (!userId) {
 		module.exports.sendToClient(socketId, helloMsgObj);
 	} else {
+		// Get user's cookies.
 		var promises = [];
 		promises.push(new Promise(function(accept, reject) {
 			db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { '$exists': false } } ] })
@@ -184,6 +208,7 @@ module.exports.addClientToWebstrate = function(socketId, webstrateId, local) {
 				});
 		}));
 
+		// Get user's messages.
 		promises.push(new Promise(function(accept, reject) {
 			messagingManager.getMessages(userId, function(err, messages) {
 				if (err) {
@@ -194,6 +219,7 @@ module.exports.addClientToWebstrate = function(socketId, webstrateId, local) {
 			});
 		}));
 
+		// Attach user's cookies and messages to the hello message object.
 		Promise.all(promises).then(function([cookies, messages]) {
 			helloMsgObj.cookies = { here: {}, anywhere: {} };
 			// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
@@ -205,7 +231,6 @@ module.exports.addClientToWebstrate = function(socketId, webstrateId, local) {
 
 			// Rinse and repeat for "anywhere" (global) cookies.
 			var globalCookies = cookies.find(cookie => typeof cookie.webstrateId === 'undefined') || {};
-
 			if (globalCookies.cookies) {
 				globalCookies.cookies.forEach(({ key, value }) =>
 					helloMsgObj.cookies.anywhere[key] = value);
@@ -222,10 +247,13 @@ module.exports.addClientToWebstrate = function(socketId, webstrateId, local) {
 	var joinTriggerFn = function() {
 		// If the client has already left (i.e. removeClientFromWebstrate was triggered), there's no
 		// reason to broadcast the clientJoin.
-		if (!webstrates[webstrateId].includes(socketId)) {
+		if (!webstrates[webstrateId].has(socketId)) {
 			return;
 		}
 
+		if (userId !== 'anonymous:') {
+			broadcastToUserClientsInWebstrate(webstrateId, userId, userClientJoinMsgObj);
+		}
 		broadcastToWebstrateClients(webstrateId, clientJoinMsgObj);
 
 		if (pubsub) {
@@ -271,14 +299,14 @@ module.exports.removeClientFromWebstrate = function(socketId, webstrateId, local
 			return;
 		}
 
-		var socketIdIdx = webstrates[webstrateId].indexOf(socketId);
-		webstrates[webstrateId].splice(socketIdIdx, 1);
-
-		broadcastToWebstrateClients(webstrateId, {
-			wa: 'clientPart',
-			id: socketId,
-			d: webstrateId
-		});
+		const socketIdExisted = webstrates[webstrateId].delete(socketId);
+		if (socketIdExisted) {
+			broadcastToWebstrateClients(webstrateId, {
+				wa: 'clientPart',
+				id: socketId,
+				d: webstrateId
+			});
+		}
 	};
 
 	// Due to the delay in joins, we may end up in a situation where a part is broadcast before a
@@ -288,7 +316,7 @@ module.exports.removeClientFromWebstrate = function(socketId, webstrateId, local
 	// the join action has been. That way, we know the client will have joined by the time we remove
 	// it. It's a little convoluted, but it's the easiest way to ensure that even brief join/parts
 	// get registered to all clients.
-	if (webstrates[webstrateId] && webstrates[webstrateId].includes(socketId)) {
+	if (webstrates[webstrateId] && webstrates[webstrateId].has(socketId)) {
 		partFn();
 		return;
 	}
@@ -376,7 +404,7 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
 
 	// Register all the recipients we don't know, so we can forward them to other server instances.
 	var unknownRecipients = [];
-	(recipients || webstrates[webstrateId]).forEach(function(recipientId) {
+	(recipients || webstrates[webstrateId].keys()).forEach(function(recipientId) {
 		// We don't know the client.
 		if (!clients[recipientId]) {
 			unknownRecipients.push(recipientId);
@@ -498,18 +526,15 @@ module.exports.updateCookie = function(userId, webstrateId, key, value, local) {
  * Send message to clients in a webstrate.
  * @param  {string} webstrateId WebstrateId.
  * @param  {mixed} message      Message.
- * @return {bool}            True on success, false on failure.
  * @public
  */
 module.exports.sendToClients = function(webstrateId, message) {
-	// We technically can't fail when we don't have to send any messages.
 	if (!webstrates[webstrateId]) {
-		return true;
+		return;
 	}
 
-	return webstrates[webstrateId].reduce(function(success, socketId) {
-		return module.exports.sendToClient(socketId, message) && success;
-	}, true);
+	webstrates[webstrateId].forEach((userId, socketId) =>
+		module.exports.sendToClient(socketId, message));
 };
 
 /**
@@ -551,18 +576,25 @@ function broadcastToWebstrateClients(webstrateId, message) {
 		return;
 	}
 
-	webstrates[webstrateId].forEach(function(socketId) {
+	webstrates[webstrateId].forEach(function(userId, socketId) {
 		module.exports.sendToClient(socketId, message);
 	});
 }
 
+/**
+ * Send message to all a user's clients in a webstrate.
+ * @param  {string} webstrateId WebstrateId.
+ * @param  {string} userId      User Id (e.g. "kbadk:github").
+ * @param  {obj}    message     Message object.
+ * @private
+ */
 function broadcastToUserClientsInWebstrate(webstrateId, userId, message) {
 	if (!webstrates[webstrateId] || !userIds[userId]) {
 		return;
 	}
 
 	userIds[userId].forEach(function(socketId) {
-		if (webstrates[webstrateId].includes(socketId)) {
+		if (webstrates[webstrateId].has(socketId)) {
 			module.exports.sendToClient(socketId, message);
 		}
 	});
