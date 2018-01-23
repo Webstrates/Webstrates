@@ -85,6 +85,59 @@ function extractVersionOrTag(versionOrTag) {
 }
 
 /**
+ * Extract host from a URL string, e.g. get `domain:8000` from `http://user:pass@domain:8000/path/`.
+ * @param  {string} urlString URL string.
+ * @return {string}           Host string.
+ * @private
+ */
+function getHostFromUrl(urlString) {
+	try {
+		return (new url.URL(urlString)).host;
+	}
+	catch (e) {
+		return false;
+	}
+}
+
+/**
+ * Set CORS header on a response, assuming the requesting host is allowed it.
+ * @param {obj} req         Request object.
+ * @param {obj} res         Response object.
+ * @param {JsonML} snapshot ShareDB document snapshot.
+ * @private
+ */
+function setCorsHeaders(req, res, snapshot) {
+	const originHost = getHostFromUrl(req.headers.origin);
+
+	if (!originHost || !snapshot || !snapshot.data || !snapshot.data[0] ||
+		!snapshot.data[0] === 'html' || !snapshot.data[1] || !snapshot.data[1]['data-cors']) {
+		return false;
+	}
+
+	let allowedDomains;
+	try {
+		allowedDomains = JSON.parse(snapshot.data[1]['data-cors'].replace(/'/g, '"')
+			.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+	} catch (err) {
+		console.warn('Couldn\'t parse cors settings for', snapshot.id);
+		return false;
+	}
+
+	// Find a domain with matching host. This is more laxed than doing a strict string comparison
+	// where something like 'http://domain.tld' won't match with 'http://domain.tld/'. We can't
+	// give an error back to the user, so this would be a pain to debug.
+	const allowCors = allowedDomains.some(domain => getHostFromUrl(domain) === originHost);
+	if (!allowCors) {
+		return false;
+	}
+
+	res.header('Access-Control-Allow-Origin', req.headers.origin);
+	res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+	res.header('Access-Control-Allow-Credentials', 'true');
+	return true;
+}
+
+/**
  * Primary request handler.
  * @param {obj} req Express request object.
  * @param {obj} res Express response object.
@@ -181,6 +234,9 @@ module.exports.requestHandler = function(req, res) {
 				return res.status(409).send(String(err));
 			}
 		}
+
+		// Set CORS header on a response, assuming the requesting host is allowed it.
+		setCorsHeaders(req, res, snapshot);
 
 		// Requesting current document version number by calling `/<id>?v` or `/<id>?version`.
 		if ('v' in req.query || 'version' in req.query) {
