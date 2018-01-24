@@ -59,7 +59,9 @@ globalObject.publicObject.uploadAsset = (callback = () => {}, options = {}) => {
 			credentials: 'include',
 			body: formData
 		})
-			.then(res => callback(null, res))
+			.then(res => res.json()
+				.then(json => callback(null, json))
+				.catch(err => callback(err)))
 			.catch(err => callback(err));
 	});
 
