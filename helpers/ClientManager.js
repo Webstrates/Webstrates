@@ -404,7 +404,7 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
 
 	// Register all the recipients we don't know, so we can forward them to other server instances.
 	var unknownRecipients = [];
-	(recipients || webstrates[webstrateId].keys()).forEach(function(recipientId) {
+	(recipients || [...webstrates[webstrateId].keys()]).forEach(function(recipientId) {
 		// We don't know the client.
 		if (!clients[recipientId]) {
 			unknownRecipients.push(recipientId);
