@@ -35,13 +35,21 @@ loadedEventModule.delayUntil = (...args) => {
 // Initially delay the loaded event until the document has been populated.
 loadedEventModule.delayUntil('populated');
 
-// Create loaded event -- event to be triggered when the webstrate has finished.
-globalObject.createEvent('loaded');
+// Create loaded event: The event to be triggered when the webstrate has finished.
+globalObject.createEvent('loaded', {
+	// If anybody adds a 'loaded' event listener after it has already been triggered, we run the
+	// callback immediately.
+	addListener: callback => {
+		if (loadedTriggered) {
+			setImmediate(callback, globalObject.publicObject.webstrateId,
+				globalObject.publicObject.clientId, globalObject.publicObject.user);
+		}
+	}
+});
 
 // Also create an internal event.
 coreEvents.createEvent('loadedTriggered', {
-	// If anybody adds a 'loaded' event listener after it has already been triggered, we run the
-	// callback immediately.
+	// Same goes for the internal 'loadedTriggered' event.
 	addListener: callback => {
 		if (loadedTriggered) {
 			setImmediate(callback, globalObject.publicObject.webstrateId,
