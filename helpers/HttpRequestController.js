@@ -179,6 +179,9 @@ module.exports.requestHandler = function(req, res) {
 			return res.status(403).send('Insufficient permissions.');
 		}
 
+		// Set CORS header on a response, assuming the requesting host is allowed it.
+		setCorsHeaders(req, res, snapshot);
+
 		// Requesting an asset.
 		if (req.assetName) {
 			try {
@@ -234,9 +237,6 @@ module.exports.requestHandler = function(req, res) {
 				return res.status(409).send(String(err));
 			}
 		}
-
-		// Set CORS header on a response, assuming the requesting host is allowed it.
-		setCorsHeaders(req, res, snapshot);
 
 		// Requesting current document version number by calling `/<id>?v` or `/<id>?version`.
 		if ('v' in req.query || 'version' in req.query) {
