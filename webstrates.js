@@ -12,7 +12,6 @@ const sessions = require('client-sessions');
 global.WORKER_ID = (cluster.worker && cluster.worker.id) || 1;
 global.APP_PATH = __dirname;
 
-
 require('console-stamp')(console, {
 	metadata: () => (new Error().stack.split('\n')[3]).trim().substr(3),
 	pattern: 'HH:MM:ss',

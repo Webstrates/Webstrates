@@ -332,7 +332,7 @@ coreOpCreator.emitOpsFromMutations = () => {
 	}, coreEvents.PRIORITY.IMMEDIATE);
 };
 
-function addWidToElement(node) {
+coreOpCreator.addWidToElement = node => {
 	if (node.nodeType === document.ELEMENT_NODE && !node.__wid) {
 		const pathNode = corePathTree.getPathNode(node);
 		// Anything without a pathNode is transient and therefore doesn't need a wid.
@@ -343,15 +343,15 @@ function addWidToElement(node) {
 			coreEvents.triggerEvent('createdOps', ops);
 		}
 	}
-}
+};
 
-coreOpCreator.ensureExistenceOfWids = (targetElement) => {
-	coreUtils.recursiveForEach(targetElement, node => addWidToElement(node));
+coreOpCreator.ensureExistenceOfWids = targetElement => {
+	coreUtils.recursiveForEach(targetElement, node => coreOpCreator.addWidToElement(node));
 };
 
 coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
 	// If local is set, this node was inserted by ourself and thus already has a wid (if it needs to).
-	if (!local) addWidToElement(node);
+	if (!local) coreOpCreator.addWidToElement(node);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 coreEvents.addEventListener('DOMNodeDeleted', node => {

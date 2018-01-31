@@ -1,5 +1,6 @@
 'use strict';
 const coreEvents = require('./coreEvents');
+const coreOpCreator = require('./coreOpCreator');
 const coreUtils = require('./coreUtils');
 const loadedEvent = require('./loadedEvent');
 
@@ -9,7 +10,7 @@ nodeObjectsModule.nodes = new Map();
 coreEvents.createEvent('webstrateObjectsAdded');
 coreEvents.createEvent('webstrateObjectAdded');
 
-// Delay the loaded event, until the 'clientsReceied' event has been triggered.
+// Delay the loaded event, until the 'clientsReceived' event has been triggered.
 loadedEvent.delayUntil('webstrateObjectsAdded');
 
 /**
@@ -134,12 +135,13 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 
 coreEvents.addEventListener('populated', targetElement => {
 	coreUtils.recursiveForEach(targetElement, childNode => {
+		coreOpCreator.addWidToElement(childNode);
 		// The second argument is whether to trigger the webstrateObjectAdded event. We do not want to
 		// trigger these when we add the webstrate object initially as it may cause confusion when an
 		// webstrateObjectsAdded event is triggered with the node in the nodes array, while a
 		// webstrateObjectAdded event also is triggered for the same node.
 		attachWebstrateObjectToNode(childNode, false);
-	});
+	}, coreEvents.PRIORITY.IMMEDIATE);
 
 	// All nodes get a webstrate object attached after they enter the DOM. It may, however, be
 	// useful to access the Webstrate object before the element has been added to the DOM.
@@ -184,6 +186,7 @@ coreEvents.addEventListener('populated', targetElement => {
 
 coreEvents.addEventListener('DOMNodeInserted', node => {
 	coreUtils.recursiveForEach(node, childNode => {
+
 		// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 		attachWebstrateObjectToNode(childNode, true);
 	});

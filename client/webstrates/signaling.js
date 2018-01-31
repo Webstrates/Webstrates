@@ -146,7 +146,9 @@ function setupSignal(node, publicObject, eventObject) {
 	});
 }
 
-setupSignal(document.body, globalObject.publicObject, globalObject);
+coreEvents.addEventListener('populated', targetElement => {
+	setupSignal(targetElement, globalObject.publicObject, globalObject);
+});
 
 // Add signal events to all webstrate objects (with a wid) after the document has been populated.
 coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {

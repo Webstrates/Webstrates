@@ -39,9 +39,6 @@ else {
 			// Apply changes on <html>, not document.
 			const targetElement = document.childNodes[0];
 			coreOpApplier.listenForOpsAndApplyOn(targetElement);
-
-			// Create any missing wids in the document.
-			coreOpCreator.ensureExistenceOfWids(targetElement);
 		});
 	});
 }
