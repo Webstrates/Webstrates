@@ -91,11 +91,8 @@ function toHTML(elem, xmlNs, scripts) {
 					selector.setAttribute(coreUtils.unescapeDots(index), value);
 				}
 
-				// Add scripts to our scripts list, so we can execute them later synchronously. Only add
-				// JavaScripts, i.e. scripts either without a type attribute, or with 'text/javascript' as
-				// the type attribute.
-				if (selector.tagName.toLowerCase() === 'script' && (!selector.getAttribute('type') ||
-					selector.getAttribute('type') === 'text/javascript')) {
+				// Add scripts to our scripts list, so we can execute them later synchronously.
+				if (selector.tagName.toLowerCase() === 'script') {
 					selector.async = false;
 					scripts && scripts.push(selector);
 				}
