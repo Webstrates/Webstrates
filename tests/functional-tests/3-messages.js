@@ -29,9 +29,9 @@ describe('Messages', function() {
 
 		await util.logInToGithub(pageA);
 		await Promise.all([
-			pageA.goto(url, { waitUntil: 'networkidle' }),
-			pageB.goto(otherUrl, { waitUntil: 'networkidle' }),
-			pageC.goto(otherUrl, { waitUntil: 'networkidle' })
+			pageA.goto(url, { waitUntil: 'networkidle2' }),
+			pageB.goto(otherUrl, { waitUntil: 'networkidle2' }),
+			pageC.goto(otherUrl, { waitUntil: 'networkidle2' })
 		]);
 
 		await Promise.all([

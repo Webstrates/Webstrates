@@ -64,10 +64,10 @@
     "yauzl": "^2.9.1"
   },
   "devDependencies": {
+    "chai": "^4.1.2",
     "eslint": "^4.7.2",
     "eslint-loader": "^1.9.0",
-    "chai": "^4.1.2",
     "mocha": "^3.5.3",
-    "puppeteer": "^0.11.0"
+    "puppeteer": "^1.0.0"
   }
 }

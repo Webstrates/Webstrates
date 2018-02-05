@@ -14,10 +14,10 @@ describe('Transient Tags', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {

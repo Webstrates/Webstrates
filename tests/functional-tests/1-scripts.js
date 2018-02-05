@@ -15,11 +15,11 @@ describe('Script Insertion and Execution', function() {
 
 		pageA = await browser.newPage();
 		//pageA.on('console', (...args) => console.log(...args));
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
 		//pageB.on('console', (...args) => console.log(...args));
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -49,7 +49,7 @@ describe('Script Insertion and Execution', function() {
 	});
 
 	it('scripts should get executed after reload', async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 
 		const scriptsRun = await util.waitForFunction(pageA, () =>
 			window.__scriptRunPre && window.__scriptRunPost && window.jQuery,

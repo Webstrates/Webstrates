@@ -54,7 +54,7 @@ util.logInToGithub = async function(page) {
 
 	let url = await page.url();
 	if (!url.match(/^https:\/\/github.com\/login?/)) {
-		await page.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle' });
+		await page.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle2' });
 	}
 
 	let title = await page.title();
@@ -69,7 +69,7 @@ util.logInToGithub = async function(page) {
 	await page.click('input[type=submit]');
 
 	// Wait for redirect to authorize URL.
-	await page.waitForNavigation({ waitUntil: 'networkidle' });
+	await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
 	// Sometimes, we might need to reauthorize.
 	title = await page.title();
@@ -89,7 +89,7 @@ util.logInToGithub = async function(page) {
 	}
 
 	// Wait for redirect back to Webstrates server or error page.
-	await page.waitForNavigation({ waitUntil: 'networkidle' });
+	await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
 	return true;
 };

@@ -19,7 +19,7 @@ describe('GitHub Login', function() {
 	});
 
 	it('user object should be anonymous before logging in', async () => {
-		await pageA.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle' });
+		await pageA.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
 
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		userObject = await pageA.evaluate(() => window.webstrate.user);
@@ -31,7 +31,7 @@ describe('GitHub Login', function() {
 	});
 
 	it('/auth/github redirects to github.com/login?...', async () => {
-		await pageA.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle' });
+		await pageA.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle2' });
 		const url = pageA.url();
 		assert.match(url, /^https:\/\/github.com\/login?/);
 	});

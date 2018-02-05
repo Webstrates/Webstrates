@@ -183,13 +183,21 @@ coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement
  * @public
  */
 coreUtilsModule.executeScripts = (scripts, callback) => {
-	var script = scripts.shift();
+	const script = scripts.shift();
 	if (!script) {
 		return callback();
 	}
 
-	var executeImmediately = !script.src;
-	var newScript = document.createElementNS(script.namespaceURI, 'script');
+	// Scripts in templates shouldn't get executed. If we didn't do this, we could also run into
+	// issues a little later in the function when we'd attempt to reinsert the element into its
+	// parent if the script is a direct child of the template, as such children don't actually have
+	// parents.
+	if (coreUtilsModule.elementIsTemplateDescendant(script)) {
+		return coreUtilsModule.executeScripts(scripts, callback);
+	}
+
+	const executeImmediately = !script.src;
+	const newScript = document.createElementNS(script.namespaceURI, 'script');
 	if (!executeImmediately) {
 		newScript.onload = newScript.onerror = function() {
 			coreUtilsModule.executeScripts(scripts, callback);
@@ -197,8 +205,8 @@ coreUtilsModule.executeScripts = (scripts, callback) => {
 	}
 
 	// Copy over all attribtues.
-	for (var i = 0; i < script.attributes.length; i++) {
-		var attr = script.attributes[i];
+	for (let i = 0; i < script.attributes.length; i++) {
+		const attr = script.attributes[i];
 		newScript.setAttribute(attr.nodeName, attr.nodeValue);
 	}
 
@@ -218,6 +226,19 @@ coreUtilsModule.executeScripts = (scripts, callback) => {
 		coreUtilsModule.executeScripts(scripts, callback);
 	}
 };
+
+
+/**
+ * Check whether a DOM Node is a descendant of a template tag (or actually a documentFragment).
+ * One might assume this could be done with `element.closest("template")`, but that won't be the
+ * case, because a documentFragment technically isn't a parent (and also doesn't have any parent),
+ * so there will be no tree to search upwards through after we reach the documentFragment.
+ * @param  {DOMNode} DOMNode DOM Node to check.
+ * @return {boolean}         True if the DOM Node is a descendant of a template.
+ * @private
+ */
+coreUtilsModule.elementIsTemplateDescendant = element =>
+	document.documentElement.ownerDocument !== element.ownerDocument;
 
 /**
  * Check if the current page has been transcluded (i.e. is an iframe)

@@ -23,7 +23,7 @@ describe('DOM Stress Test', function() {
 		pageA = pages[0];
 
 		await Promise.all(pages.map(page =>
-			page.goto(url, { waitUntil: 'networkidle' })));
+			page.goto(url, { waitUntil: 'networkidle2' })));
 
 		await Promise.all(pages.map(page =>
 			util.waitForFunction(page, () =>

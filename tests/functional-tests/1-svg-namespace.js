@@ -16,10 +16,10 @@ describe('SVG Namespace', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -54,7 +54,7 @@ describe('SVG Namespace', function() {
 	});
 
 	it('svg element namespace should be "' + SVG_NAMESPACE + '" after reload', async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 		const namespace = await pageA.evaluate(() => document.querySelector('svg').namespaceURI);
 		assert.equal(namespace, SVG_NAMESPACE, 'proper svg namespace after reload on page A');
 	});
@@ -83,7 +83,7 @@ describe('SVG Namespace', function() {
 	});
 
 	it('rect element namespace should be "' + SVG_NAMESPACE + '" after reload', async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 		const namespace = await pageA.evaluate(() => document.querySelector('rect').namespaceURI);
 		assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
 	});
@@ -128,14 +128,14 @@ describe('SVG Namespace', function() {
 
 	it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" after reload',
 		async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 		const namespace = await pageA.evaluate(() =>
 			document.querySelector('svg > foreignObject').namespaceURI);
 		assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
 	});
 
 	it('p element namespace should be "' + XHTML_NAMESPACE + '" after reload', async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 		const namespace = await pageA.evaluate(() =>
 			document.querySelector('svg > foreignObject > p').namespaceURI);
 		assert.equal(namespace, XHTML_NAMESPACE, 'proper rect namespace after reload on page A');

@@ -13,7 +13,7 @@ describe('Client Events', function() {
 	before(async () => {
 		browser = await puppeteer.launch();
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -39,7 +39,7 @@ describe('Client Events', function() {
 		});
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
 		const clientJoined = await util.waitForFunction(pageA, () => window.__test_joiningClientId);
 		assert.isTrue(clientJoined);

@@ -29,9 +29,9 @@ describe('Cookies', function() {
 
 		await util.logInToGithub(pageA);
 		await Promise.all([
-			pageA.goto(url, { waitUntil: 'networkidle' }),
-			pageB.goto(url, { waitUntil: 'networkidle' }),
-			pageC.goto(url, { waitUntil: 'networkidle' })
+			pageA.goto(url, { waitUntil: 'networkidle2' }),
+			pageB.goto(url, { waitUntil: 'networkidle2' }),
+			pageC.goto(url, { waitUntil: 'networkidle2' })
 		]);
 
 		await Promise.all([
@@ -139,7 +139,7 @@ describe('Cookies', function() {
 	});
 
 	it('here cookies should persist after reload', async () => {
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 
 		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
@@ -152,7 +152,7 @@ describe('Cookies', function() {
 	// pageC: another browser, same page, logged in.
 	it('here cookies should be accessible on other client after login', async () => {
 		await util.logInToGithub(pageC);
-		await pageC.goto(url, { waitUntil: 'networkidle' });
+		await pageC.goto(url, { waitUntil: 'networkidle2' });
 
 		const hereCookies = await pageC.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, {
@@ -167,7 +167,7 @@ describe('Cookies', function() {
 	// We can't test for 'no anywhere cookies', as the user account we're using might be using
 	// anywhere cookies.
 	it('should be no here cookies on other window.webstrate', async () => {
-		await pageA.goto(otherUrl, { waitUntil: 'networkidle' });
+		await pageA.goto(otherUrl, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookies);

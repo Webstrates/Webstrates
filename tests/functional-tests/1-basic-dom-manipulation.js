@@ -15,11 +15,11 @@ describe('Basic DOM Manipulation', function() {
 
 		pageA = await browser.newPage();
 		//pageA.on('console', (...args) => console.log(...args));
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
 		//pageB.on('console', (...args) => console.log(...args));
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -78,7 +78,7 @@ describe('Basic DOM Manipulation', function() {
 		});
 
 	it('select element with selected attribute should be selected after reload', async () => {
-		await pageA.reload({ waitUntil: 'networkidle' });
+		await pageA.reload({ waitUntil: 'networkidle2' });
 
 		const selectedOption = await pageA.evaluate(() =>
 			document.querySelector('select').selectedOptions[0].getAttribute('value'));

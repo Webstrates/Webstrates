@@ -15,10 +15,10 @@ describe('Webstrate Object', function() {
 
 		pageA = await browser.newPage();
 		pageA.on('console', (...args) => console.log(...args));
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
