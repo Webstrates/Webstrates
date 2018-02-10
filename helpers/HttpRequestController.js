@@ -208,7 +208,7 @@ module.exports.requestHandler = function(req, res) {
 								}
 
 								zipFile.openReadStream(entry, (err, readStream) => {
-									res.type(mime.lookup(entry.fileName));
+									res.type(mime.lookup(entry.fileName) || 'text/plain');
 									// Getting this from a ZIP might be a little heavy, so we cache it for a year,
 									// even though the ZIP asset could in fact get overwritten.
 									res.setHeader('Cache-Control', 'public, max-age=31557600');
