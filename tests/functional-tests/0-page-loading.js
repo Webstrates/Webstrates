@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
+/* global describe after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');

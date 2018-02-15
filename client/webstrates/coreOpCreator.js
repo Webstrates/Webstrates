@@ -272,7 +272,6 @@ function childListMutation(mutation, targetPathNode) {
 		} else {
 			targetPathNode.children.push(newPathNode);
 		}
-
 		const path = corePathTree.getPathNode(addedNode, parentNode).toPath();
 		const op = { li: coreJsonML.fromHTML(addedNode), p: path };
 		ops.push(op);

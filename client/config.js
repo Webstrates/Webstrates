@@ -6,6 +6,7 @@ module.exports = {
 		'userObject',
 		'cookies',
 		'nodeObjects',
+		'protectedMode',
 		'databaseErrors',
 		'dataSavedEvent',
 		'domEvents',

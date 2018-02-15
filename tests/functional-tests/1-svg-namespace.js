@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
+/* global describe before after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -28,7 +30,7 @@ describe('SVG Namespace', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents, '');
+		assert.isEmpty(bodyContents.trim(), '');
 	});
 
 	it('inserted svg element should show up on all clients', async () => {
@@ -128,11 +130,11 @@ describe('SVG Namespace', function() {
 
 	it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" after reload',
 		async () => {
-		await pageA.reload({ waitUntil: 'networkidle2' });
-		const namespace = await pageA.evaluate(() =>
-			document.querySelector('svg > foreignObject').namespaceURI);
-		assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
-	});
+			await pageA.reload({ waitUntil: 'networkidle2' });
+			const namespace = await pageA.evaluate(() =>
+				document.querySelector('svg > foreignObject').namespaceURI);
+			assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
+		});
 
 	it('p element namespace should be "' + XHTML_NAMESPACE + '" after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });

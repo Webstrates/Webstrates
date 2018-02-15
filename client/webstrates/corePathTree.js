@@ -261,7 +261,6 @@ PathTree.elementAtPath = function(parentElement, path) {
 		parentElement = parentPathNode.DOMNode;
 		return [childElement, childIndex, parentElement, nextJsonmlIndex];
 	}
-
 	return PathTree.elementAtPath(childPathNode, path.slice(1));
 };
 

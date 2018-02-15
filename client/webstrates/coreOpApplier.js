@@ -1,10 +1,4 @@
 'use strict';
-const coreEvents = require('./coreEvents');
-const coreUtils = require('./coreUtils');
-const corePathTree = require('./corePathTree');
-const coreMutation = require('./coreMutation');
-const coreJsonML = require('./coreJsonML');
-
 /*
 Webstrates ApplyOp (webstrates.applyop.js)
 
@@ -13,6 +7,13 @@ applies a subset of json0 OT operations (see https://github.com/ottypes/json0) t
 The operations handled are list insertion and deletion (li and ld), as well as string insertion and
 deletion (si and sd). These operations are generated on another client using the CreateOp module.
 */
+const coreEvents = require('./coreEvents');
+const coreUtils = require('./coreUtils');
+const corePathTree = require('./corePathTree');
+const coreMutation = require('./coreMutation');
+const coreJsonML = require('./coreJsonML');
+const coreDOM = require('./coreDOM');
+
 const coreOpApplier = {};
 
 // The 'idempotent' option allows these events to be created even if they already
@@ -61,9 +62,12 @@ function getNamespace(element) {
 function setAttribute(rootElement, path, cleanAttributeName, newValue) {
 	const [childElement] = corePathTree.elementAtPath(rootElement, path);
 
-	if (config.isTransientAttribute(childElement, cleanAttributeName)) {
-		return;
-	}
+	// This has been commented out as it makes non-transient attributes appear transient in protected
+	// mode, and we don't really seem to need it. If an op comes in, it can't really be transient
+	// after all.
+	//if (config.isTransientAttribute(childElement, cleanAttributeName)) {
+	//	return;
+	//}
 
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 	if (cleanAttributeName === '__wid') {
@@ -79,7 +83,7 @@ function setAttribute(rootElement, path, cleanAttributeName, newValue) {
 	if (isSvgPath) childElement.__d = newValue;
 
 	const oldValue = childElement.getAttribute(attributeName);
-	childElement.setAttribute(attributeName, newValue);
+	childElement.setAttribute(attributeName, newValue, coreDOM.elementOptions);
 
 	// Last argument is false for not local, i.e happened on another client.
 	coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, oldValue, newValue,

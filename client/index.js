@@ -1,5 +1,6 @@
 'use strict';
 const coreEvents = require('./webstrates/coreEvents');
+const coreDOM = require('./webstrates/coreDOM');
 const coreDatabase = require('./webstrates/coreDatabase');
 const coreMutation = require('./webstrates/coreMutation');
 const coreOpApplier = require('./webstrates/coreOpApplier');
@@ -24,20 +25,20 @@ coreEvents.triggerEvent('allModulesLoaded');
 
 if (request.staticMode) {
 	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then(doc => {
-		corePopulator.populate(document, doc);
+		corePopulator.populate(coreDOM.externalDocument, doc);
 	});
 }
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
-		corePopulator.populate(document, doc).then(() => {
-			// Emits mutations from changes on the document.
-			coreMutation.emitMutationsFrom(document);
+		corePopulator.populate(coreDOM.externalDocument, doc).then(() => {
+			// Emits mutations from changes on the coreDOM.externalDocument.
+			coreMutation.emitMutationsFrom(coreDOM.externalDocument);
 
 			// Emits ops from the mutations emitted by coreMutation.
 			coreOpCreator.emitOpsFromMutations();
 
-			// Apply changes on <html>, not document.
-			const targetElement = document.childNodes[0];
+			// Apply changes on <html>, not coreDOM.externalDocument.
+			const targetElement = coreDOM.externalDocument.childNodes[0];
 			coreOpApplier.listenForOpsAndApplyOn(targetElement);
 		});
 	});

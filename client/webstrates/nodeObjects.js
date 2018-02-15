@@ -1,5 +1,6 @@
 'use strict';
 const coreEvents = require('./coreEvents');
+const coreDOM = require('./coreDOM');
 const coreOpCreator = require('./coreOpCreator');
 const coreUtils = require('./coreUtils');
 const loadedEvent = require('./loadedEvent');
@@ -149,51 +150,51 @@ coreEvents.addEventListener('populated', targetElement => {
 	// document.createElementNS immediately here.
 	// We don't do this until after the document has been populated, because we just above attach
 	// webstrate objects on the entire DOM.
-	document.__createElementNS = document.createElementNS;
-	document.createElementNS = function(namespaceURI, qualifiedName, ...unused) {
-		var element = document.__createElementNS(namespaceURI, qualifiedName, ...unused);
+	coreDOM.overrideDocument('createElementNS', coreDOM.CONTEXT.BOTH, (createElementNS, namespaceURI,
+		qualifiedName, options = {}, ...unused) => {
+		const element = createElementNS(namespaceURI, qualifiedName, ...unused);
 		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
 		return element;
-	};
+	});
 
-	document.__createElement = document.createElement;
-	document.createElement = function(tagName, options, ...unused) {
-		var element = document.__createElement(tagName, options, ...unused);
-		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
+	coreDOM.overrideDocument('createElement', coreDOM.CONTEXT.BOTH, (createElement, tagName,
+		options = {}, ...unused) => {
+		const element = createElement(tagName, options, ...unused);
+		attachWebstrateObjectToNode(element, true);
 		return element;
-	};
+	});
 
-	document.__importNode = document.importNode;
-	document.importNode = function(externalNode, deep, ...unused) {
-		var element = document.__importNode(externalNode, deep, ...unused);
+	coreDOM.overrideDocument('importNode', coreDOM.CONTEXT.BOTH, (importNode, externalNode, deep,
+		...unused) => {
+		const element = importNode(externalNode, deep, ...unused);
 		coreUtils.recursiveForEach(element, childNode => {
-			attachWebstrateObjectToNode(childNode, true); // true to trigger webstrateObjectAdded event.
+			attachWebstrateObjectToNode(childNode, true);
 		});
 		return element;
-	};
+	});
 
-	Element.prototype.__cloneNode = Element.prototype.cloneNode;
+	// TODO
+	/*	const cloneNode = Element.prototype.cloneNode;
 	Element.prototype.cloneNode = function(deep, ...unused) {
-		var element = Element.prototype.__cloneNode.call(this, deep, ...unused);
+		const element = cloneNode.call(this, deep, ...unused);
 		coreUtils.recursiveForEach(element, childNode => {
-			attachWebstrateObjectToNode(childNode, true); // true to trigger webstrateObjectAdded event.
+			attachWebstrateObjectToNode(childNode, true);
 		});
 		return element;
-	};
+	};*/
 
 	coreEvents.triggerEvent('webstrateObjectsAdded', nodeObjectsModule.nodes);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 coreEvents.addEventListener('DOMNodeInserted', node => {
 	coreUtils.recursiveForEach(node, childNode => {
-
-		// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
+		// The second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 		attachWebstrateObjectToNode(childNode, true);
 	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 coreEvents.addEventListener('DOMTextNodeInsertion', node => {
-	// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
+	// The second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 	attachWebstrateObjectToNode(node, true);
 }, coreEvents.PRIORITY.IMMEDIATE);
 

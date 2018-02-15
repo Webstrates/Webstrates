@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
+/* global describe before after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -14,7 +16,7 @@ describe('Webstrate Object', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		pageA.on('console', (...args) => console.log(...args));
+		util.showLogs(pageA);
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
@@ -33,9 +35,11 @@ describe('Webstrate Object', function() {
 
 	it('webstrate object exists on window with correct properties', async () => {
 		const webstrate = await pageA.evaluate(() => window.webstrate);
+		const webstrateId = await pageA.evaluate(() => window.webstrate.webstrateId);
+		console.log(webstrate);
 		assert.equal(webstrate.webstrateId, webstrateId, 'webstrateId property matches actual ' +
 			'webstrateId');
-		assert.equal(webstrate.id, 'document', 'wid equalas "document"');
+		assert.equal(webstrate.id, 'document', 'wid equals "document"');
 		assert.isFalse(webstrate.isStatic, 'webstrate isn\'t static');
 		// We could be more thorough in testing these properties, but it isn't entirely trivial as
 		// we can't access the full webstrate object here. 'on', for instance, isn't actually a function

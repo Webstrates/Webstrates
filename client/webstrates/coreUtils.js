@@ -286,7 +286,7 @@ coreUtilsModule.sanitizeString = (string) => {
  * @return {string}       Escaped string.
  * @public
  */
-coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+coreUtilsModule.escape = value => value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 /**
  * Replaces &amp; and &quot; with their respective characters (& and ").

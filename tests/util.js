@@ -40,7 +40,7 @@ util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 };
 
 util.showLogs = (page, ...pages) => {
-	page.on('console', (...args) => console.log('[Page]', ...args));
+	page.on('console', msg => console.log(`[page:${msg.type()}] ${msg.text()}`));
 	if (pages.length > 0) {
 		util.showLogs(...pages);
 	}
