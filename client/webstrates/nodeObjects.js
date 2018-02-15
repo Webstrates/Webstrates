@@ -173,15 +173,14 @@ coreEvents.addEventListener('populated', targetElement => {
 		return element;
 	});
 
-	// TODO
-	/*	const cloneNode = Element.prototype.cloneNode;
+	const cloneNode = Element.prototype.cloneNode;
 	Element.prototype.cloneNode = function(deep, ...unused) {
 		const element = cloneNode.call(this, deep, ...unused);
 		coreUtils.recursiveForEach(element, childNode => {
 			attachWebstrateObjectToNode(childNode, true);
 		});
 		return element;
-	};*/
+	};
 
 	coreEvents.triggerEvent('webstrateObjectsAdded', nodeObjectsModule.nodes);
 }, coreEvents.PRIORITY.IMMEDIATE);

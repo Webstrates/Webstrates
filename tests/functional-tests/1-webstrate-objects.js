@@ -36,7 +36,7 @@ describe('Webstrate Object', function() {
 	it('webstrate object exists on window with correct properties', async () => {
 		const webstrate = await pageA.evaluate(() => window.webstrate);
 		const webstrateId = await pageA.evaluate(() => window.webstrate.webstrateId);
-		console.log(webstrate);
+
 		assert.equal(webstrate.webstrateId, webstrateId, 'webstrateId property matches actual ' +
 			'webstrateId');
 		assert.equal(webstrate.id, 'document', 'wid equals "document"');
