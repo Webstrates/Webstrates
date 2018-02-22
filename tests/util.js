@@ -26,6 +26,9 @@ util.escapeRegExp = function(s) {
 // as having credentials in iframe src attributes is prohibited.
 util.cleanServerAddress = config.server_address.replace(/^(https?:\/\/)([^@]+@)/, '$1');
 
+// Whether we're testing on localhost. Some tests that depend on latency might not work properly
+// this way.
+util.isLocalhost = util.cleanServerAddress.match('https?://localhost') !== null;
 
 util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 	try {
@@ -45,6 +48,8 @@ util.showLogs = (page, ...pages) => {
 		util.showLogs(...pages);
 	}
 };
+
+util.warn = (...args) => console.log('\u001b[33m    ! ' + args + '\u001b[0m');
 
 util.logInToGithub = async function(page) {
 	if (!config.username || !config.password) {

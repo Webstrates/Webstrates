@@ -8,7 +8,7 @@ const util = require('../util.js');
 describe('Protected Mode', function() {
 	this.timeout(10000);
 
-	const webstrateId = 'shy-goat-87'; //'test-' + util.randomString();
+	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
 	let browser, pageA, pageB;
 
@@ -120,7 +120,7 @@ describe('Protected Mode', function() {
 	{
 		await pageA.evaluate(() =>
 			document.body.lastElementChild.setAttribute('y', 'Non-transient attribute',
-			{ approved: true }));
+				{ approved: true }));
 
 		const hasAttributeA = await util.waitForFunction(pageA, () =>
 			document.body.lastElementChild.getAttribute('y'));
