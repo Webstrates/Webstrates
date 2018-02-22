@@ -27,10 +27,8 @@ describe('Transient Tags', function() {
 	});
 
 	it('body should initially be empty', async () => {
-		const bodyContents = await pageA.evaluate(() => {
-			return document.body.innerHTML;
-		});
-		assert.equal(bodyContents, '');
+		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
+		assert.isEmpty(bodyContents.trim(), 'body should be empty');
 	});
 
 	it('can insert transient tag into body', async () => {
@@ -40,14 +38,14 @@ describe('Transient Tags', function() {
 		});
 
 		const containsTransientTag = await util.waitForFunction(pageA,
-			() => document.body.innerHTML === '<transient></transient>');
+			() => document.body.innerHTML.trim() === '<transient></transient>');
 
 		assert.isTrue(containsTransientTag);
 	});
 
 	it('transient tag should not be visible to other clients', async () => {
 		const containsTransientTag = await util.waitForFunction(pageB,
-			() => document.body.innerHTML === '<transient></transient>');
+			() => document.body.innerHTML.trim() === '<transient></transient>');
 
 		assert.isFalse(containsTransientTag);
 	});
@@ -60,14 +58,14 @@ describe('Transient Tags', function() {
 		});
 
 		const containsTransientTag = await util.waitForFunction(pageA,
-			() => document.body.innerHTML === '<transient><div></div></transient>');
+			() => document.body.innerHTML.trim() === '<transient><div></div></transient>');
 
 		assert.isTrue(containsTransientTag);
 	});
 
 	it('transient tag should still not be visible to other clients', async () => {
 		const containsTransientTag = await util.waitForFunction(pageB,
-			() => document.body.innerHTML === '<transient></transient>');
+			() => document.body.innerHTML.trim() === '<transient></transient>');
 
 		assert.isFalse(containsTransientTag);
 	});

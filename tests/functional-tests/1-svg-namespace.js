@@ -30,7 +30,7 @@ describe('SVG Namespace', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents.trim(), '');
+		assert.isEmpty(bodyContents.trim());
 	});
 
 	it('inserted svg element should show up on all clients', async () => {

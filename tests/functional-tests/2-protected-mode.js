@@ -28,7 +28,7 @@ describe('Protected Mode', function() {
 
 	it('body should initially be empty', async () => {
 		const innerHTML = await pageA.evaluate(() => document.body.innerHTML);
-		assert.equal(innerHTML.trim(), '', 'body should be empty');
+		assert.isEmpty(innerHTML.trim(), 'body should be empty');
 	});
 
 	it('should be possible to add data-protected attribute', async () => {

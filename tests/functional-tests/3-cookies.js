@@ -29,7 +29,10 @@ describe('Cookies', function() {
 			browserB.newPage()
 		]);
 
-		await util.logInToGithub(pageA);
+		if (util.credentialsProvided) {
+			await util.logInToGithub(pageA);
+		}
+
 		await Promise.all([
 			pageA.goto(url, { waitUntil: 'networkidle2' }),
 			pageB.goto(url, { waitUntil: 'networkidle2' }),
@@ -46,10 +49,18 @@ describe('Cookies', function() {
 
 	after(async () => {
 		await Promise.all([ browserA.close(), browserB.close() ]);
+
+		if (!util.credentialsProvided) {
+			util.warn('Skipping most cookie tests as no GitHub credentials were provided.');
+		}
 	});
 
 	// pageA and pageB: same browser, same page, logged in.
-	it('cookie object should exist on logged in clients', async () => {
+	it('cookie object should exist on logged in clients', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const cookieObjectsExistsA = await util.waitForFunction(pageA, () =>
 			window.webstrate.user.cookies && window.webstrate.user.cookies.here
 			&& window.webstrate.user.cookies.anywhere);
@@ -63,12 +74,16 @@ describe('Cookies', function() {
 	});
 
 	// pageC: another browser, same page, not logged in.
-	it('cookie object should not exist on not-logged in clients', async () => {
+	it('cookie object should not exist on not-logged in clients', async function() {
 		const hereCookies = await pageC.evaluate(() => window.webstrate.user.cookies);
 		assert.isUndefined(hereCookies);
 	});
 
-	it('should be no here cookies on logged in clients', async () => {
+	it('should be no here cookies on logged in clients', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const hereCookiesA = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookiesA);
 
@@ -76,7 +91,11 @@ describe('Cookies', function() {
 		assert.isEmpty(hereCookiesB);
 	});
 
-	it('should be able to set and read here cookie from client setting cookie', async () => {
+	it('should be able to set and read here cookie from client setting cookie', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageA.evaluate((cookieValue1) =>
 			window.webstrate.user.cookies.here.set('__test_1', cookieValue1), cookieValue1);
 
@@ -86,14 +105,22 @@ describe('Cookies', function() {
 		assert.deepEqual(hereCookies, { __test_1: cookieValue1 });
 	});
 
-	it('should be able to read here cookie from other tab/page', async () => {
+	it('should be able to read here cookie from other tab/page', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await util.waitForFunction(pageB, () => window.webstrate.user.cookies.here.get('__test_1'));
 
 		const hereCookies = await pageB.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, { __test_1: cookieValue1 });
 	});
 
-	it('should be able to set cookieUpdateHere event listener on all clients', async () => {
+	it('should be able to set cookieUpdateHere event listener on all clients', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageA.evaluate(() => {
 			window.__test_cookie = false;
 			window.webstrate.on('cookieUpdateHere', (key, value) =>  window.__test_cookie = [key, value]);
@@ -108,39 +135,65 @@ describe('Cookies', function() {
 		});
 	});
 
-	it('setting cookie should trigger cookieUpdateHere event on client setting cookie', async () => {
-		await pageA.evaluate((cookieValue2) =>
-			window.webstrate.user.cookies.here.set('__test_2', cookieValue2), cookieValue2);
+	it('setting cookie should trigger cookieUpdateHere event on client setting cookie',
+		async function() {
+			if (!util.credentialsProvided) {
+				return this.skip();
+			}
 
-		const cookieSet = await util.waitForFunction(pageA, () => window.__test_cookie);
-		assert.isTrue(cookieSet);
-	});
+			await pageA.evaluate((cookieValue2) =>
+				window.webstrate.user.cookies.here.set('__test_2', cookieValue2), cookieValue2);
 
-	it('cookieUpdateHere should trigger with correct values on client setting cookie', async () => {
-		const [cookieKey, cookieValue] = await pageA.evaluate(() => window.__test_cookie);
+			const cookieSet = await util.waitForFunction(pageA, () => window.__test_cookie);
+			assert.isTrue(cookieSet);
+		});
 
-		assert.equal(cookieKey, '__test_2');
-		assert.equal(cookieValue, cookieValue2);
-	});
+	it('cookieUpdateHere should trigger with correct values on client setting cookie',
+		async function() {
+			if (!util.credentialsProvided) {
+				return this.skip();
+			}
 
-	it('setting cookie should trigger cookieUpdateHere event on other client', async () => {
+			const [cookieKey, cookieValue] = await pageA.evaluate(() => window.__test_cookie);
+
+			assert.equal(cookieKey, '__test_2');
+			assert.equal(cookieValue, cookieValue2);
+		});
+
+	it('setting cookie should trigger cookieUpdateHere event on other client', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const cookieSet = await util.waitForFunction(pageB, () => window.__test_cookie);
 		assert.isTrue(cookieSet);
 	});
 
-	it('cookieUpdateHere should trigger with correct values on other client', async () => {
+	it('cookieUpdateHere should trigger with correct values on other client', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const [cookieKey, cookieValue] = await pageB.evaluate(() => window.__test_cookie);
 
 		assert.equal(cookieKey, '__test_2');
 		assert.equal(cookieValue, cookieValue2);
 	});
 
-	it('cookieUpdateHere should not trigger on foreign client', async () => {
+	it('cookieUpdateHere should not trigger on foreign client', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const cookieSet = await util.waitForFunction(pageC, () => window.__test_cookie);
 		assert.isFalse(cookieSet);
 	});
 
-	it('here cookies should persist after reload', async () => {
+	it('here cookies should persist after reload', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 
@@ -152,7 +205,11 @@ describe('Cookies', function() {
 	});
 
 	// pageC: another browser, same page, logged in.
-	it('here cookies should be accessible on other client after login', async () => {
+	it('here cookies should be accessible on other client after login', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await util.logInToGithub(pageC);
 		await pageC.goto(url, { waitUntil: 'networkidle2' });
 
@@ -168,14 +225,22 @@ describe('Cookies', function() {
 	//
 	// We can't test for 'no anywhere cookies', as the user account we're using might be using
 	// anywhere cookies.
-	it('should be no here cookies on other window.webstrate', async () => {
+	it('should be no here cookies on other window.webstrate', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageA.goto(otherUrl, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookies);
 	});
 
-	it('should be able to set cookieUpdateAnywhere event listener on all clients', async () => {
+	it('should be able to set cookieUpdateAnywhere event listener on all clients', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await Promise.all([
 			pageA.evaluate(() => {
 				window.__test_cookie = false;
@@ -195,7 +260,11 @@ describe('Cookies', function() {
 		]);
 	});
 
-	it('should be able to set and read anywhere cookie from client setting cookie', async () => {
+	it('should be able to set and read anywhere cookie from client setting cookie', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageA.evaluate((cookieValue3) =>
 			window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
@@ -204,7 +273,11 @@ describe('Cookies', function() {
 		assert.isTrue(cookieSet);
 	});
 
-	it('should be able to set and read anywhere cookie from other client/browser', async () => {
+	it('should be able to set and read anywhere cookie from other client/browser', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		await pageC.evaluate((cookieValue3) =>
 			window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
@@ -214,7 +287,11 @@ describe('Cookies', function() {
 	});
 
 	it('setting cookie should trigger cookieUpdateAnywhere event on client setting cookie',
-		async () => {
+		async function() {
+			if (!util.credentialsProvided) {
+				return this.skip();
+			}
+
 			await pageA.evaluate((cookieValue3) =>
 				window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
@@ -223,19 +300,31 @@ describe('Cookies', function() {
 		});
 
 	it('cookieUpdateAnywhere should trigger with correct values on client setting cookie',
-		async () => {
+		async function() {
+			if (!util.credentialsProvided) {
+				return this.skip();
+			}
+
 			const [cookieKey, cookieValue] = await pageA.evaluate(() => window.__test_cookie);
 
 			assert.equal(cookieKey, '__test_3');
 			assert.equal(cookieValue, cookieValue3);
 		});
 
-	it('setting cookie should trigger cookieUpdateAnywhere event on other client', async () => {
+	it('setting cookie should trigger cookieUpdateAnywhere event on other client', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const cookieSet = await util.waitForFunction(pageC, () => window.__test_cookie);
 		assert.isTrue(cookieSet);
 	});
 
-	it('cookieUpdateAnywhere should trigger with correct values on other client', async () => {
+	it('cookieUpdateAnywhere should trigger with correct values on other client', async function() {
+		if (!util.credentialsProvided) {
+			return this.skip();
+		}
+
 		const [cookieKey, cookieValue] = await pageC.evaluate(() => window.__test_cookie);
 
 		assert.equal(cookieKey, '__test_3');

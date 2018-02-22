@@ -7,6 +7,7 @@ const util = require('../util.js');
 
 describe('Client Events', function() {
 	this.timeout(10000);
+	//this.retries(3);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -68,7 +69,7 @@ describe('Client Events', function() {
 	});
 
 	it('clientPart event should get triggered when another client parts', async () => {
-		pageA.evaluate(() => {
+		await pageA.evaluate(() => {
 			window.webstrate.on('clientPart', clientId => {
 				window.__test_partingClientId = clientId;
 			});
@@ -82,7 +83,6 @@ describe('Client Events', function() {
 
 	it('parting clientId should match second client\'s clientId', async () => {
 		const partingClientId = await pageA.evaluate(() => window.__test_partingClientId);
-
 		assert.equal(secondClientId, partingClientId);
 	});
 

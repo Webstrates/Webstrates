@@ -30,6 +30,16 @@ util.cleanServerAddress = config.server_address.replace(/^(https?:\/\/)([^@]+@)/
 // this way.
 util.isLocalhost = util.cleanServerAddress.match('https?://localhost') !== null;
 
+util.credentialsProvided = config.username && config.password;
+/**
+ * Wait for predicate to become truthy or timeout.
+ * @param  {Page}    page      Puppeteer page.
+ * @param  {Function}  fn      Predicate function.
+ * @param  {Number}    timeout Timeout in seconds.
+ * @param  {mixed} args        Arguments to pass to function.
+ * @return {bool}              True if predicate became truthy false otherwise.
+ * @public
+ */
 util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 	try {
 		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);
@@ -52,7 +62,7 @@ util.showLogs = (page, ...pages) => {
 util.warn = (...args) => console.log('\u001b[33m    ! ' + args + '\u001b[0m');
 
 util.logInToGithub = async function(page) {
-	if (!config.username || !config.password) {
+	if (!util.credentialsProvided) {
 		throw new Error('No GitHub login credentials provided. Update `config.js` to run GitHub ' +
 			'tests.');
 	}

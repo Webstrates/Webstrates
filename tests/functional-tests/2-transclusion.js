@@ -33,7 +33,7 @@ describe('Transclusion', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents, '');
+		assert.isEmpty(bodyContents.trim());
 	});
 
 	it('iframe transcluded event gets triggered', async () => {
