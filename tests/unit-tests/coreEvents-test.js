@@ -1,5 +1,5 @@
-// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
-/* global describe before after it */
+// Instruction to ESLint that 'describe' and 'it' actually has been defined.
+/* global describe it */
 'use strict';
 var assert = require('chai').assert;
 

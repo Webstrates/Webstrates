@@ -136,6 +136,8 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 
 coreEvents.addEventListener('populated', targetElement => {
 	coreUtils.recursiveForEach(targetElement, childNode => {
+		// We ensure that all elements in the ShareDB document have wids. If an element has been added
+		// with e.g. Webstrates file system, it will be in the document, but not have a wid yet.
 		coreOpCreator.addWidToElement(childNode);
 		// The second argument is whether to trigger the webstrateObjectAdded event. We do not want to
 		// trigger these when we add the webstrate object initially as it may cause confusion when an

@@ -90,5 +90,23 @@ describe('Basic DOM Manipulation', function() {
 		assert.equal(selectedOption, shouldBeSelectedOption);
 	});
 
+	/*it('inserting something into the DOM before the \'loaded\' event should not throw an error',
+		async () => {
+			await pageA.evaluate(async () => {
+				document.head.innerHTML = '<script>document.body.innerHTML = "<div></div>";</script>';
+			});
 
+			await util.waitForFunction(pageB, () =>
+				document.head.innerHTML === '<script>document.body.innerHTML = "<div></div>";</script>');
+
+			// This isn't pretty, but it seems to be the only way. We attach our event listener for
+			// errors on the page, then reload the webstrate, wait 500 ms and see if an error has occured.
+			let error = false;
+			pageA.on('pageerror', _error => error = _error);
+
+			await pageA.reload({ waitUntil: 'networkidle2' });
+			await util.sleep(.5);
+
+			assert.equal(error, false);
+	});*/
 });

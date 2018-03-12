@@ -14,7 +14,17 @@ coreEvents.createEvent('opsAcknowledged');
 
 let doc, conn;
 
-exports.getDocument = () => doc;
+/**
+ * Get the ShareDB document, or get an element at a certain path in the document if a path is
+ * provided.
+ * @param  {Array} path  (optional) Path into the ShareDB document.
+ * @return {mixed}       ShareDB document object or a path into the document.
+ * @public
+ */
+exports.getDocument = path => {
+	if (!path || !Array.isArray(path)) return doc;
+	return path.reduce((doc, path) => doc && doc[path], doc.data);
+};
 
 /**
  * Get the element at a given path in a JsonML document.
@@ -22,7 +32,7 @@ exports.getDocument = () => doc;
  * @return {JsonML}          Element at path in snapshot.
  * @public
  */
-exports.elementAtPath = function(snapshot, path) {
+exports.elementAtPath = (snapshot, path) => {
 // Snapshot is optional (and only used in the internal recursion).
 	if (!path) {
 		path = snapshot;
@@ -58,7 +68,7 @@ Object.defineProperty(globalObject.publicObject, 'getDocument', {
 	}
 });
 
-exports.subscribe = (webstrateId) => {
+exports.subscribe = webstrateId => {
 	return new Promise((resolve, reject) => {
 		// Check if we can reuse the ShareDB Database connection from a parent if we're in an iframe.
 		if (coreUtils.isTranscluded() && coreUtils.sameParentDomain() && config.reuseWebsocket) {

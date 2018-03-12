@@ -334,11 +334,31 @@ coreOpCreator.emitOpsFromMutations = () => {
 coreOpCreator.addWidToElement = node => {
 	if (node.nodeType === document.ELEMENT_NODE && !node.__wid) {
 		const pathNode = corePathTree.getPathNode(node);
+		const path = pathNode.toPath();
+		const element = coreDatabase.getDocument(path);
+
+		// When inserting something into the DOM before the 'loaded' event has triggered, we will
+		// be calling  this function on a node that doesn't exist in the ShareDB document, resulting in
+		// the submission of an op to add a wid to an element that doesn't exist, throwing an error.
+		// This oughtn't happen as nobody should touch the DOM before the 'loaded' event has triggered,
+		// but some libraries (and users!) don't respect that. To mitigate this, we stop if the element
+		// doesn't exist.
+		// An alternative fix would be to create and submit and op that would create the element, but if
+		// some script adds something to the DOM on every page load, we probably don't want to keep it
+		// anyway, so it might actually be better to treat it as a wonky, broken transient element (
+		// as we do now).
+		if (!Array.isArray(element)) {
+			console.warn('Element was inserted before \'loaded\' event was triggered. This may cause ' +
+				'undefined behaviour.', node);
+			return;
+		}
+
 		// Anything without a pathNode is transient and therefore doesn't need a wid.
 		if (pathNode) {
 			const wid = coreUtils.randomString();
 			coreUtils.setWidOnElement(node, wid);
-			const ops = [{ oi: wid, p: [...pathNode.toPath(), ATTRIBUTE_INDEX, '__wid' ]}];
+			const ops = [{ oi: wid, p: [...path, ATTRIBUTE_INDEX, '__wid' ]}];
+			console.log(ops);
 			coreEvents.triggerEvent('createdOps', ops);
 		}
 	}

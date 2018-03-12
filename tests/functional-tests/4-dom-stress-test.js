@@ -90,7 +90,7 @@ describe('DOM Stress Test', function() {
 			while (!match && (Date.now() / 1000) - now < 15) {
 				const innerHTMLs = await Promise.all(pages.map(page =>
 					page.evaluate(() => document.body.innerHTML)));
- 				match = innerHTMLs[0].length === 1000 && util.allEquals(...innerHTMLs);
+				match = innerHTMLs[0].length === 1000 && util.allEquals(...innerHTMLs);
 			}
 
 			assert.isTrue(match);
