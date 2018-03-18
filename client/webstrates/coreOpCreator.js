@@ -361,7 +361,6 @@ coreOpCreator.addWidToElement = node => {
 		const wid = coreUtils.randomString();
 		coreUtils.setWidOnElement(node, wid);
 		const ops = [{ oi: wid, p: [...path, ATTRIBUTE_INDEX, '__wid' ]}];
-		console.log(ops);
 		coreEvents.triggerEvent('createdOps', ops);
 	}
 };
