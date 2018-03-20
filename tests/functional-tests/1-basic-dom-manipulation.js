@@ -90,7 +90,7 @@ describe('Basic DOM Manipulation', function() {
 		assert.equal(selectedOption, shouldBeSelectedOption);
 	});
 
-	/*it('inserting something into the DOM before the \'loaded\' event should not throw an error',
+	it('inserting something into the DOM before the \'loaded\' event should not throw an error',
 		async () => {
 			await pageA.evaluate(async () => {
 				document.head.innerHTML = '<script>document.body.innerHTML = "<div></div>";</script>';
@@ -108,5 +108,5 @@ describe('Basic DOM Manipulation', function() {
 			await util.sleep(.5);
 
 			assert.equal(error, false);
-	});*/
+	});
 });
