@@ -2,6 +2,9 @@ const config = require('./config.js');
 
 const util = {};
 
+config.username = config.username || process.env.GITHUB_USERNAME;
+config.password = config.password || process.env.GITHUB_PASSWORD;
+
 util.randomString = function(size = 8,
 	alphabet = '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') {
 	let len = alphabet.length, str = '';
@@ -77,14 +80,15 @@ util.logInToGithub = async function(page) {
 		throw new Error(`Incorrect login page title: "${title}"`);
 	}
 
-	await page.focus('input#login_field');
-	await page.type(config.username);
-	await page.focus('input#password');
-	await page.type(config.password);
+	await page.type('input#login_field', config.username);
+	await page.type('input#password', config.password);
 	await page.click('input[type=submit]');
 
 	// Wait for redirect to authorize URL.
 	await page.waitForNavigation({ waitUntil: 'networkidle2' });
+
+	// Sleeping to circumvent bug: https://github.com/GoogleChrome/puppeteer/issues/1325
+	await util.sleep(1);
 
 	// Sometimes, we might need to reauthorize.
 	title = await page.title();
@@ -93,18 +97,16 @@ util.logInToGithub = async function(page) {
 		// automation, woups...), so we wait for it to become clickable.
 		await util.sleep(3);
 		await page.click('button[name=authorize]');
+		await page.waitForNavigation({ waitUntil: 'networkidle2' });
 	}
 
 	url = await page.url();
-	// If we get sent back to the GitHub login page
+	// If we get sent back to the GitHub login page, throw whatever error GitHub produced.
 	if (url === 'https://github.com/session') {
 		const flashMsg = await page.evaluate(() =>
 			document.querySelector('div#js-flash-container').innerText);
 		throw new Error(flashMsg);
 	}
-
-	// Wait for redirect back to Webstrates server or error page.
-	await page.waitForNavigation({ waitUntil: 'networkidle2' });
 
 	return true;
 };
