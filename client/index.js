@@ -15,7 +15,7 @@ coreEvents.createEvent('allModulesLoaded');
 const request = coreUtils.getLocationObject();
 
 const protocol = location.protocol === 'http:' ? 'ws:' : 'wss:';
-coreWebsocket.setup(`${protocol}//${location.host}/ws/${location.search}`);
+coreWebsocket.setup(`${protocol}//${location.host}/${request.webstrateId}/${location.search}`);
 
 // Load optional modules.
 config.modules.forEach(module => require('./webstrates/' + module));

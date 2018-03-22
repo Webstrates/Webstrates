@@ -117,7 +117,7 @@ app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i,
 
 // This middleware gets triggered on both regular HTTP request and websocket connections.
 app.use(function(req, res, next) {
-	sessionMiddleware(req, null, next);
+	sessionMiddleware(req, res, next);
 });
 
 app.get('/', httpRequestController.rootRequestHandler);
@@ -160,7 +160,7 @@ app.post(function(req, res) {
 	Middleware for extracting user data from cookies used for Express HTTP requests only.
  */
 const sessionMiddleware = function(req, res, next) {
-	let webstrateId, token;
+	let webstrateId;
 
 	const match = req.url.match(/^\/([A-Z0-9._-]+)\//i);
 	if (match) [, webstrateId] = match;
@@ -173,9 +173,9 @@ const sessionMiddleware = function(req, res, next) {
 	}
 
 	if (req.query.token) {
-		const userObj = permissionManager.getUserFromAccessToken(webstrateId, token);
+		const userObj = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
 		if (userObj) {
-			req.user.token = token;
+			req.user.token = req.query.token;
 			req.user.username = userObj.username;
 			req.user.provider = userObj.provider;
 		}
