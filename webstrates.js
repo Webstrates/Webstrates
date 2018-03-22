@@ -77,7 +77,8 @@ if (config.basicAuth) {
 }
 
 if (config.auth) {
-	app.use(sessions(config.auth.cookie));
+	const { secret, duration } = config.auth.cookie;
+	app.use(sessions({ secret, duration, cookieName: 'session' }));
 
 	passport.serializeUser(sessionManager.serializeUser);
 	passport.deserializeUser(sessionManager.deserializeUser);
@@ -117,7 +118,7 @@ app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i,
 
 // This middleware gets triggered on both regular HTTP request and websocket connections.
 app.use(function(req, res, next) {
-	sessionMiddleware(req, res, next);
+	sessionMiddleware(req, null, next);
 });
 
 app.get('/', httpRequestController.rootRequestHandler);

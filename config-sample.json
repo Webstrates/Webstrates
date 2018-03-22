@@ -8,7 +8,6 @@
 	"auth": {
 		"cookie": {
 			"secret": "This is a secret",
-			"cookieName": "session",
 			"duration": 31536000000
 		},
 		"permissionTimeout": 300,
