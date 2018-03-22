@@ -17,10 +17,11 @@ var PUBSUB_CHANNEL = 'webstratesMessages';
 if (pubsub) {
 	pubsub.subscriber.subscribe(PUBSUB_CHANNEL);
 	pubsub.subscriber.on('message', function(channel, message) {
+
 		message = JSON.parse(message);
 
 		// Ignore messages from ourselves.
-		if (message.WORKER_ID === config.WORKER_ID) {
+		if (message.WORKER_ID === WORKER_ID) {
 			return;
 		}
 
@@ -58,7 +59,7 @@ module.exports.clientAdded = function(socketId, userId, local) {
 
 	if (local && pubsub) {
 		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'clientAdded', socketId, userId, WORKER_ID: config.WORKER_ID
+			action: 'clientAdded', socketId, userId, WORKER_ID: WORKER_ID
 		}));
 	}
 };
@@ -79,9 +80,9 @@ module.exports.sendMessage = function(recipients, message, senderId, local) {
 		});
 		return;
 	}
-	var recipient = recipients;
+	const recipient = recipients;
 
-	var userId = typeof recipient === 'string' && recipient.includes(':') ? recipient
+	const userId = typeof recipient === 'string' && recipient.includes(':') ? recipient
 		: socketUserMap.get(recipient);
 
 	if (!userId) {
@@ -89,7 +90,7 @@ module.exports.sendMessage = function(recipients, message, senderId, local) {
 		return;
 	}
 
-	var messageId = shortId.generate();
+	const messageId = shortId.generate();
 
 	sendMessage(userId, messageId, message, senderId, local);
 
@@ -97,7 +98,7 @@ module.exports.sendMessage = function(recipients, message, senderId, local) {
 		saveMessage(userId, messageId, message, senderId);
 		if (pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'message', userId, messageId, message, senderId, WORKER_ID: config.WORKER_ID
+				action: 'message', userId, messageId, message, senderId, WORKER_ID: WORKER_ID
 			}));
 		}
 	}
@@ -145,7 +146,7 @@ module.exports.deleteMessage = function(userId, messageId, local) {
 		db.messages.deleteOne({ userId, messageId });
 		if (pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'messageDeleted', userId, messageId, WORKER_ID: config.WORKER_ID
+				action: 'messageDeleted', userId, messageId, WORKER_ID: WORKER_ID
 			}));
 		}
 	}
@@ -168,7 +169,7 @@ module.exports.deleteAllMessages = function(userId, local) {
 		db.messages.deleteMany({ userId });
 		if (pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'allMessageDeleted', userId, WORKER_ID: config.WORKER_ID
+				action: 'allMessageDeleted', userId, WORKER_ID: WORKER_ID
 			}));
 		}
 	}

@@ -54,8 +54,7 @@ describe('Script Insertion and Execution', function() {
 		await pageA.reload({ waitUntil: 'networkidle2' });
 
 		const scriptsRun = await util.waitForFunction(pageA, () =>
-			window.__scriptRunPre && window.__scriptRunPost && window.jQuery,
-		.5);
+			window.__scriptRunPre && window.__scriptRunPost && window.jQuery, 1);
 
 		assert.isTrue(scriptsRun);
 	});
