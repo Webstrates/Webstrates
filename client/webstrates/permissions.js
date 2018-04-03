@@ -120,12 +120,15 @@ if (!coreUtils.getLocationObject().staticMode) {
 	const handleOps = (ops) => {
 		if (!permissionsChanged(ops)) return;
 
+		let oldPermissionsList = permissionsList;
 		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
 		coreEvents.triggerEvent('globalPermissions', permissionsList);
+		globalObject.triggerEvent('permissionsChanged', permissionsList, oldPermissionsList);
 		const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
 		if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
 			userPermissions = newUserPermissions;
 			coreEvents.triggerEvent('userPermissions', userPermissions);
+			globalObject.triggerEvent('userPermissionsChanged', permissionsList, oldPermissionsList);
 		}
 	};
 
