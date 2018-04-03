@@ -13,8 +13,10 @@ module.exports = {
 	},
 	globals: {
 		"config": true,
+		"serverConfig": true,
 		"WORKER_ID": true,
 		"APP_PATH": true
+
 	},
 	rules: {
 		'max-len': ['warn', { code: 100, tabWidth: 2 }],
