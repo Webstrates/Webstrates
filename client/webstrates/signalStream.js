@@ -2,6 +2,7 @@
 const coreUtils = require('./coreUtils');
 const coreEvents = require('./coreEvents');
 const globalObject = require('./globalObject');
+const nodeObjects = require('./nodeObjects');
 const signaling = require('./signaling');
 
 const signalStreamModule = {};
@@ -263,7 +264,10 @@ setupSignalStream(globalObject.publicObject, globalObject);
 // Add signalStream events to all webstrate objects (with a wid) after the document has been
 // populated.
 coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
-	nodes.forEach((eventObject, node) => setupSignalStream(node.webstrate, eventObject));
+	coreUtils.recursiveForEach(nodes, (node) => {
+		const eventObject = nodeObjects.getEventObject(node);
+		setupSignalStream(node.webstrate, eventObject);
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 // Add signalStream events to all webstrate objects (with wid) after they're added continually.

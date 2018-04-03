@@ -6,7 +6,9 @@ const coreUtils = require('./coreUtils');
 const loadedEvent = require('./loadedEvent');
 
 const nodeObjectsModule = {};
-nodeObjectsModule.nodes = new Map();
+
+nodeObjectsModule.getEventObject = (node) => node.__eventObject;
+nodeObjectsModule.setEventObject = (node, eventObject) => node.__eventObject = eventObject;
 
 coreEvents.createEvent('webstrateObjectsAdded');
 coreEvents.createEvent('webstrateObjectAdded');
@@ -21,7 +23,7 @@ loadedEvent.delayUntil('webstrateObjectsAdded');
  * @private
  */
 function attachWebstrateObjectToNode(node, triggerEvent) {
-	const eventObjectExists = nodeObjectsModule.nodes.get(node);
+	const eventObjectExists = nodeObjectsModule.getEventObject(node);
 
 	// If an event object doesn't exist, we recreate the webstrate object itself to avoid confusion.
 	// This can happen if an element has been removed from the DOM, then re-added. In this case, all
@@ -127,7 +129,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 		}
 	};
 
-	nodeObjectsModule.nodes.set(node, eventObject);
+	nodeObjectsModule.setEventObject(node, eventObject);
 
 	if (triggerEvent) {
 		coreEvents.triggerEvent('webstrateObjectAdded', node, eventObject);
@@ -184,7 +186,7 @@ coreEvents.addEventListener('populated', targetElement => {
 		return element;
 	};
 
-	coreEvents.triggerEvent('webstrateObjectsAdded', nodeObjectsModule.nodes);
+	coreEvents.triggerEvent('webstrateObjectsAdded', targetElement);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 coreEvents.addEventListener('DOMNodeInserted', node => {
@@ -198,11 +200,5 @@ coreEvents.addEventListener('DOMTextNodeInsertion', node => {
 	// The second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 	attachWebstrateObjectToNode(node, true);
 }, coreEvents.PRIORITY.IMMEDIATE);
-
-coreEvents.addEventListener('DOMNodeDeleted', node => {
-	coreUtils.recursiveForEach(node, child => {
-		nodeObjectsModule.nodes.delete(child);
-	});
-}, coreEvents.PRIORITY.LAST);
 
 module.exports = nodeObjectsModule;
