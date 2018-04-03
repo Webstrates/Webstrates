@@ -231,8 +231,6 @@ module.exports.submitOp = (webstrateId, op, next) => {
 	request.submit(next);
 };
 
-module.exports.use = (event, callback) => {
-	share.use(event, callback);
-};
+module.exports.use = (event, callback) => share.use(event, callback);
 
 module.exports.listen = (stream, req) => share.listen(stream, req);

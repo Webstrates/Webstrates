@@ -202,7 +202,9 @@ module.exports.requestHandler = function(req, res) {
 							if (err) {
 								return res.status(400).send(`"${req.assetName}" is not a valid ZIP file.`);
 							}
+							const allEntries = [];
 							zipFile.on('entry', entry => {
+								allEntries.push(entry.fileName);
 								if (req.assetPath !== entry.fileName) {
 									return zipFile.readEntry();
 								}
@@ -220,7 +222,8 @@ module.exports.requestHandler = function(req, res) {
 							zipFile.once('end', () => {
 								if (!entryFound) {
 									res.status(404).send(`File "${req.assetPath}" not found in asset ` +
-										`"${req.assetName}".`);
+										`"${req.assetName}".<br>\n` +
+										`<pre>\n${JSON.stringify(allEntries, null, "  ")}\n</pre>`);
 								}
 							});
 						});

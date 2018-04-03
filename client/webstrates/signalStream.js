@@ -90,7 +90,6 @@ function handleSignal(wid, senderClientId, message) {
 		}
 		return;
 	}
-
 }
 
 const wantToStreamCallbacks = new Map();

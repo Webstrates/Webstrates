@@ -16,40 +16,49 @@ if (!global.config.pubsub) {
 	 */
 	const mapToObject = map => Array.from(map).reduce((o, [k, v]) => (o[k] = v, o), {});
 
-	const pubsub = redis.createClient(global.config.pubsub);
-	pubsub.subscribe('webstratesClients');
+	const pubsub = global.config.pubsub && {
+		publisher: redis.createClient(global.config.pubsub),
+		subscriber: redis.createClient(global.config.pubsub)
+	};
+	pubsub.subscriber.subscribe('webstratesClients');
+	pubsub.subscriber.subscribe('webstratesGodAPI');
 
-	pubsub.on('message', (channel, message) => {
+	pubsub.subscriber.on('message', (channel, message) => {
 		message = JSON.parse(message);
 		const userId = message.userId;
 		const webstrateId = message.webstrateId;
 		subscriptions.forEach(({ subscriptionId, ws, users, webstrates, wildcard }) => {
-			if (!wildcard && !webstrates.has(webstrateId) && !users.has(userId)) return;
+			if (!wildcard
+				&& !(webstrates.has(webstrateId) || webstrates.has('*'))
+				&& !users.has(userId)) return;
 
 			// Merge filters, e.g. if we listen for 'dom' on the webstrate the action is happening in, but
 			// 'signal' from the user involved, this action is happening with the filter
 			// ['dom', 'signal'].
 			const filter = new Set([
-				...(webstrates.get(webstrateId) || []),
+				...(webstrates.get(webstrateId) || webstrates.get('*') || []),
 				...(users.get(userId) || [])
 			]);
 
 			switch (message.action) {
-				case 'clientJoin':
+				// clientJoin, clientPart and publish are created by Webstrates.
+				case 'clientJoin': {
 					if (wildcard || filter.has('user')) {
 						ws.send(JSON.stringify({
 							ga: 'clientJoin', subscriptionId, webstrateId, userId
 						}));
 					}
 					break;
-				case 'clientPart':
+				}
+				case 'clientPart': {
 					if (wildcard || filter.has('user')) {
 						ws.send(JSON.stringify({
 							ga: 'clientPart', subscriptionId, webstrateId, userId
 						}));
 					}
 					break;
-				case 'publish':
+				}
+				case 'publish': {
 					if (wildcard || filter.has('signal')) {
 						ws.send(JSON.stringify({
 							ga: 'signal', subscriptionId, webstrateId, userId,
@@ -59,41 +68,55 @@ if (!global.config.pubsub) {
 						}));
 					}
 					break;
+				}
+				// op is created by ourselves below. We do this to ensure every thread gets a chance to
+				// react to it, as the list of subscriptions is local to each thread and op only gets
+				// triggered in one thread. Thus, is an op happens in any thread but the one with the
+				// subscription, it won't get send to the subscriber.
+				case 'op': {
+					subscriptions.forEach(({ subscriptionId, ws, users, webstrates, wildcard }) => {
+						if (!wildcard
+							&& !(webstrates.has(webstrateId) || webstrates.has('*'))
+							&& !users.has(userId)) return;
+						// Merge filters, e.g. if we listen for 'dom' on the webstrate the action is happening
+						// in, but 'signal' from the user involved, this action is happening with the filter
+						// ['dom', 'signal'].
+						const filter = new Set([
+							...(webstrates.get(webstrateId) || webstrates.get('*') || []),
+							...(users.get(userId) || [])
+						]);
+
+						if (wildcard || filter.has('dom')) {
+							ws.send(JSON.stringify({
+								ga: 'dom', subscriptionId, webstrateId, userId,
+								op: message.op
+							}));
+						}
+					});
+					break;
+				}
 				default:
 					console.log(message);
 			}
 		});
 	});
 
+	// This will only get triggered in one thread, so we publish it through Reddis, so all threads
+	// get a chance to react.
 	shareDbWrapper.use('op', (req, next) => {
 		// req is the sharedb request, req.req is the HTTP request that we've attached ourselves
 		// when we did share.listen(stream, req).
-
 		const userId = req.agent.user ? req.agent.user.userId : 'server:';
 		const webstrateId = req.id;
-		subscriptions.forEach(({ subscriptionId, ws, users, webstrates, wildcard }) => {
-			if (!wildcard && !webstrates.has(webstrateId) && !users.has(userId)) return;
-
-			// Merge filters, e.g. if we listen for 'dom' on the webstrate the action is happening in, but
-			// 'signal' from the user involved, this action is happening with the filter
-			// ['dom', 'signal'].
-			const filter = new Set([
-				...(webstrates.get(webstrateId) || []),
-				...(users.get(userId) || [])
-			]);
-
-			if (wildcard || filter.has('dom')) {
-				ws.send(JSON.stringify({
-					ga: 'dom', subscriptionId, webstrateId, userId,
-					op: req.op.op
-				}));
-			}
-		});
-
+		const op = req.op.op;
+		pubsub.publisher.publish('webstratesGodAPI', JSON.stringify({
+			action: 'op', userId, webstrateId, op
+		}));
 		next();
 	});
 
 	exports.onmessage = (ws, req, data, next) => {
+		// We use 'noop' to skip the regular ShareDB initialization.
 		if (!data.ga && !('noop' in req.query)) return next();
 
 		//const users = Array.isArray(data.users) ? data.users : [ data.users ];

@@ -192,16 +192,15 @@ const sessionMiddleware = function(req, res, next) {
 	next();
 };
 
-const dosProtectionMiddleware = require('./middleware/dosProtectionMiddleware.js');
-const keepAliveMiddleware = require('./middleware/keepAliveMiddleware.js');
-const customActionHandlerMiddleware = require('./middleware/customActionHandlerMiddleware.js');
-const shareDbMiddleware = require('./middleware/shareDbMiddleware.js');
-const middleware = [
-	dosProtectionMiddleware,
-	keepAliveMiddleware,
-	customActionHandlerMiddleware,
-	shareDbMiddleware
-];
+const middleware = [];
+
+middleware.push(require('./middleware/dosProtectionMiddleware.js'));
+middleware.push(require('./middleware/keepAliveMiddleware.js'));
+if (config.godApi) {
+	middleware.push(require('./middleware/godApiMiddleware.js'));
+}
+middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
+middleware.push(require('./middleware/shareDbMiddleware.js'));
 
 /**
  * Execute a type of middleware
