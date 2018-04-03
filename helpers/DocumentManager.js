@@ -314,6 +314,11 @@ module.exports.getTags = function(webstrateId, next) {
  * @public
  */
 module.exports.tagDocument = function(webstrateId, version, label, next) {
+	if (!label || label.includes('.')) {
+		console.log(next, 'error');
+		return next && next(new Error('Tag names should not contain periods.'));
+	}
+
 	module.exports.getDocument({ webstrateId, version }, function(err, snapshot) {
 		if (err) return next && next(err);
 		// We let clients know that the document has been tagged before it has happened, because this

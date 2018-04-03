@@ -180,12 +180,15 @@ exports.onmessage = (ws, req, data, next) => {
 						return;
 					}
 					documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
-						if (err) {
-							console.error(err);
-							if (data.token) {
-								ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-									error: err.message }));
+						if (data.token) {
+							const returnObject = { wa: 'reply', token: data.token };
+							if (err) {
+								console.error(err);
+								returnObject.error = err.message;
+							} else {
+								returnObject.reply = res;
 							}
+							ws.send(JSON.stringify(returnObject));
 						}
 					});
 					break;
