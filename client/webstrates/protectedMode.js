@@ -171,7 +171,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		setAttribute.call(this, name, value, options, ...unused);
 	};
 
-	const removeAttribute = Element.prototype.setAttribute;
+	const removeAttribute = Element.prototype.removeAttribute;
 	Element.prototype.removeAttribute = function(name, options, ...unused) {
 		removeAttribute.call(this, name, options, ...unused);
 		if (options && options.approved) removeApproveNodeAttribute(this, name);
