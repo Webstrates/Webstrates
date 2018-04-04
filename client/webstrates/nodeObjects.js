@@ -7,7 +7,7 @@ const loadedEvent = require('./loadedEvent');
 
 const nodeObjectsModule = {};
 
-nodeObjectsModule.getEventObject = (node) => node.__eventObject;
+nodeObjectsModule.getEventObject = (node) => node && node.__eventObject;
 nodeObjectsModule.setEventObject = (node, eventObject) => node.__eventObject = eventObject;
 
 coreEvents.createEvent('webstrateObjectsAdded');
