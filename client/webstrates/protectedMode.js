@@ -141,7 +141,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		const element = importNode(externalNode, deep, ...unused);
 		coreUtils.recursiveForEach(element, childNode => {
 			if (options && options.approved) approveNode(childNode);
-			else element.setAttribute('unapproved', '');
+			else childNode.nodeType === document.ELEMENT_NODE && childNode.setAttribute('unapproved', '');
 		});
 		return element;
 	});
