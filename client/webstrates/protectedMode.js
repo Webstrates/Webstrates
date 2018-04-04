@@ -20,26 +20,29 @@ const coreDOM = require('./coreDOM');
 const protectedModeModule = {};
 
 coreEvents.addEventListener('receivedDocument', (doc, options) => {
-	const isProtected = doc.data && doc.data[1] && 'data-protected' in doc.data[1];
-	// Changes to documents aren't persisted, so no reason to enforce any protection. Also we
+	const dataProtectedAttribute = doc.data && doc.data[1] && doc.data[1]['data-protected'];
+	const elementsProtected = ['all', 'elements', ''].includes(dataProtectedAttribute);
+	const attributesProtected = ['all', 'attributes', ''].includes(dataProtectedAttribute);
+	// Changes to static documents aren't persisted, so no reason to enforce any protection. Also we
 	// should only try to protect the document if the `data-protected` attribute has been set on the
 	// <html> tag.
-	if (options.static || !isProtected) return;
+	if (options.static || (!elementsProtected && !attributesProtected)) return;
 
-	console.warn('This document is protected. Any changes made to it through the DOM editor in the'
-		+ 'Developer Tools will be perceived as transient.');
+	const protectedParts = (elementsProtected && attributesProtected) ? 'the document'
+		: (elementsProtected ? 'elements' : 'attributes');
+	console.warn('This document is protected. Any changes made to ' + protectedParts + ' through ' +
+		'the DOM editor in the Developer Tools will be perceived as transient.');
 
 	/**
 	 * Checks whether a DOMNode is allowed to be persisted (i.e. non-transient).
 	 */
-	const isApprovedNode = DOMNode => !!DOMNode.__approved;
+	const isApprovedNode = DOMNode => !elementsProtected || !!DOMNode.__approved;
 
 	/**
 	 * Checks whether an attribute is allowed to be peristed (i.e. non-transient).
 	 */
-	const isApprovedAttribute = (DOMNode, attributeName) => {
-		return DOMNode.__approvedAttributes && DOMNode.__approvedAttributes.has(attributeName);
-	};
+	const isApprovedAttribute = (DOMNode, attributeName) => !attributesProtected
+		|| (DOMNode.__approvedAttributes && DOMNode.__approvedAttributes.has(attributeName));
 
 	// Overwrite config.isTransientElement, so nodes with the `__approved` property are transient. We
 	// also pass on the call to the original isTransientElement function defined in the client config.
