@@ -97,6 +97,32 @@ describe('Protected Mode', function() {
 		assert.isTrue(bodyHasOneChildB, 'body should have exactly one child');
 	});
 
+	it('inserted non-transient div with defined namespace should be visible on inserting client',
+		async () => {
+		await pageA.evaluate(() => {
+			const div = document.createElementNS('http://www.w3.org/1999/xhtml', 'div',
+				{ approved: true });
+			div.innerHTML = 'Y';
+			document.body.appendChild(div);
+		});
+
+		const bodyHasThreeChildren = await util.waitForFunction(pageA, () =>
+			document.body.children.length === 3);
+		assert.isTrue(bodyHasThreeChildren,
+			'body has two children (transient div and non-transient div)');
+
+		const childContentsA = await pageA.evaluate(() => document.body.lastElementChild.innerHTML);
+		assert.equal(childContentsA, 'Y', 'div should contain exactly \'Y');
+	});
+
+	it('inserted non-transient div with defined namespace should be visible on other client',
+		async () => {
+		const bodyHasTwoChildrenB = await util.waitForFunction(pageB, () =>
+			document.body.children.length === 2);
+		assert.isTrue(bodyHasTwoChildrenB, 'body should have exactly one child');
+	});
+
+
 	it('transient attribute set should be visible on inserting client', async () =>
 	{
 		await pageA.evaluate(() =>

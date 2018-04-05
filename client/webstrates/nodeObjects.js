@@ -156,7 +156,7 @@ coreEvents.addEventListener('populated', targetElement => {
 	// webstrate objects on the entire DOM.
 	coreDOM.overrideDocument('createElementNS', coreDOM.CONTEXT.BOTH, (createElementNS, namespaceURI,
 		qualifiedName, options = {}, ...unused) => {
-		const element = createElementNS(namespaceURI, qualifiedName, ...unused);
+		const element = createElementNS(namespaceURI, qualifiedName, options, ...unused);
 		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
 		return element;
 	});
