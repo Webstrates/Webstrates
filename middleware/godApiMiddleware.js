@@ -119,6 +119,16 @@ if (!global.config.pubsub) {
 		// We use 'noop' to skip the regular ShareDB initialization.
 		if (!data.ga && !('noop' in req.query)) return next();
 
+		if (!ws.authorized) {
+			if (data.ga === 'key' && data.key === config.godApi.key) {
+				ws.authorized = true;
+				ws.send(JSON.stringify({ ga: 'authorized' }));
+			} else {
+				ws.send(JSON.stringify({ ga: 'unauthorized' }));
+			}
+			return;
+		}
+
 		//const users = Array.isArray(data.users) ? data.users : [ data.users ];
 		const filter = (data.filter && (Array.isArray(data.filter) ? data.filter : [ data.filter ]))
 			|| ['dom', 'signal', 'user'];
