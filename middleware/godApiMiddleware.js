@@ -101,14 +101,15 @@ if (!global.config.pubsub) {
 		});
 	});
 
-	// This will only get triggered in one thread, so we publish it through Reddis, so all threads
-	// get a chance to react.
-	shareDbWrapper.use('op', (req, next) => {
+	// This will only get triggered in one thread (the receiving thread), so we publish it through
+	// Reddis, so all threads get a chance to react.
+	shareDbWrapper.use('receive', (req, next) => {
+		if (req.data.a !== 'op') return next();
 		// req is the sharedb request, req.req is the HTTP request that we've attached ourselves
 		// when we did share.listen(stream, req).
 		const userId = req.agent.user ? req.agent.user.userId : 'server:';
-		const webstrateId = req.id;
-		const op = req.op.op;
+		const webstrateId = req.data.d;
+		const op = req.data.op;
 		pubsub.publisher.publish('webstratesGodAPI', JSON.stringify({
 			action: 'op', userId, webstrateId, op
 		}));
