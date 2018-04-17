@@ -223,7 +223,7 @@ module.exports.requestHandler = function(req, res) {
 								if (!entryFound) {
 									res.status(404).send(`File "${req.assetPath}" not found in asset ` +
 										`"${req.assetName}".<br>\n` +
-										`<pre>\n${JSON.stringify(allEntries, null, "  ")}\n</pre>`);
+										`<pre>\n${JSON.stringify(allEntries, null, '  ')}\n</pre>`);
 								}
 							});
 						});

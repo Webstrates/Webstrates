@@ -25,7 +25,7 @@ const getSampleConfig = () => {
 	const randomSecret = crypto.randomBytes(16).toString('base64');
 	config.auth.cookie.secret = randomSecret;
 	return config;
-}
+};
 
 /**
  * Merge two objects. Use target object with filler as a prototype, e.g. use the property on

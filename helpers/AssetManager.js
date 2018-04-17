@@ -1,8 +1,10 @@
 'use strict';
 
 const fs = require('fs');
+const util = require('util');
 const multer = require('multer');
 const db = require(APP_PATH + '/helpers/database.js');
+const md5File = require('md5-file/promise');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
@@ -23,8 +25,8 @@ const upload = multer({
  * @param  {obj} res Express response object.
  * @public
  */
-module.exports.assetUploadHandler = function(req, res) {
-	upload(req, res, function(err) {
+module.exports.assetUploadHandler = async function(req, res) {
+	upload(req, res, async function(err) {
 		if (err) {
 			console.error(err);
 			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
@@ -37,7 +39,24 @@ module.exports.assetUploadHandler = function(req, res) {
 
 		const source = `${req.user.userId} (${req.remoteAddress})`;
 
-		// If searac
+		// Adding hashes to each file by initially generating an array of promises that'll trigger with
+		// the hash value when each hash has been generated.
+		const hashPromises = req.files.map(async file => md5File(file.path));
+		const hashes = await Promise.all(hashPromises);
+		// After all promises have been resolved, add the hashes to the files.
+		req.files.forEach((file, i) => file.fileHash = hashes[i]);
+
+		req.files.forEach(async (file) => {
+			const duplicate = await findDuplicateAsset(file);
+			if (!duplicate) return;
+			// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
+			// no reason to make the user wait for us to delete the file. The user doesn't care.
+			deleteAssetFromFileSystem(file.filename);
+			// Multer uses lower case properties, we save assets as camelCase in the database, so the
+			// properties are indeed file.filename and duplicat.fileName (capital N). This is not a typo.
+			file.filename = duplicate.fileName;
+		});
+
 		let searchables = [];
 		if (req.body.searchable) {
 			// Options don't have types, so if 'searchable' is the literal string true, we make every CSV
@@ -68,6 +87,15 @@ module.exports.assetUploadHandler = function(req, res) {
 };
 
 /**
+ * Find duplicate asset in database (i.e. asset with matching size and hash).
+ * @param  {object} asset Asset object.
+ * @return {object}       (async) First duplicate asset object if any, otherwise null.
+ * @private
+ */
+const findDuplicateAsset = (asset) =>
+	db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
+
+/**
  * Get list of assets.
  * @param  {string}   webstrateId WebstrateId.
  * @param  {Function} next        Callback.
@@ -87,6 +115,13 @@ module.exports.getAssets = function(webstrateId, next) {
 		});
 };
 
+/**
+ * Get assets accessible at the current version.
+ * @param  {string}   webstrateId WebstrateId.
+ * @param  {Function} next        Callback.
+ * @return {array}                (async) List of current assets.
+ * @public
+ */
 module.exports.getCurrentAssets = function(webstrateId, next) {
 	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
 		.toArray(function(err, assets) {
@@ -120,9 +155,21 @@ module.exports.getAsset = async function({ webstrateId, assetName, version }) {
  *                           name used when uploading the file, but rather the 'identifier'.
  * @public
  */
-module.exports.deleteAssetFromDatabase = function(fileName) {
+module.exports.deleteAssetFromDatabase = (fileName) => {
 	if (!fileName || fs.existsSync(`${module.exports.UPLOAD_DEST}${fileName}`)) return;
-	db.assets.deleteOne({ fileName: fileName });
+	return db.assets.deleteOne({ fileName: fileName });
+};
+
+/**
+ * Delete asset from file system. This is useful if a duplicate file has been uploaded.
+ * @param  {string} fileName Name of the file to be deleted
+ * @return {Promise}         Promise resolved when the file has been deleted.
+ * @private
+ */
+const deleteAssetFromFileSystem = (fileName) => {
+	if (!fileName || !fs.existsSync(`${module.exports.UPLOAD_DEST}${fileName}`)) return;
+	const unlink = util.promisify(fs.unlink);
+	return unlink(`${module.exports.UPLOAD_DEST}${fileName}`);
 };
 
 /**
@@ -290,7 +337,8 @@ module.exports.addAsset = function(webstrateId, asset, searchable, source, next)
 				fileName: asset.filename,
 				originalFileName: asset.originalname,
 				fileSize: asset.size,
-				mimeType: asset.mimetype
+				mimeType: asset.mimetype,
+				fileHash: asset.fileHash
 			}, async function(err, result) {
 				if (err) return next && next(err);
 
@@ -305,14 +353,15 @@ module.exports.addAsset = function(webstrateId, asset, searchable, source, next)
 					fileName: asset.originalname,
 					fileSize: asset.size,
 					mimeType: asset.mimetype,
-					identifier: asset.filename
+					identifier: asset.filename,
+					fileHash: asset.fileHash
 				};
 
 				// Inform all clients of the newly added asset.
 				clientManager.sendToClients(webstrateId, {
 					wa: 'asset',
 					d: webstrateId,
-					asset: asset
+					asset: asset,
 				});
 
 				return next && next(null, asset);
