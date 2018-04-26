@@ -46,7 +46,7 @@ module.exports.assetUploadHandler = async function(req, res) {
 		// After all promises have been resolved, add the hashes to the files.
 		req.files.forEach((file, i) => file.fileHash = hashes[i]);
 
-		req.files.forEach(async (file) => {
+		const duplicatePromises = req.files.map(async (file) => {
 			const duplicate = await findDuplicateAsset(file);
 			if (!duplicate) return;
 			// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
@@ -56,6 +56,7 @@ module.exports.assetUploadHandler = async function(req, res) {
 			// properties are indeed file.filename and duplicat.fileName (capital N). This is not a typo.
 			file.filename = duplicate.fileName;
 		});
+		await Promise.all(duplicatePromises);
 
 		let searchables = [];
 		if (req.body.searchable) {
