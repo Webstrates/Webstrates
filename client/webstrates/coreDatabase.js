@@ -4,7 +4,6 @@ const coreUtils = require('./coreUtils');
 const coreWebsocket = require('./coreWebsocket');
 const globalObject = require('./globalObject');
 const sharedb = require('sharedb/lib/client');
-
 const COLLECTION_NAME = 'webstrates';
 
 coreEvents.createEvent('receivedDocument');

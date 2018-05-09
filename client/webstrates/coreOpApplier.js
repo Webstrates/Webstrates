@@ -1,6 +1,6 @@
 'use strict';
 /*
-Webstrates ApplyOp (webstrates.applyop.js)
+Webstrates ApplyOp (coreOpApplier.js)
 
 This module exposes the applyOp(op, rootElement) function on the Webstrates scope. This function
 applies a subset of json0 OT operations (see https://github.com/ottypes/json0) to a DOM element.

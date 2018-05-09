@@ -41,6 +41,7 @@ module.exports = {
 		semi: ['error', 'always'],
 		// Only warn when escaping unnecessary characters in a regex (default is error).
 		'no-useless-escape': ['warn'],
+		'no-irregular-whitespace': ['warn', { "skipRegExps": true }],
 		// Only warn hen unreachable code exists (default is error).
 		'no-unreachable': ['warn'],
 		'no-unused-vars': ['warn', {

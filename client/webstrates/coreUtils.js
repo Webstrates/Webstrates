@@ -44,6 +44,32 @@ coreUtilsModule.getLocationObject = () => {
 };
 
 /**
+ * Creates a throttled version of a function, i.e. one that only runs at most once every N
+ * milliseconds.
+ * @param  {Function} fn         Source function.
+ * @param  {Number}   limit      Execution delay in milliseconds.
+ * @return {Function}            Throttled source function.
+ * @public
+ */
+coreUtilsModule.throttleFn = (fn, limit) => {
+	let timeout, lastCall = 0;
+	return function(...args) {
+		let now = Date.now();
+		let delay = lastCall + limit - now;
+		if (delay <= 0) {
+			fn(...args);
+			lastCall = now;
+		} else {
+			clearTimeout(timeout);
+			timeout = setTimeout(() => {
+				fn(...args);
+				lastCall = now;
+			}, delay);
+		}
+	};
+};
+
+/**
  * Checks for literal equality of objects. This is a stupid way, but it works.
  * @param  {obj} a First object to compare.
  * @param  {obj} b Second object to compare.

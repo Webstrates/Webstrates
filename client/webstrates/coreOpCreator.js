@@ -6,6 +6,7 @@ const corePathTree = require('./corePathTree');
 const coreUtils = require('./coreUtils');
 const coreJsonML = require('./coreJsonML');
 const diffMatchPatch = require('diff-match-patch');
+const json0 = require('ot-json0/lib/json0');
 
 const coreOpCreator = {};
 
@@ -98,9 +99,13 @@ function attributeMutation(mutation, targetPathNode) {
 	// We are lose about checking jsonmlAttrs[attributeName], because we don't want to
 	// diff, regardless of whether it's an empty string or it's null.
 	// Also, if the newValue is short, it's easier and faster to just send it rather than patch it.
+	// And lastly, if we're throttling ops (meaning we're not sending all of them), we can't create
+	// diffs as diffs only work between two known states, but we won't know the previous state if we
+	// have left out some ops. Just replacing a string with a new one doesn't require any knowledge
+	// about the current state.
 	let ops;
 	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[cleanAttributeName]
-		|| !coreConfig.attributeValueDiffing) {
+		|| !coreConfig.attributeValueDiffing || mutation.target.hasAttribute('op-throttle')) {
 		ops = [{ oi: newValue, p: path }];
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[cleanAttributeName], newValue);
@@ -118,9 +123,6 @@ function attributeMutation(mutation, targetPathNode) {
  *                                   mutation.
  */
 function characterDataMutation(mutation, targetPathNode) {
-	const oldValue = mutation.oldValue;
-	const newValue = mutation.target.data;
-
 	// No pathNode means transient, therefore not in the JsonML, so creating an op isn't possible and
 	// also doesn't make sense.
 	if (!targetPathNode) {
@@ -130,12 +132,14 @@ function characterDataMutation(mutation, targetPathNode) {
 	const isComment = mutation.target.nodeType === document.COMMENT_NODE;
 	const path = targetPathNode.toPath();
 
+	const oldValue = coreDatabase.elementAtPath(path); //mutation.oldValue;
+	const newValue = mutation.target.data.replace(/ /g, ' ');
 
-	if (!isComment && coreDatabase.elementAtPath(path) !== oldValue) {
+	/*if (!isComment && coreDatabase.elementAtPath(path) !== oldValue) {
 		// This should not happen, but it will if a text node is inserted and then altered right
 		// after. If this happens, we can ignore it.
 		return;
-	}
+	}*/
 
 	let ops = patchesToOps(path, oldValue, newValue);
 	if (isComment) {
@@ -312,6 +316,11 @@ coreOpCreator.emitOpsFromMutations = () => {
 	coreEvents.addEventListener('mutation', (mutation) => {
 		const targetPathNode = corePathTree.getPathNode(mutation.target);
 
+		const elementTarget = mutation.target.nodeType === document.ELEMENT_NODE
+			? mutation.target
+			: mutation.target.parentElement;
+		const elementPathNode = corePathTree.getPathNode(elementTarget);
+
 		let ops;
 		switch (mutation.type) {
 			case 'attributes':
@@ -327,7 +336,65 @@ coreOpCreator.emitOpsFromMutations = () => {
 			return;
 		}
 
+		// When setting the op-throttle attribute on an element with a number N as the value, all
+		// changes made to that element will be throttled to only send at most 1 op every N
+		// milliseconds. The newest op is always the one to be sent. This can be useful intermediate
+		// values aren't essential.
+		if (elementTarget && elementTarget.hasAttribute('op-throttle')) {
+			const throttleDelay = Number(elementTarget.getAttribute('op-throttle'));
+			if (!targetPathNode.throttleFn || targetPathNode.throttleDelay !== throttleDelay) {
+				targetPathNode.throttleDelay = throttleDelay;
+				targetPathNode.throttleFn = coreUtils.throttleFn(
+					coreEvents.triggerEvent.bind(coreEvents), throttleDelay);
+			}
+
+			targetPathNode.throttleFn('createdOps', ops);
+			return;
+		}
+
+		// If we get here, op-throttle doesn't exist, so there's no need for a a (potentially) old
+		// throttle function that we're no longer using.
+		if (targetPathNode) {
+			targetPathNode.throttleFn = null;
+		}
+
+		// When setting the op-compose attribute on an element with a number N as the value, all
+		// changes made to that element will be composed to only send ops at most every N
+		// milliseconds. All mutations that has occured since the last trigger will be composed into
+		// (hopefully) fewer ops that will be sent as a group, speeding up the processing of them.
+		// This can be useful when a lot of essential (i.e. ones we can't throw out like with
+		// op-throttle) ops are created and performance is suffering.
+		if (elementTarget && elementTarget.hasAttribute('op-compose')) {
+			const composeDelay = Number(elementTarget.getAttribute('op-compose'));
+
+			targetPathNode.composedOps = targetPathNode.composedOps
+				? json0.compose(targetPathNode.composedOps, ops)
+				: ops;
+
+			if (!elementPathNode.composeFn || elementPathNode.composeDelay !== composeDelay) {
+				elementPathNode.composeDelay = composeDelay;
+				targetPathNode.composedOps = ops;
+				elementPathNode.composeFn = coreUtils.throttleFn(() => {
+					if (targetPathNode.composedOps) {
+						coreEvents.triggerEvent('createdOps',
+							coreUtils.objectClone(targetPathNode.composedOps));
+						targetPathNode.composedOps = null;
+					}
+				}, composeDelay);
+			}
+
+			elementPathNode.composeFn();
+			return;
+		}
+
+		// If we get here, op-compose doesn't exist, so there's no need for a a (potentially) old
+		// compose function that we're no longer using.
+		if (elementPathNode) {
+			elementPathNode.composeFn = null;
+		}
+
 		coreEvents.triggerEvent('createdOps', ops);
+
 	}, coreEvents.PRIORITY.IMMEDIATE);
 };
 
