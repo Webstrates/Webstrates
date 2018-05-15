@@ -678,7 +678,8 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 					console.error(err);
 					return res.status(409).send(String(err));
 				}
-				if (response.headers['content-type'] === 'application/zip') {
+				if (response.headers['content-type'] === 'application/zip' ||
+					  response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i)) {
 					return tmp.file((err, filePath, fd, cleanupFileCallback) => {
 						return fs.writeFile(filePath, body, 'binary', err => {
 							if (err) {
@@ -820,7 +821,8 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 
 				// `startsWith` and not a direct match, because the content-type often (always?) is followed
 				// by a charset declaration, which we don't care about.
-				if (response.headers['content-type'].startsWith('text/html')) {
+				if (response.headers['content-type'].startsWith('text/html') ||
+					  response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i)) {
 					const jsonml = htmlToJsonML(body);
 					documentManager.createNewDocument({
 						webstrateId: req.query.id,
