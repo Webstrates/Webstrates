@@ -58,7 +58,8 @@ if (pubsub) {
 					message.message, message.recipients);
 				break;
 			case 'signalUserObject':
-				module.exports.signalUserObject(message.userId, message.senderSocketId, message.message);
+				module.exports.signalUserObject(message.userId, message.senderSocketId, message.message,
+					message.webstrateId);
 				break;
 			case 'cookieUpdate':
 				module.exports.updateCookie(message.userId, message.webstrateId, message.update.key,
@@ -449,16 +450,17 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
  *                                 forth between instances.
  * @public
  */
-module.exports.signalUserObject = function(userId, senderSocketId, message, local) {
+module.exports.signalUserObject = function(userId, senderSocketId, message, webstrateId, local) {
 	module.exports.broadcastToUserClients(userId, {
 		wa: 'signalUserObject',
+		m: message,
 		s: senderSocketId,
-		m: message
+		sw: webstrateId,
 	});
 
 	if (local) {
 		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'signalUserObject', userId, senderSocketId, message
+			action: 'signalUserObject', userId, senderSocketId, message, webstrateId, WORKER_ID
 		}));
 	}
 };
