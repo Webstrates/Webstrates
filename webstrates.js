@@ -96,8 +96,7 @@ if (config.auth) {
 	app.use(passport.initialize());
 	app.use(passport.session());
 
-	for (var provider in config.auth.providers) {
-			
+	for (var provider in config.auth.providers) {		
 		app.get('/auth/' + provider, 
 			passport.authenticate(provider, config.auth.providers[provider].authOptions), 
 			function(req, res) {});
