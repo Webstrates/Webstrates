@@ -17,6 +17,7 @@ module.exports = {
 		'clientManager',
 		'signaling',
 		'signalStream',
+		'userObjectSignaling',
 		'assets',
 		'messages',
 		'keepAlive'

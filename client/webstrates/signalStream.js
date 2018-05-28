@@ -12,12 +12,11 @@ coreEvents.addEventListener('populated', (rootElement, _webstrateId) => {
 	clientId = globalObject.publicObject.clientId;
 });
 
-
 // Intercept streaming signals, so they're not processed as regular signals by the signaling module.
 signaling.addInterceptor(payload => {
 	const message = payload.m;
 	const senderClientId = payload.s;
-	// Only handle our own internal webrtc messages and also ignore our own messages.
+	// Only handle internal webrtc messages and also ignore our own messages.
 	if (typeof message.__internal_webrtc === 'undefined' || senderClientId === clientId) {
 		return false;
 	}
