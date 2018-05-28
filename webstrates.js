@@ -86,7 +86,7 @@ if (config.auth) {
 	for (var key in config.auth.providers) {
 		var PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
 		passport.use(new PassportStrategy(config.auth.providers[key].config,
-			function(accessToken, refreshToken, profile, done) {
+			function(request, accessToken, refreshToken, profile, done) {
 				return process.nextTick(function() {
 					return done(null, profile);
 				});
@@ -97,7 +97,10 @@ if (config.auth) {
 	app.use(passport.session());
 
 	for (var provider in config.auth.providers) {
-		app.get('/auth/' + provider, passport.authenticate(provider), function(req, res) {});
+			
+		app.get('/auth/' + provider, 
+			passport.authenticate(provider, config.auth.providers[provider].authOptions), 
+			function(req, res) {});
 		app.get('/auth/' + provider + '/callback', passport.authenticate(provider, {
 			failureRedirect: '/auth/' + provider
 		}), function(req, res) {
@@ -185,7 +188,7 @@ const sessionMiddleware = function(req, res, next) {
 		}
 	}
 
-	req.user.username = req.user.username || 'anonymous';
+	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
 	req.user.provider = req.user.provider || '';
 	req.user.userId = req.user.username + ':' + req.user.provider;
 	req.webstrateId = webstrateId;

@@ -11,7 +11,7 @@ const db = require(APP_PATH + '/helpers/database.js');
  */
 module.exports.serializeUser = function(user, next) {
 	user.createdAt = new Date();
-	user.userId = user.username + ':' + user.provider;
+	user.userId = (user.username || user.email || user.id) + ':' + user.provider;
 	db.sessions.update({ userId: user.userId }, user, { upsert: true }, function(err, result) {
 		if (err) {
 			console.error(err);
