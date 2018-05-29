@@ -128,7 +128,7 @@ app.get('/new', httpRequestController.newWebstrateRequestHandler);
 
 // Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
 // Handles mostly all requests.
-app.get(/^\/([A-Z0-9._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%._-]+\.[A-Z0-9_-]+)(?:\/(.*))?)?$/i,
+app.get(/^\/([A-Z0-9._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%.()\[\]{}_-]+\.[A-Z0-9_-]+)(?:\/(.*))?)?$/i,
 	httpRequestController.extractQuery,
 	httpRequestController.requestHandler);
 
