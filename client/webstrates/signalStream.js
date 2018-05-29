@@ -86,7 +86,7 @@ function handleSignal(wid, senderClientId, message) {
 		if (webrtcClient) {
 			webrtcClient.handleMessage(message);
 		} else {
-			console.error('Got message for invalid recipient', wid, message, webrtcClients);
+			console.error('Got message for unknown recipient', wid, message, webrtcClients);
 		}
 		return;
 	}
@@ -120,14 +120,14 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 				__internal_webrtc: true,
 				senderId: ownId,
 				recipientId
-			});
+			}, clientRecipientId);
 		}).catch(errorHandler);
 	};
 
 	const handleMessage = (message) => {
 		if(!peerConnection) start();
 
-		if(message.sdp) {
+		if (message.sdp) {
 			peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp)).then(function() {
 				// Only create answers in response to offers
 				if(message.sdp.type == 'offer') {
@@ -146,7 +146,7 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 				__internal_webrtc: true,
 				senderId: ownId,
 				recipientId
-			});
+			}, clientRecipientId);
 		}
 	};
 
