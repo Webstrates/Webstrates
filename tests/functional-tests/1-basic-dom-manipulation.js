@@ -90,6 +90,22 @@ describe('Basic DOM Manipulation', function() {
 		assert.equal(selectedOption, shouldBeSelectedOption);
 	});
 
+	it('creating attribute name with " should replace it with _', async () => {
+		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		await pageA.evaluate(() => {
+			document.body.innerHTML = `<div foo"="bar"></div>`;
+		});
+
+		await util.sleep(1);
+
+		const attrsA = await pageA.evaluate(() => document.querySelector('div').outerHTML);
+		const attrsB = await pageB.evaluate(() => document.querySelector('div').outerHTML);
+
+		assert.deepEqual(attrsA, `<div foo_="bar"></div>`);
+		assert.deepEqual(attrsA, attrsB);
+	});
+
 	it('inserting something into the DOM before the \'loaded\' event should not throw an error',
 		async () => {
 			await pageA.evaluate(async () => {
