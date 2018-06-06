@@ -92,7 +92,7 @@ module.exports.addClient = function(ws, user) {
 			provider: user.provider,
 			displayName: user.displayName,
 			userUrl: user._json && user._json.html_url,
-			avatarUrl: user._json && user._json.avatar_url
+			avatarUrl: user._json && (user._json.avatar_url || (user._json.image && user._json.image.url))
 		},
 		webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 	};
