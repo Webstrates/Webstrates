@@ -50,6 +50,8 @@ module.exports.createNewDocument = function({ webstrateId, prototypeId, version,
 			else if (err.message === 'Missing create type') {
 				err = new Error('Prototype webstrate doesn\'t exist.');
 			}
+
+			return next && next(err, webstrateId);
 		}
 
 		// Add current tag if it exists. All other tags are left behind, because the new document
