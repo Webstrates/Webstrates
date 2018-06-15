@@ -61,6 +61,9 @@ if (pubsub) {
 				module.exports.signalUserObject(message.userId, message.senderSocketId, message.message,
 					message.webstrateId);
 				break;
+			case 'newAsset':
+				module.exports.announceNewAsset(message.webstrateId, message.asset);
+				break;
 			case 'cookieUpdate':
 				module.exports.updateCookie(message.userId, message.webstrateId, message.update.key,
 					message.update.value);
@@ -466,15 +469,40 @@ module.exports.signalUserObject = function(userId, senderSocketId, message, webs
 };
 
 /**
+ * Send message all clients in a webstrate about a new asset.
+ * @param {string} webstrateId WebstrateId.
+ * @param {Object} asset       Asset object.
+ * @param {bool}   local       Whether the event has happened locally (on this server instance) or
+ *                             remotely (on another server instance). We should only forward local
+ *                             publish messages, otherwise we end up in a livelock where we
+ *                             continuously send the same event back and forth between instances.
+ * @public
+ */
+module.exports.announceNewAsset = function(webstrateId, asset, local) {
+	module.exports.sendToClients(webstrateId, {
+		wa: 'asset',
+		d: webstrateId,
+		asset: asset,
+	});
+
+	if (local) {
+		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+			action: 'newAsset', webstrateId, asset, WORKER_ID
+		}));
+	}
+};
+
+
+/**
  * Update cookies. Any update made to a user's is sent to all of the user's conneted clients.
  * @param {string} userId  User Id (of the format <username>:<provider, e.g. "kbadk:github").
  * @param {string} webstrateId WebstrateId.
  * @param {string} key         Key to update (or add) in the cookie.
  * @param {string} value       Value associated with key.
- * @param {bool}   local       Whether the publis has happened locally (on this server
+ * @param {bool}   local       Whether the event has happened locally (on this server
  *                             instance) or remotely (on another server instance). We should
  *                             only forward local publish messages, otherwise we end up in a
- *                             livelock where we continuously send the same join back and
+ *                             livelock where we continuously send the same event back and
  *                             forth between instances.
  * @public
  */

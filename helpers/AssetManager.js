@@ -359,11 +359,7 @@ module.exports.addAsset = function(webstrateId, asset, searchable, source, next)
 				};
 
 				// Inform all clients of the newly added asset.
-				clientManager.sendToClients(webstrateId, {
-					wa: 'asset',
-					d: webstrateId,
-					asset: asset,
-				});
+				clientManager.announceNewAsset(webstrateId, asset, true);
 
 				return next && next(null, asset);
 			});
