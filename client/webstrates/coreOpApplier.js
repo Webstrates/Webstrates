@@ -156,6 +156,43 @@ function deleteNode(rootElement, path) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
 
+	// This part is a bit of a hack, because contenteditable is a weird beast to play with.
+	// Consider a contenteditable field with the text HELLO in it. Say user A puts a cursor before
+	// the letter O: HELL|O. User B then makes a linebreak after the H. Now, ELLO gets removed,
+	// setting user A's cursor after the H|, and then the ELLO part gets reinserted in a DIV element
+	// below. Now the cursor is after H: H|, and not before the O as before: ELL|O.
+	// To fix this issue, when something gets deleted, we try to find the next close text node, see
+	// if its contents matches what we just removed, and if so, we set our cursor there, because it's
+	// likely that this deletion was caused by the scenario just described.
+	const fakeRange = getSelectionRange(childElement);
+	let nextTextNode;
+	// A text node directly after us.
+	if (childElement.nextSibling && childElement.nextSibling.nodeType === document.TEXT_NODE) {
+		nextTextNode = childElement.nextSibling;
+	// A text node in an element right after us.
+	} else if (childElement.nextElementSibling && childElement.nextElementSibling.firstChild
+		&& childElement.nextElementSibling.firstChild.nodeType === document.TEXT_NODE) {
+		nextTextNode = childElement.nextElementSibling.firstChild;
+	// A text node right after our parent (if we're in a DIV for instance).
+	} else if (parentElement.nextSibling
+		&& parentElement.nextSibling.nodeType === document.TEXT_NODE) {
+		nextTextNode = parentElement.nextSibling;
+	// A text node in a DIV right after our parent (if we're in a DIV for instance).
+	} else if (parentElement.nextElementSibling && parentElement.nextElementSibling.firstChild
+		&& parentElement.nextElementSibling.firstChild.nodeType === document.TEXT_NODE) {
+		nextTextNode = parentElement.nextElementSibling.firstChild;
+	}
+
+	if (fakeRange && childElement.data && nextTextNode && nextTextNode.data === childElement.data) {
+		if (fakeRange.startContainer === childElement) {
+			fakeRange.startContainer = nextTextNode;
+		}
+		if (fakeRange.endContainer === childElement) {
+			fakeRange.endContainer = nextTextNode;
+		}
+		setSelectionRange(nextTextNode, fakeRange);
+	}
+
 	// Update PathTree to reflect the deletion.
 	// TODO: Use PathTree.remove() instead.
 	const parentPathNode = corePathTree.getPathNode(parentElement);
