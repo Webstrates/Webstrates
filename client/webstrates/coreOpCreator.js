@@ -249,7 +249,7 @@ function childListMutation(mutation, targetPathNode) {
 
 		// If we can't create path node, it can't been registered in the JsonML at all, so creating
 		// an op for it doesn't make sense. This happens for instance with transient elements.
-		var newPathNode = corePathTree.create(addedNode, targetPathNode);
+		const newPathNode = corePathTree.create(addedNode, targetPathNode);
 		if (!newPathNode) {
 			coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
 			return;
@@ -261,17 +261,22 @@ function childListMutation(mutation, targetPathNode) {
 		// traverse the list of previous siblings until we find one that does have a webstrate object.
 		// Transient elements (outside of template tags) will righfully be absent from the pathtree,
 		// and thus not have webstrate objects.
-		var previousSibling = mutation.previousSibling;
-		var previousSiblingPathNode = corePathTree.getPathNode(previousSibling, parentNode);
+		// We have to use addedNode.previousSibling and not mutation.previousSibling, as this will
+		// refer to the previousSibling when the element was inserted. If multiple elements (B, C) have
+		// been inserted after element A, one after the each other, in one tick,
+		// mutation.previousSibling will refer to A for both mutations, but mutation.previousSibling
+		// will refer to A and B, respectively.
+		let previousSibling = addedNode.previousSibling;
+		let previousSiblingPathNode = corePathTree.getPathNode(previousSibling, parentNode);
 		while (previousSibling && !previousSiblingPathNode) {
 			previousSibling = previousSibling.previousSibling;
 			previousSiblingPathNode = corePathTree.getPathNode(previousSibling, parentNode);
 		}
 
 		if (previousSibling) {
-			var previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
+			const previousSiblingIndex = targetPathNode.children.indexOf(previousSiblingPathNode);
 			targetPathNode.children.splice(previousSiblingIndex + 1, 0, newPathNode);
-		} else if (mutation.nextSibling) {
+		} else if (addedNode.nextSibling) {
 			targetPathNode.children.unshift(newPathNode);
 		} else {
 			targetPathNode.children.push(newPathNode);
