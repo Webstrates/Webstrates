@@ -47,8 +47,11 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	// Overwrite config.isTransientElement, so nodes with the `__approved` property are transient. We
 	// also pass on the call to the original isTransientElement function defined in the client config.
 	const _isTransientElement = config.isTransientElement;
-	config.isTransientElement = DOMNode =>
-		!isApprovedNode(DOMNode) || _isTransientElement(DOMNode);
+	config.isTransientElement = DOMNode => _isTransientElement(DOMNode)
+		// The [contenteditable] part below is a hack. There's no way to allow only certain sources
+		// to write in a contenteditable field, so we have to allow everything to make it possible to
+		// use contenteditable fields at all in protected mode.
+		|| !(isApprovedNode(DOMNode) || DOMNode.closest('[contenteditable]'));
 
 	// Overwrite config.isTransientAttribute to make approved attribute in APPROVAL_TYPE.ATTRIBUTE
 	// transient, otherwise that attribute gets synchronized to the server
