@@ -31,6 +31,12 @@ describe('Protected Mode', function() {
 		assert.isEmpty(innerHTML.trim(), 'body should be empty');
 	});
 
+	it('isProtected property should exist on webstrate object and it should be false', async () => {
+		const webstrate = await pageA.evaluate(() => window.webstrate);
+		assert.exists(webstrate.isProtected, 'webstrate.isProtected property does not exist');
+		assert.isFalse(webstrate.isProtected, 'webstrate is protected');
+	});
+
 	it('should be possible to add data-protected attribute', async () => {
 		await pageA.evaluate(() =>
 			document.documentElement.setAttribute('data-protected', ''));
@@ -52,6 +58,11 @@ describe('Protected Mode', function() {
 		const attributeSetA = await util.waitForFunction(pageA, () =>
 			document.documentElement.getAttribute('data-protected') === '');
 		assert.isTrue(attributeSetA);
+	});
+
+	it('webstrate should be protected', async () => {
+		const webstrate = await pageA.evaluate(() => window.webstrate);
+		assert.isTrue(webstrate.isProtected, 'webstrate isn\'t protected');
 	});
 
 	it('inserted transient div should be visible on inserting client', async () => {

@@ -16,6 +16,7 @@
 const coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
 const coreDOM = require('./coreDOM');
+const globalObject = require('./globalObject');
 
 const protectedModeModule = {};
 
@@ -23,11 +24,25 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	const dataProtectedAttribute = doc.data && doc.data[1] && doc.data[1]['data-protected'];
 	const elementsProtected = ['all', 'elements', ''].includes(dataProtectedAttribute);
 	const attributesProtected = ['all', 'attributes', ''].includes(dataProtectedAttribute);
-	// Changes to static documents aren't persisted, so no reason to enforce any protection. Also we
-	// should only try to protect the document if the `data-protected` attribute has been set on the
-	// <html> tag.
-	if (options.static || (!elementsProtected && !attributesProtected)) return;
+	// Changes to static documents aren't persisted, so no reason to enforce any protection.
+	if (options.static) return;
 
+	// Either elements, attributes, or both are protected in this webstrate.
+	const isProtected = elementsProtected || attributesProtected;
+
+	// Define webstrate.isProtected. Returns true if elements, attributes, or the document is
+	// protected and returns false otherwise.
+	Object.defineProperty(globalObject.publicObject, 'isProtected', {
+		get: () => isProtected,
+		set: () => { throw new Error('isProtected cannot be modified.'); },
+		enumerable: true
+	});
+
+	// We should only try to protect the document if the `data-protected` attribute has been set on
+	// the <html> tag.
+	if (!isProtected) return;
+
+	// Warn the user that any changes made in the DOM editor in the Developer Tools will not persist.
 	const protectedParts = (elementsProtected && attributesProtected) ? 'the document'
 		: (elementsProtected ? 'elements' : 'attributes');
 	console.warn('This document is protected. Any changes made to ' + protectedParts + ' through ' +
@@ -155,7 +170,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	coreDOM.elementOptions.approved = true;
 
 	const cloneNode = Node.prototype.cloneNode;
-	Node.prototype.cloneNode = function(deep, options, ...unused) {
+	Node.prototype.cloneNode = function (deep, options, ...unused) {
 		const node = cloneNode.call(this, deep, ...unused);
 		delete node.approved;
 		if (options && options.approved) approveNode(node);
@@ -163,19 +178,19 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	};
 
 	const setAttributeNS = Element.prototype.setAttributeNS;
-	Element.prototype.setAttributeNS = function(namespace, name, value, options, ...unused) {
+	Element.prototype.setAttributeNS = function (namespace, name, value, options, ...unused) {
 		if (options && options.approved) approveNodeAttribute(this, name);
 		setAttributeNS.call(this, namespace, name, value, options, ...unused);
 	};
 
 	const setAttribute = Element.prototype.setAttribute;
-	Element.prototype.setAttribute = function(name, value, options, ...unused) {
+	Element.prototype.setAttribute = function (name, value, options, ...unused) {
 		if (options && options.approved) approveNodeAttribute(this, name);
 		setAttribute.call(this, name, value, options, ...unused);
 	};
 
 	const removeAttribute = Element.prototype.removeAttribute;
-	Element.prototype.removeAttribute = function(name, options, ...unused) {
+	Element.prototype.removeAttribute = function (name, options, ...unused) {
 		removeAttribute.call(this, name, options, ...unused);
 		if (options && options.approved) removeApproveNodeAttribute(this, name);
 	};
