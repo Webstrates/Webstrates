@@ -9,6 +9,21 @@ const globalObjectModule = {};
 // Public webstrate object
 const publicObject = {};
 
+// Expose our internal, proxied window and document objects.
+Object.defineProperty(publicObject, 'window', {
+	get: () => window,
+	set: () => { throw new Error('Internal window object should not be modified'); },
+	// If enumerable is 'true', Puppeteer tests fail as `window.webstrate` is suddenly undefined
+	// due to the circular reference.
+	enumerable: false
+});
+
+Object.defineProperty(publicObject, 'document', {
+	get: () => document,
+	set: () => { throw new Error('Internal document object should not be modified'); },
+	enumerable: true
+});
+
 Object.defineProperty(publicObject, 'webstrateId', {
 	get: () => coreUtils.getLocationObject().webstrateId,
 	set: () => { throw new Error('webstrate ID should not be modified'); },

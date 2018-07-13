@@ -202,13 +202,15 @@ module.exports.requestHandler = function(req, res) {
 							if (err) {
 								return res.status(400).send(`"${req.assetName}" is not a valid ZIP file.`);
 							}
+							const allEntries = [];
 							zipFile.on('entry', entry => {
+								allEntries.push(entry.fileName);
 								if (req.assetPath !== entry.fileName) {
 									return zipFile.readEntry();
 								}
 
 								zipFile.openReadStream(entry, (err, readStream) => {
-									res.type(mime.lookup(entry.fileName));
+									res.type(mime.lookup(entry.fileName) || 'text/plain');
 									// Getting this from a ZIP might be a little heavy, so we cache it for a year,
 									// even though the ZIP asset could in fact get overwritten.
 									res.setHeader('Cache-Control', 'public, max-age=31557600');
@@ -220,7 +222,8 @@ module.exports.requestHandler = function(req, res) {
 							zipFile.once('end', () => {
 								if (!entryFound) {
 									res.status(404).send(`File "${req.assetPath}" not found in asset ` +
-										`"${req.assetName}".`);
+										`"${req.assetName}".<br>\n` +
+										`<pre>\n${JSON.stringify(allEntries, null, '  ')}\n</pre>`);
 								}
 							});
 						});
@@ -675,7 +678,8 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 					console.error(err);
 					return res.status(409).send(String(err));
 				}
-				if (response.headers['content-type'] === 'application/zip') {
+				if (response.headers['content-type'] === 'application/zip' ||
+					  response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i)) {
 					return tmp.file((err, filePath, fd, cleanupFileCallback) => {
 						return fs.writeFile(filePath, body, 'binary', err => {
 							if (err) {
@@ -817,7 +821,8 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 
 				// `startsWith` and not a direct match, because the content-type often (always?) is followed
 				// by a charset declaration, which we don't care about.
-				if (response.headers['content-type'].startsWith('text/html')) {
+				if (response.headers['content-type'].startsWith('text/html') ||
+					  response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i)) {
 					const jsonml = htmlToJsonML(body);
 					documentManager.createNewDocument({
 						webstrateId: req.query.id,

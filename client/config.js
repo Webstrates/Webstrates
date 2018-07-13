@@ -6,6 +6,7 @@ module.exports = {
 		'userObject',
 		'cookies',
 		'nodeObjects',
+		'protectedMode',
 		'databaseErrors',
 		'dataSavedEvent',
 		'domEvents',
@@ -16,6 +17,7 @@ module.exports = {
 		'clientManager',
 		'signaling',
 		'signalStream',
+		'userObjectSignaling',
 		'assets',
 		'messages',
 		'keepAlive'
@@ -37,4 +39,3 @@ module.exports = {
 		]
 	}
 };
-

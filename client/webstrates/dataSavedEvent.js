@@ -1,6 +1,7 @@
 'use strict';
 const coreEvents = require('./coreEvents');
 const globalObject = require('./globalObject');
+const coreDatabase = require('./coreDatabase');
 
 let resolves = [];
 
@@ -8,7 +9,14 @@ let resolves = [];
 // that will get resolved once all ops have been successfully been received by the server and
 // submitted to the database.
 Object.defineProperty(globalObject.publicObject, 'dataSaved', {
-	get: () => () => new Promise((accept, reject) => resolves.push(accept)),
+	get: () => () => new Promise((accept, reject) => {
+		// If there are no pending operations (i.e. ops the server is yet to acknowledge), resolve
+		// immediately.
+		if (!coreDatabase.getDocument().hasPending()) accept();
+		// Otherwise, add the promise's accept resolver to a list, so we can resolve it once the
+		// pending operations have been acknowledged.
+		else resolves.push(accept);
+	}),
 	set: () => { throw new Error('dataSaved cannot be overwritten'); },
 	enumerable: true
 });

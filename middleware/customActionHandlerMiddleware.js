@@ -18,12 +18,6 @@ exports.onmessage = (ws, req, data, next) => {
 			clientManager.triggerJoin(socketId);
 			return;
 		}
-		// Signaling on user object.
-		case 'signalUserObject': {
-			const message = data.m;
-			clientManager.signalUserObject(user.userId, socketId, message, true);
-			return;
-		}
 		case 'sendMessage': {
 			const message = data.m;
 			const recipients = data.recipients;
@@ -120,6 +114,12 @@ exports.onmessage = (ws, req, data, next) => {
 					clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
 					break;
 				}
+				// Signaling on user object.
+				case 'signalUserObject': {
+					const message = data.m;
+					clientManager.signalUserObject(user.userId, socketId, message, webstrateId, true);
+					return;
+				}
 				// Restoring a document to a previous version.
 				case 'restore': {
 					if (!permissions.includes('w')) {
@@ -180,12 +180,15 @@ exports.onmessage = (ws, req, data, next) => {
 						return;
 					}
 					documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
-						if (err) {
-							console.error(err);
-							if (data.token) {
-								ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-									error: err.message }));
+						if (data.token) {
+							const returnObject = { wa: 'reply', token: data.token };
+							if (err) {
+								console.error(err);
+								returnObject.error = err.message;
+							} else {
+								returnObject.reply = res;
 							}
+							ws.send(JSON.stringify(returnObject));
 						}
 					});
 					break;

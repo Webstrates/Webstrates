@@ -77,7 +77,8 @@ if (config.basicAuth) {
 }
 
 if (config.auth) {
-	app.use(sessions(config.auth.cookie));
+	const { secret, duration } = config.auth.cookie;
+	app.use(sessions({ secret, duration, cookieName: 'session' }));
 
 	passport.serializeUser(sessionManager.serializeUser);
 	passport.deserializeUser(sessionManager.deserializeUser);
@@ -85,7 +86,7 @@ if (config.auth) {
 	for (var key in config.auth.providers) {
 		var PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
 		passport.use(new PassportStrategy(config.auth.providers[key].config,
-			function(accessToken, refreshToken, profile, done) {
+			function(request, accessToken, refreshToken, profile, done) {
 				return process.nextTick(function() {
 					return done(null, profile);
 				});
@@ -95,8 +96,10 @@ if (config.auth) {
 	app.use(passport.initialize());
 	app.use(passport.session());
 
-	for (var provider in config.auth.providers) {
-		app.get('/auth/' + provider, passport.authenticate(provider), function(req, res) {});
+	for (var provider in config.auth.providers) {		
+		app.get('/auth/' + provider, 
+			passport.authenticate(provider, config.auth.providers[provider].authOptions), 
+			function(req, res) {});
 		app.get('/auth/' + provider + '/callback', passport.authenticate(provider, {
 			failureRedirect: '/auth/' + provider
 		}), function(req, res) {
@@ -125,7 +128,7 @@ app.get('/new', httpRequestController.newWebstrateRequestHandler);
 
 // Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
 // Handles mostly all requests.
-app.get(/^\/([A-Z0-9._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%._-]+\.[A-Z0-9_-]+)(?:\/(.*))?)?$/i,
+app.get(/^\/([A-Z0-9._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%.()\[\]{}_-]+\.[A-Z0-9_-]+)(?:\/(.*))?)?$/i,
 	httpRequestController.extractQuery,
 	httpRequestController.requestHandler);
 
@@ -160,7 +163,7 @@ app.post(function(req, res) {
 	Middleware for extracting user data from cookies used for Express HTTP requests only.
  */
 const sessionMiddleware = function(req, res, next) {
-	let webstrateId, token;
+	let webstrateId;
 
 	const match = req.url.match(/^\/([A-Z0-9._-]+)\//i);
 	if (match) [, webstrateId] = match;
@@ -173,9 +176,9 @@ const sessionMiddleware = function(req, res, next) {
 	}
 
 	if (req.query.token) {
-		const userObj = permissionManager.getUserFromAccessToken(webstrateId, token);
+		const userObj = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
 		if (userObj) {
-			req.user.token = token;
+			req.user.token = req.query.token;
 			req.user.username = userObj.username;
 			req.user.provider = userObj.provider;
 		}
@@ -184,23 +187,22 @@ const sessionMiddleware = function(req, res, next) {
 		}
 	}
 
-	req.user.username = req.user.username || 'anonymous';
+	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
 	req.user.provider = req.user.provider || '';
 	req.user.userId = req.user.username + ':' + req.user.provider;
 	req.webstrateId = webstrateId;
 	next();
 };
 
-const dosProtectionMiddleware = require('./middleware/dosProtectionMiddleware.js');
-const keepAliveMiddleware = require('./middleware/keepAliveMiddleware.js');
-const customActionHandlerMiddleware = require('./middleware/customActionHandlerMiddleware.js');
-const shareDbMiddleware = require('./middleware/shareDbMiddleware.js');
-const middleware = [
-	dosProtectionMiddleware,
-	keepAliveMiddleware,
-	customActionHandlerMiddleware,
-	shareDbMiddleware
-];
+const middleware = [];
+
+middleware.push(require('./middleware/dosProtectionMiddleware.js'));
+middleware.push(require('./middleware/keepAliveMiddleware.js'));
+if (config.godApi) {
+	middleware.push(require('./middleware/godApiMiddleware.js'));
+}
+middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
+middleware.push(require('./middleware/shareDbMiddleware.js'));
 
 /**
  * Execute a type of middleware

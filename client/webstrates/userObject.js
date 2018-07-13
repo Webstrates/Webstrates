@@ -59,5 +59,69 @@ if (!coreUtils.getLocationObject().staticMode) {
 			}
 		}
 	};
+
+
+	// Map from event names to a set of the actual listeners: string -> set of listeners.
+	const eventListeners = {};
+	// Map from event names to actual listeners: string -> function.
+	const addEventListenerListeners = {};
+	// Map from event names to actual listeners: string -> function.
+	const removeEventListenerListeners = {};
+
+	userObjectModule.eventExists = (eventName) => eventListeners.hasOwnProperty(eventName);
+
+	userObjectModule.createEvent = (eventName, options = {}) => {
+		if (userObjectModule.eventExists(eventName) && !options.idempotent) {
+			throw new Error(`Event ${eventName} already exists.`);
+		}
+
+		if (typeof options.addListener !== 'undefined') {
+			if (typeof options.addListener !== 'function') {
+				throw new Error(`addListener must be a function, received: ${options.addListener}`);
+			}
+			addEventListenerListeners[eventName] = options.addListener;
+		}
+
+		if (typeof options.removeListener !== 'undefined') {
+			if (typeof options.removeListener !== 'function') {
+				throw new Error(`removeListener must be a function, received: ${options.removeListener}`);
+			}
+			removeEventListenerListeners[eventName] = options.removeListener;
+		}
+
+		if (!userObjectModule.eventExists(eventName)) {
+			eventListeners[eventName] = new Set();
+		}
+	};
+
+	userObjectModule.triggerEvent = (eventName, ...args) => {
+		if (!userObjectModule.eventExists(eventName)) {
+			throw new Error(`Event ${eventName} doesn't exist.`);
+		}
+		eventListeners[eventName].forEach(eventListener => {
+			setImmediate(eventListener, ...args);
+		});
+	};
+
+	publicObject.on = (eventName, eventListener) => {
+		if (!userObjectModule.eventExists(eventName)) {
+			throw new Error(`Event ${eventName} doesn't exist.`);
+		}
+		eventListeners[eventName].add(eventListener);
+		if (addEventListenerListeners[eventName]) {
+			addEventListenerListeners[eventName](eventListener);
+		}
+	};
+
+	publicObject.off = (eventName, eventListener) => {
+		if (!userObjectModule.eventExists(eventName)) {
+			throw new Error(`Event ${eventName} doesn't exist.`);
+		}
+		eventListeners[eventName].delete(eventListener);
+		if (removeEventListenerListeners[eventName]) {
+			removeEventListenerListeners[eventName](eventListener);
+		}
+	};
 }
+
 module.exports = userObjectModule;

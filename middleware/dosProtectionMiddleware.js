@@ -28,7 +28,7 @@ function banClient(remoteAddress, local) {
 	}
 }
 
-if (global.config.rateLimig) {
+if (global.config.rateLimit) {
 	exports.onconnect = (ws, req, next) => {
 		// Check if the user is banned, then terminate.
 		if (addressBanList.has(req.remoteAddress)) {
@@ -57,8 +57,8 @@ if (global.config.rateLimig) {
 			ops.signals++;
 		}
 
-		if ((data.startsWith('{"a":') && ops.ops > config.rateLimit.opsPerInterval)
-		|| (data.startsWith('{"wa":') && ops.signals > config.rateLimit.signalsPerInterval)) {
+		if ((data.a && ops.ops > config.rateLimit.opsPerInterval)
+		|| (data.wa && ops.signals > config.rateLimit.signalsPerInterval)) {
 			console.log('Blacklisting', req.remoteAddress, 'for exceeding rate limitation.');
 			ws.close(1013);
 			banClient();

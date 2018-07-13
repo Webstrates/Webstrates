@@ -65,7 +65,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 				websocket.send({
 					wa: 'deleteAllMessages'
 				});
-				return messages.length > 0;
+				return true;
 			},
 			writable: false
 		});

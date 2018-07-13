@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
+/* global describe after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -66,7 +68,7 @@ describe('Page Loading', function() {
 
 	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + 'new', { waitUntil: 'networkidle' });
+		await pageB.goto(config.server_address + 'new', { waitUntil: 'networkidle2' });
 
 		const redirectedUrl = pageB.url();
 		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
@@ -75,7 +77,7 @@ describe('Page Loading', function() {
 
 	it('root (/) redirects to /frontpage/', async () => {
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address, { waitUntil: 'networkidle' });
+		await pageB.goto(config.server_address, { waitUntil: 'networkidle2' });
 
 		const redirectedUrl = pageB.url();
 		assert.equal(redirectedUrl, config.server_address + 'frontpage/');

@@ -21,7 +21,7 @@
   "contributors": [
     {
       "name": "Clemens N. Klokmose",
-      "email": "clemens.cavi.au.dk"
+      "email": "clemens@cavi.au.dk"
     },
     {
       "name": "Roman Rädle",
@@ -30,7 +30,7 @@
   ],
   "dependencies": {
     "archiver": "^1.3.0",
-    "babel-core": "^6.26.0",
+    "babel-core": "^6.26.3",
     "babel-loader": "^7.1.2",
     "babel-preset-es2015": "^6.24.1",
     "body-parser": "^1.17.2",
@@ -40,18 +40,21 @@
     "diff-match-patch": "^1.0.0",
     "express": "^4.8.0",
     "express-ws": "^3.0.0",
+    "filewatcher-webpack-plugin": "^1.2.0",
     "fs-sync": "^1.0.2",
     "html-to-jsonml": "0.0.2",
     "http-auth": "^2.2.0",
     "human-readable-ids": "^1.0.3",
     "json0-ot-diff": "^1.0.1",
     "jsonml-tools": "git+http://github.com/Webstrates/jsonml-tools.git#master",
+    "md5-file": "^4.0.0",
     "mime-types": "^2.1.17",
     "mongodb": "^2.1.19",
     "multer": "^1.2.0",
     "optimist": "^0.6.1",
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
+    "passport-google-oauth2": "^0.1.6",
     "redis": "^2.6.3",
     "request": "^2.83.0",
     "sharedb": "^1.0.0-beta.6",
@@ -60,14 +63,15 @@
     "shortid": "^2.0.1",
     "tmp": "0.0.33",
     "webpack": "^2.5.1",
+    "wrapper-webpack-plugin": "^1.0.0",
     "ws": "0.4.32",
     "yauzl": "^2.9.1"
   },
   "devDependencies": {
+    "chai": "^4.1.2",
     "eslint": "^4.7.2",
     "eslint-loader": "^1.9.0",
-    "chai": "^4.1.2",
     "mocha": "^3.5.3",
-    "puppeteer": "^0.11.0"
+    "puppeteer": "^1.0.0"
   }
 }

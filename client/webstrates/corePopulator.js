@@ -27,10 +27,10 @@ corePopulator.populate = function(rootElement, doc) {
 		}
 
 		const op = [{ 'p': [], 'oi': [
-			'html', {},
-			[ 'head', {},
-				[ 'title', {}, webstrateId ] ],
-			[ 'body', {} ]
+			'html', {}, '\n',
+			[ 'head', {}, '\n',
+				[ 'title', {}, webstrateId ], '\n'], '\n',
+			[ 'body', {}, '\n' ]
 		]}];
 		doc.submitOp(op);
 	}
@@ -41,7 +41,6 @@ corePopulator.populate = function(rootElement, doc) {
 		console.error(staticMode, doc.type);
 		throw `Unsupported document type: ${doc.type.name}`;
 	}
-
 
 	// In order to execute scripts synchronously, we insert them all without execution, and then
 	// execute them in order afterwards.

@@ -1,4 +1,5 @@
 'use strict';
+const coreUtils = require('./coreUtils');
 /*
 Webstrates PathTree (webstrates.pathree.js)
 
@@ -61,19 +62,6 @@ function PathTree(DOMNode, parentPathTree, overwrite) {
 }
 
 /**
- * Check whether a DOM Node is a descendant of a template tag (or actually a documentFragment).
- * One might assume this could be done with `element.closest("template")`, but that won't be the
- * case, because a documentFragment technically isn't a parent (and also doesn't have any parent),
- * so there will be no tree to search upwards through after we reach the documentFragment.
- * @param  {DOMNode} DOMNode DOM Node to check.
- * @return {boolean}         True if the DOM Node is a descendant of a template.
- * @private
- */
-function elementIsTemplateDescendant(element) {
-	return document.documentElement.ownerDocument !== element.ownerDocument;
-}
-
-/**
  * Check whether a DOM Node should be persisted on the server (i.e. whether it's transient or not).
  * For a DOM Node to be transient, it has to be an element (i.e. not a text node), exist outside of
  * a template tag, as well as not be in the list of transient elements (config.transientElements).
@@ -85,7 +73,7 @@ function isTransientElement(DOMNode) {
 	// Only elements can be transient
 	return DOMNode.nodeType === document.ELEMENT_NODE
 		// Nothing in templates can be transient
-		&& !elementIsTemplateDescendant(DOMNode)
+		&& !coreUtils.elementIsTemplateDescendant(DOMNode)
 		// Only elements passing a function defined in config.isTransientElement are transient.
 		&& config.isTransientElement && config.isTransientElement(DOMNode);
 }
@@ -193,7 +181,7 @@ PathTree.prototype.check = function() {
 		: (this.DOMNode.content && this.DOMNode.content.childNodes) || [];
 	childNodes = Array.from(childNodes).filter(function(childNode) {
 		return !childNode.tagName || childNode.tagName.toLowerCase() !== 'transient'
-			|| elementIsTemplateDescendant(childNode);
+			|| coreUtils.elementIsTemplateDescendant(childNode);
 	});
 	if (definedChildNodesInDom.length !== childNodes.length) {
 		console.log(definedChildNodesInDom, childNodes);
@@ -273,7 +261,6 @@ PathTree.elementAtPath = function(parentElement, path) {
 		parentElement = parentPathNode.DOMNode;
 		return [childElement, childIndex, parentElement, nextJsonmlIndex];
 	}
-
 	return PathTree.elementAtPath(childPathNode, path.slice(1));
 };
 

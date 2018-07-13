@@ -58,7 +58,11 @@ if (pubsub) {
 					message.message, message.recipients);
 				break;
 			case 'signalUserObject':
-				module.exports.signalUserObject(message.userId, message.senderSocketId, message.message);
+				module.exports.signalUserObject(message.userId, message.senderSocketId, message.message,
+					message.webstrateId);
+				break;
+			case 'newAsset':
+				module.exports.announceNewAsset(message.webstrateId, message.asset);
 				break;
 			case 'cookieUpdate':
 				module.exports.updateCookie(message.userId, message.webstrateId, message.update.key,
@@ -91,7 +95,7 @@ module.exports.addClient = function(ws, user) {
 			provider: user.provider,
 			displayName: user.displayName,
 			userUrl: user._json && user._json.html_url,
-			avatarUrl: user._json && user._json.avatar_url
+			avatarUrl: user._json && (user._json.avatar_url || (user._json.image && user._json.image.url))
 		},
 		webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 	};
@@ -449,19 +453,45 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
  *                                 forth between instances.
  * @public
  */
-module.exports.signalUserObject = function(userId, senderSocketId, message, local) {
+module.exports.signalUserObject = function(userId, senderSocketId, message, webstrateId, local) {
 	module.exports.broadcastToUserClients(userId, {
 		wa: 'signalUserObject',
+		m: message,
 		s: senderSocketId,
-		m: message
+		sw: webstrateId,
 	});
 
 	if (local) {
 		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'signalUserObject', userId, senderSocketId, message
+			action: 'signalUserObject', userId, senderSocketId, message, webstrateId, WORKER_ID
 		}));
 	}
 };
+
+/**
+ * Send message all clients in a webstrate about a new asset.
+ * @param {string} webstrateId WebstrateId.
+ * @param {Object} asset       Asset object.
+ * @param {bool}   local       Whether the event has happened locally (on this server instance) or
+ *                             remotely (on another server instance). We should only forward local
+ *                             publish messages, otherwise we end up in a livelock where we
+ *                             continuously send the same event back and forth between instances.
+ * @public
+ */
+module.exports.announceNewAsset = function(webstrateId, asset, local) {
+	module.exports.sendToClients(webstrateId, {
+		wa: 'asset',
+		d: webstrateId,
+		asset: asset,
+	});
+
+	if (local) {
+		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+			action: 'newAsset', webstrateId, asset, WORKER_ID
+		}));
+	}
+};
+
 
 /**
  * Update cookies. Any update made to a user's is sent to all of the user's conneted clients.
@@ -469,10 +499,10 @@ module.exports.signalUserObject = function(userId, senderSocketId, message, loca
  * @param {string} webstrateId WebstrateId.
  * @param {string} key         Key to update (or add) in the cookie.
  * @param {string} value       Value associated with key.
- * @param {bool}   local       Whether the publis has happened locally (on this server
+ * @param {bool}   local       Whether the event has happened locally (on this server
  *                             instance) or remotely (on another server instance). We should
  *                             only forward local publish messages, otherwise we end up in a
- *                             livelock where we continuously send the same join back and
+ *                             livelock where we continuously send the same event back and
  *                             forth between instances.
  * @public
  */

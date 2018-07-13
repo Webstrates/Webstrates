@@ -1,6 +1,7 @@
 'use strict';
 
 const fss = require('fs-sync');
+const crypto = require('crypto');
 
 /** Create config file if it doesn't already exist by copying config-sample. */
 const createConfig = () => {
@@ -10,7 +11,7 @@ const createConfig = () => {
 			console.error('Sample config not present either, terminating');
 			process.exit(1);
 		} else {
-			fss.copy(APP_PATH + '/config-sample.json', APP_PATH + '/config.json');
+			fss.write(APP_PATH + '/config.json', JSON.stringify(getSampleConfig(), null, '\t'));
 		}
 	}
 };
@@ -18,8 +19,13 @@ const createConfig = () => {
 /** Read config file from disk. */
 const getConfig = () => fss.readJSON(APP_PATH + '/config.json');
 
-/** Read sample config from disk. */
-const getSampleConfig = () => fss.readJSON(APP_PATH + '/config-sample.json');
+/** Read sample config from disk and add a randomly generated cookie encryption key. */
+const getSampleConfig = () => {
+	const config = fss.readJSON(APP_PATH + '/config-sample.json');
+	const randomSecret = crypto.randomBytes(16).toString('base64');
+	config.auth.cookie.secret = randomSecret;
+	return config;
+};
 
 /**
  * Merge two objects. Use target object with filler as a prototype, e.g. use the property on

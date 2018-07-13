@@ -1,11 +1,11 @@
 'use strict';
-const coreUtils = require('./coreUtils');
-
 /* JsonML <-> HTML library by Kristian B. Antonsen
  * This library is based on jQuery JSONML Plugin by Trevor Norris.
  * This document is licensed as free software under the terms of the
  * MIT License: http://www.opensource.org/licenses/mit-license.php
  */
+const coreUtils = require('./coreUtils');
+const coreDOM = require('./coreDOM');
 
 const coreJsonML = {};
 
@@ -81,14 +81,15 @@ function toHTML(elem, xmlNs, scripts) {
 					index = coreUtils.sanitizeString(index);
 					if (xmlNs === 'http://www.w3.org/2000/svg') {
 						if (index === 'href' || index === 'xlink:href') {
-							selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value);
+							selector.setAttributeNS('http://www.w3.org/1999/xlink', index, value,
+								coreDOM.elementOptions);
 						}
 					}
 					const isSvgPath = selector.tagName.toLowerCase() === 'path' && index === 'd';
 					if (isSvgPath) {
 						selector.__d = value;
 					}
-					selector.setAttribute(coreUtils.unescapeDots(index), value);
+					selector.setAttribute(coreUtils.unescapeDots(index), value, coreDOM.elementOptions);
 				}
 
 				// Add scripts to our scripts list, so we can execute them later synchronously.

@@ -2,6 +2,7 @@
 const coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
 const globalObject = require('./globalObject');
+const nodeObjects = require('./nodeObjects');
 
 // If webstrate is transcluded in an iframe, we should probably raise an event on the frame element
 // in the parent document, so the parent document can trigger the transcluded event.
@@ -53,8 +54,11 @@ function addTransclusionEvent(node, eventObject) {
 
 // Wait for all webstrate objects to be defined, then create a transcluded event on all iframe
 // elements and trigger the event once it has loaded (i.e. been populated).
-coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
-	nodes.forEach((eventObject, node) => addTransclusionEvent(node, eventObject));
+coreEvents.addEventListener('webstrateObjectsAdded', (nodeTree) => {
+	coreUtils.recursiveForEach(nodeTree, (node) => {
+		const eventObject = nodeObjects.getEventObject(node);
+		addTransclusionEvent(node, eventObject);
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 // Also listen for future webstrate objects that gets added.

@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
+/* global describe before after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -19,10 +21,10 @@ describe('Transclusion', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
-		await pageB.goto(urlInner, { waitUntil: 'networkidle' });
+		await pageB.goto(urlInner, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -31,7 +33,7 @@ describe('Transclusion', function() {
 
 	it('body should initially be empty', async () => {
 		const bodyContents = await pageA.evaluate(() => document.body.innerHTML);
-		assert.isEmpty(bodyContents, '');
+		assert.isEmpty(bodyContents.trim());
 	});
 
 	it('iframe transcluded event gets triggered', async () => {

@@ -13,8 +13,10 @@ module.exports = {
 	},
 	globals: {
 		"config": true,
+		"serverConfig": true,
 		"WORKER_ID": true,
 		"APP_PATH": true
+
 	},
 	rules: {
 		'max-len': ['warn', { code: 100, tabWidth: 2 }],
@@ -39,6 +41,7 @@ module.exports = {
 		semi: ['error', 'always'],
 		// Only warn when escaping unnecessary characters in a regex (default is error).
 		'no-useless-escape': ['warn'],
+		'no-irregular-whitespace': ['warn', { "skipRegExps": true }],
 		// Only warn hen unreachable code exists (default is error).
 		'no-unreachable': ['warn'],
 		'no-unused-vars': ['warn', {

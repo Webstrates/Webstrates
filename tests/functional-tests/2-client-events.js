@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
+/* global describe before after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -5,6 +7,7 @@ const util = require('../util.js');
 
 describe('Client Events', function() {
 	this.timeout(10000);
+	//this.retries(3);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -13,7 +16,7 @@ describe('Client Events', function() {
 	before(async () => {
 		browser = await puppeteer.launch();
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {
@@ -39,7 +42,7 @@ describe('Client Events', function() {
 		});
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
 		const clientJoined = await util.waitForFunction(pageA, () => window.__test_joiningClientId);
 		assert.isTrue(clientJoined);
@@ -66,7 +69,7 @@ describe('Client Events', function() {
 	});
 
 	it('clientPart event should get triggered when another client parts', async () => {
-		pageA.evaluate(() => {
+		await pageA.evaluate(() => {
 			window.webstrate.on('clientPart', clientId => {
 				window.__test_partingClientId = clientId;
 			});
@@ -80,7 +83,6 @@ describe('Client Events', function() {
 
 	it('parting clientId should match second client\'s clientId', async () => {
 		const partingClientId = await pageA.evaluate(() => window.__test_partingClientId);
-
 		assert.equal(secondClientId, partingClientId);
 	});
 

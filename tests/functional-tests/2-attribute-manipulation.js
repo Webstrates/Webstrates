@@ -1,3 +1,5 @@
+// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
+/* global describe before after it */
 const puppeteer = require('puppeteer');
 const assert = require('chai').assert;
 const config = require('../config.js');
@@ -14,11 +16,11 @@ describe('Attribute Manipulation', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		await pageA.goto(url, { waitUntil: 'networkidle' });
-		pageA.on('console', (...args) => console.log(...args));
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		util.showLogs(pageA);
 
 		pageB = await browser.newPage();
-		await pageB.goto(url, { waitUntil: 'networkidle' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
 	after(async () => {

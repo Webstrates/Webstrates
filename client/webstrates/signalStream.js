@@ -2,6 +2,7 @@
 const coreUtils = require('./coreUtils');
 const coreEvents = require('./coreEvents');
 const globalObject = require('./globalObject');
+const nodeObjects = require('./nodeObjects');
 const signaling = require('./signaling');
 
 const signalStreamModule = {};
@@ -11,12 +12,11 @@ coreEvents.addEventListener('populated', (rootElement, _webstrateId) => {
 	clientId = globalObject.publicObject.clientId;
 });
 
-
 // Intercept streaming signals, so they're not processed as regular signals by the signaling module.
 signaling.addInterceptor(payload => {
 	const message = payload.m;
 	const senderClientId = payload.s;
-	// Only handle our own internal webrtc messages and also ignore our own messages.
+	// Only handle internal webrtc messages and also ignore our own messages.
 	if (typeof message.__internal_webrtc === 'undefined' || senderClientId === clientId) {
 		return false;
 	}
@@ -46,11 +46,27 @@ function handleSignal(wid, senderClientId, message) {
 	if (message.wantToStream) {
 		Array.from(wantToListenCallbacks.get(wid).values()).forEach(callback => {
 			const ownId = coreUtils.randomString();
-			// TODO: If client on the other end doesn't establish a connection, this object may never
-			// get used and should get deleted if still inactive after a timeout.
-			const webrtcClient = new WebRTCClient(ownId, message.senderId, senderClientId,
+			// Other clients may be responding to the same recipientId/stream. Therefore, the streamer
+			// can't create a WebRTCClient with the original recipientId as these would override each
+			// other in the webrtcClients map (the streamer would be creating two entries with the same
+			// recipientId). Instead, the streamer needs to generate a new recipientId for each listener
+			// to use, so the streamer can distinguish the clients from each other. However, it's
+			// difficult to communicate this back to the listeners. Therefore, the listener instead
+			// creates a new recipientId, telling the streamer "In the future, I'll address you with this
+			// id instead".
+			const newRecipientId = coreUtils.randomString();
+			const webrtcClient = new WebRTCClient(ownId, newRecipientId, senderClientId,
 				node, { listener: true });
 			webrtcClients.get(wid).set(ownId, webrtcClient);
+
+			// If the client hasn't connected after 30 seconds, we conclude that it won't happen and clean
+			// up the client we created.
+			setTimeout(() => {
+				if (!webrtcClient.stub.isConnected()) {
+					webrtcClients.get(wid).delete(ownId);
+				}
+			}, 30 * 1000);
+
 			callback(senderClientId, 'META_DATA_IS_DEPRECATED', clientAcceptCallback => {
 
 				webrtcClient.onRemoteStream(clientAcceptCallback);
@@ -58,6 +74,7 @@ function handleSignal(wid, senderClientId, message) {
 					__internal_webrtc: true,
 					wantToListen: true,
 					recipientId: message.senderId,
+					newRecipientId,
 					senderId: ownId,
 				}, senderClientId);
 				return webrtcClient.stub;
@@ -68,12 +85,13 @@ function handleSignal(wid, senderClientId, message) {
 
 	if (message.wantToListen) {
 		const callback = wantToStreamCallbacks.get(wid).get(message.recipientId);
+
 		if (callback) {
 			callback(senderClientId, (localStream, meta, onConnectCallback) => {
-				const webrtcClient = new WebRTCClient(message.recipientId, message.senderId, senderClientId,
-					node, { streamer: true });
+				const webrtcClient = new WebRTCClient(message.newRecipientId, message.senderId,
+					senderClientId, node, { streamer: true });
 				webrtcClient.onConnect(onConnectCallback);
-				webrtcClients.get(wid).set(message.recipientId, webrtcClient);
+				webrtcClients.get(wid).set(message.newRecipientId, webrtcClient);
 				webrtcClient.start(localStream);
 				return webrtcClient.stub;
 			});
@@ -86,11 +104,10 @@ function handleSignal(wid, senderClientId, message) {
 		if (webrtcClient) {
 			webrtcClient.handleMessage(message);
 		} else {
-			console.error('Got message for invalid recipient', wid, message, webrtcClients);
+			console.error('Got message for unknown recipient', message, webrtcClients);
 		}
 		return;
 	}
-
 }
 
 const wantToStreamCallbacks = new Map();
@@ -121,14 +138,14 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 				__internal_webrtc: true,
 				senderId: ownId,
 				recipientId
-			});
+			}, clientRecipientId);
 		}).catch(errorHandler);
 	};
 
 	const handleMessage = (message) => {
 		if(!peerConnection) start();
 
-		if(message.sdp) {
+		if (message.sdp) {
 			peerConnection.setRemoteDescription(new RTCSessionDescription(message.sdp)).then(function() {
 				// Only create answers in response to offers
 				if(message.sdp.type == 'offer') {
@@ -147,7 +164,7 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 				__internal_webrtc: true,
 				senderId: ownId,
 				recipientId
-			});
+			}, clientRecipientId);
 		}
 	};
 
@@ -156,10 +173,11 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 			case 'connected':
 				onConnectCallback && onConnectCallback(event);
 				break;
+			case 'closed':
 			case 'disconnected':
 			case 'failed':
 				onCloseCallback && onCloseCallback(event);
-				// TODO: Possibly delete this WebRTCClient object as it won't be reused.
+				webrtcClients.delete(ownId);
 				break;
 		}
 	};
@@ -173,10 +191,12 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 	};
 
 	return {
-		id: ownId, active, listener, streamer,
+		id: ownId, active, listener, streamer, peerConnection,
 		onRemoteStream: callback => onRemoteStreamCallback = callback,
 		onConnect: callback => onConnectCallback = callback,
 		stub: {
+			isConnected: () => !!peerConnection &&
+				['checking', 'connected', 'completed'].includes(peerConnection.iceConnectionState),
 			close: () => peerConnection.close(),
 			onclose: callback => onCloseCallback = callback
 		},
@@ -264,7 +284,10 @@ setupSignalStream(globalObject.publicObject, globalObject);
 // Add signalStream events to all webstrate objects (with a wid) after the document has been
 // populated.
 coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
-	nodes.forEach((eventObject, node) => setupSignalStream(node.webstrate, eventObject));
+	coreUtils.recursiveForEach(nodes, (node) => {
+		const eventObject = nodeObjects.getEventObject(node);
+		setupSignalStream(node.webstrate, eventObject);
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 // Add signalStream events to all webstrate objects (with wid) after they're added continually.
