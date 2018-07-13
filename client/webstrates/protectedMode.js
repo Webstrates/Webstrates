@@ -44,7 +44,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 	// Warn the user that any changes made in the DOM editor in the Developer Tools will not persist.
 	const protectedParts = (elementsProtected && attributesProtected) ? 'the document'
-		: (elementsProtected ? 'elements' : 'attributes');
+	 : (elementsProtected ? 'elements' : 'attributes');
 	console.warn('This document is protected. Any changes made to ' + protectedParts + ' through ' +
 		'the DOM editor in the Developer Tools will be perceived as transient.');
 
@@ -57,7 +57,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	 * Checks whether an attribute is allowed to be peristed (i.e. non-transient).
 	 */
 	const isApprovedAttribute = (DOMNode, attributeName) => !attributesProtected
-		|| (DOMNode.__approvedAttributes && DOMNode.__approvedAttributes.has(attributeName));
+	 || (DOMNode.__approvedAttributes && DOMNode.__approvedAttributes.has(attributeName));
 
 	// Overwrite config.isTransientElement, so nodes with the `__approved` property are transient. We
 	// also pass on the call to the original isTransientElement function defined in the client config.
@@ -82,7 +82,16 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	 * @returns True if the options object has a property approved and set to true.
 	 */
 	const approveNode = node => {
-		node.__approved = true;
+
+		// No need to reapprove node.
+		if (node.__approved) return;
+
+		// Use defineProperty and enumerable false it during enumeration.
+		Object.defineProperty(node, '__approved', {
+			get: () => { return true; },
+			enumerable: false
+		});
+
 		// overriding the innerHTML property of the node to approve its children when
 		// innerHTML is used
 		if (node.nodeType === Node.ELEMENT_NODE) {
@@ -91,8 +100,8 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 			Object.defineProperty(node, 'innerHTML', {
 				set: value => {
 					const returnValue = innerHTMLDescriptor.set.call(node, value);
-					// Approve all children.
-					coreUtils.recursiveForEach(node, approveNode);
+					// Approve all children and their attributes.
+					coreUtils.recursiveForEach(node, approveNodeAndAttributes);
 					return returnValue;
 				},
 				get: () => innerHTMLDescriptor.get.call(node),
@@ -101,9 +110,23 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		}
 	};
 
+	const approveNodeAndAttributes = node => {
+		approveNode(node);
+		if (node.attributes) {
+			Array.from(node.attributes).forEach(attr => {
+				approveNodeAttribute(node, attr.name);
+			});
+		}
+	};
+
 	const approveNodeAttribute = (node, attrName) => {
 		if (!node.__approvedAttributes) {
-			node.__approvedAttributes = new Set();
+			const approvedAttributes = new Set();
+			// Use defineProperty and enumerable false it during enumeration.
+			Object.defineProperty(node, '__approvedAttributes', {
+				get: () => { return approvedAttributes; },
+				enumerable: false
+			});
 		}
 
 		if (!node.__approvedAttributes.has(attrName)) {
@@ -185,7 +208,10 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 	const setAttribute = Element.prototype.setAttribute;
 	Element.prototype.setAttribute = function (name, value, options, ...unused) {
-		if (options && options.approved) approveNodeAttribute(this, name);
+		// Approve any attribute set on an approved element by checking 'this.__approved'.
+		// Although, third-party libraries can still get their attributes approved by this loose
+		// check, it will still protect browser extensions from spamming DOM elements with attributes.
+		if (this.__approved || (options && options.approved)) approveNodeAttribute(this, name);
 		setAttribute.call(this, name, value, options, ...unused);
 	};
 
@@ -195,6 +221,66 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		if (options && options.approved) removeApproveNodeAttribute(this, name);
 	};
 
+	// Approve the 'class' attribute that will be added when using Element.classList.add.
+	const classListDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'classList');
+	Object.defineProperty(Element.prototype, 'classList', {
+		set: function (value) {
+			return classListDescriptor.set.call(this, value);
+		},
+		get: function () {
+			const element = this;
+			const tokenList = classListDescriptor.get.call(element);
+
+			if (!tokenList.__hooked) {
+				// Override DOMTokenList.add
+				const add = tokenList.add;
+				DOMTokenList.prototype.add = function (...tokens) {
+					if (element.__approved) approveNodeAttribute(element, 'class');
+					return add.call(this, ...tokens);
+				};
+
+				// Override DOMTokenList.toggle
+				const toggle = tokenList.toggle;
+				DOMTokenList.prototype.toggle = function (token, force, ...unused) {
+					if (element.__approved) approveNodeAttribute(element, 'class');
+					return toggle.call(this, token, force, ...unused);
+				};
+
+				// Override DOMTokenList.replace
+				const replace = tokenList.replace;
+				DOMTokenList.prototype.replace = function (oldToken, newToken, ...unused) {
+					if (element.__approved) approveNodeAttribute(element, 'class');
+					return replace.call(this, oldToken, newToken, ...unused);
+				};
+
+				// Use defineProperty and enumerable false it during enumeration.
+				Object.defineProperty(tokenList, '__hooked', {
+					get: () => { return true; },
+					enumerable: false
+				});
+			}
+
+			return tokenList;
+		},
+		configurable: false
+	});
+
+	// Approve the 'contenteditable' attribute that will be added when setting the
+	// HTMLElement.contentEditable property.
+	const contentEditableDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,
+		'contentEditable');
+	Object.defineProperty(HTMLElement.prototype, 'contentEditable', {
+		set: function (value) {
+			// The approved attribute contentEditable has to be lower-case 'e' in order to be approved
+			// properly in the isTransientAttribute check.
+			if (this.__approved) approveNodeAttribute(this, 'contenteditable');
+			return contentEditableDescriptor.set.call(this, value);
+		},
+		get: function () {
+			return contentEditableDescriptor.get.call(this);
+		},
+		configurable: false
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 module.exports = protectedModeModule;
