@@ -253,24 +253,24 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 			// This check is require to avoid constant reassignment of DOMTokenList.{add,toggle,replace},
 			// which ultimately will result in an "RangeError: Maximum call stack size exceeded" error.
-			if (!tokenList.__hooked) {
+			if (tokenList && !tokenList.__hooked) {
 				// Override DOMTokenList.add
 				const add = tokenList.add;
-				DOMTokenList.prototype.add = function (...tokens) {
+				tokenList.add = function (...tokens) {
 					if (element.__approved) approveElementAttribute(element, 'class');
 					return add.call(this, ...tokens);
 				};
 
 				// Override DOMTokenList.toggle
 				const toggle = tokenList.toggle;
-				DOMTokenList.prototype.toggle = function (token, force, ...unused) {
+				tokenList.toggle = function (token, force, ...unused) {
 					if (element.__approved) approveElementAttribute(element, 'class');
 					return toggle.call(this, token, force, ...unused);
 				};
 
 				// Override DOMTokenList.replace
 				const replace = tokenList.replace;
-				DOMTokenList.prototype.replace = function (oldToken, newToken, ...unused) {
+				tokenList.replace = function (oldToken, newToken, ...unused) {
 					if (element.__approved) approveElementAttribute(element, 'class');
 					return replace.call(this, oldToken, newToken, ...unused);
 				};
@@ -284,6 +284,19 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 			}
 
 			return tokenList;
+		},
+		configurable: false
+	});
+
+	// Approve the 'id' attribute that will be added when setting the Element.id property.
+	const idDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'id');
+	Object.defineProperty(Element.prototype, 'id', {
+		set: function (value) {
+			if (this.__approved) approveElementAttribute(this, 'id');
+			return idDescriptor.set.call(this, value);
+		},
+		get: function () {
+			return idDescriptor.get.call(this);
 		},
 		configurable: false
 	});

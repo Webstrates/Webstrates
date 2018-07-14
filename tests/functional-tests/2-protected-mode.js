@@ -157,7 +157,7 @@ describe('Protected Mode', function () {
 				{ approved: true }));
 
 		const hasAttributeA = await util.waitForFunction(pageA, () =>
-			document.body.lastElementChild.getAttribute('y'));
+			document.body.lastElementChild.hasAttribute('y'));
 		assert.isTrue(hasAttributeA, 'attribute should be visible');
 
 		const attribute = await pageA.evaluate(() => document.body.lastElementChild.getAttribute('y'));
@@ -165,8 +165,12 @@ describe('Protected Mode', function () {
 	});
 
 	it('non-transient attribute set should be visible on other client', async () => {
-		const hasAttributeB = await util.waitForFunction(pageB, () => document.body.getAttribute('y'));
-		assert.isFalse(hasAttributeB, 'attribute should be visible');
+		const hasAttributeB = await util.waitForFunction(pageB, () =>
+			document.body.lastElementChild.hasAttribute('y'));
+		assert.isTrue(hasAttributeB, 'attribute should be visible');
+
+		const attribute = await pageB.evaluate(() => document.body.lastElementChild.getAttribute('y'));
+		assert.equal(attribute, 'Non-transient attribute', 'Attribute is \'Non-transient attribute\'');
 	});
 
 	it('edit on non-transient attribute set should be visible to other clients', async () => {
@@ -185,4 +189,46 @@ describe('Protected Mode', function () {
 		assert.isTrue(correctAttributeValueB, 'attribute set on client B gets reflected to A');
 	});
 
+	it('id property should be visible as non-transient id attribute on inserting client',
+		async () => {
+			await pageA.evaluate(() => document.body.id = 'body-id');
+
+			const hasAttributeId = await util.waitForFunction(pageA, () =>
+				document.body.hasAttribute('id'));
+			assert.isTrue(hasAttributeId, 'attribute not visible');
+
+			const attributeValue = await pageA.evaluate(() => document.body.id);
+			assert.equal(attributeValue, 'body-id', 'The id attribute is not \'body-id\'');
+		});
+
+	it('id property should be visible as non-transient id attribute on other client', async () => {
+		const hasAttributeId = await util.waitForFunction(pageB, () =>
+			document.body.hasAttribute('id'));
+		assert.isTrue(hasAttributeId, 'attribute not visible');
+
+		const attributeValue = await pageB.evaluate(() => document.body.id);
+		assert.equal(attributeValue, 'body-id', 'The id attribute is not \'body-id\'');
+	});
+
+	it('classList.add should be visible as non-transient class attribute on inserting client',
+		async () => {
+			await pageA.evaluate(() => document.body.classList.add('class1'));
+
+			const hasAttributeClass = await util.waitForFunction(pageA, () =>
+				document.body.getAttribute('class'));
+			assert.isTrue(hasAttributeClass, 'attribute not visible');
+
+			const attributeValue = await pageA.evaluate(() => document.body.getAttribute('class'));
+			assert.equal(attributeValue, 'class1', 'The class attribute is not \'class1\'');
+		});
+
+	it('classList.add should be visible as non-transient class attribute on other client',
+		async () => {
+			const hasAttributeClass = await util.waitForFunction(pageB, () =>
+				document.body.hasAttribute('class'));
+			assert.isTrue(hasAttributeClass, 'attribute not visible');
+
+			const attributeValue = await pageB.evaluate(() => document.body.getAttribute('class'));
+			assert.equal(attributeValue, 'class1', 'The id attribute is not \'class1\'');
+		});
 });
