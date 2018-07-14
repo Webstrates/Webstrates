@@ -416,7 +416,7 @@ module.exports.addTagToSnapshot = function(snapshot, next) {
  */
 function transformDocumentToVersion({ webstrateId, snapshot, version }, next) {
 	if (!snapshot) {
-		snapshot = { v: 0 };
+		snapshot = { v: 0, id: webstrateId };
 	}
 
 	module.exports.getOps({ webstrateId, initialVersion: snapshot.v, version }, function(err, ops) {
