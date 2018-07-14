@@ -461,7 +461,7 @@ module.exports.signalUserObject = function(userId, senderSocketId, message, webs
 		sw: webstrateId,
 	});
 
-	if (local) {
+	if (local && pubsub) {
 		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 			action: 'signalUserObject', userId, senderSocketId, message, webstrateId, WORKER_ID
 		}));
@@ -485,7 +485,7 @@ module.exports.announceNewAsset = function(webstrateId, asset, local) {
 		asset: asset,
 	});
 
-	if (local) {
+	if (local && pubsub) {
 		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 			action: 'newAsset', webstrateId, asset, WORKER_ID
 		}));
