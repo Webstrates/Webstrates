@@ -1,7 +1,7 @@
 const fs = require('fs');
 const path = require('path');
 const webpack = require('webpack');
-const WrapperPlugin = require('wrapper-webpack-plugin');
+const wrapperPlugin = require('wrapper-webpack-plugin');
 const fileWatcherPlugin = require('filewatcher-webpack-plugin');
 const configHelper = require('./helpers/ConfigHelper.js');
 
@@ -44,10 +44,23 @@ const config = {
 		// Our own config and debug module
 		new webpack.ProvidePlugin({ config: path.resolve(__dirname, 'client/config') }),
 		new webpack.DefinePlugin({serverConfig: JSON.stringify(cleanServerConfig) }),
-		new WrapperPlugin({
+		new wrapperPlugin({
 			header: filename => fs.readFileSync('./client/wrapper-header.js', 'utf-8'),
 			footer: filename => fs.readFileSync('./client/wrapper-footer.js', 'utf-8'),
-		})
+		}),
+		{
+			// Add a hash of webstrates.js to the HTML that's being served to the client in order to
+			// invalidate webstrates.js when it gets updated.
+			apply(compiler) {
+				compiler.plugin('done', (stats) => {
+					const htmlInputPath = './client/client.html';
+					const htmlOutputPath = path.resolve(compiler.options.output.path, 'index.html');
+					const htmlInput = fs.readFileSync(htmlInputPath, 'utf-8');
+					const htmlOutput = htmlInput.replace('{{hash}}', stats.hash);
+					fs.writeFileSync(htmlOutputPath, htmlOutput);
+				});
+			}
+		}
 	]
 };
 

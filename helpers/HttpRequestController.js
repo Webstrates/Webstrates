@@ -616,7 +616,7 @@ function deleteWebstrate(req, res) {
  */
 function serveWebstrate(req, res) {
 	var maxAge = config.maxAge || '1d';
-	return res.sendFile(APP_PATH + '/static/client.html', { maxAge });
+	return res.sendFile(APP_PATH + '/static/index.html', { maxAge });
 }
 
 /**

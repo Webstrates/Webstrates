@@ -4,5 +4,6 @@ npm-debug.log
 package-lock.json
 config.json
 uploads
+static/index.html
 static/webstrates.js
 static/webstrates.js.map
