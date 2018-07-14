@@ -54,7 +54,7 @@ const config = {
 			apply(compiler) {
 				compiler.plugin('done', (stats) => {
 					const htmlInputPath = './client/client.html';
-					const htmlOutputPath = path.resolve(compiler.options.output.path, 'index.html');
+					const htmlOutputPath = path.resolve(compiler.options.output.path, 'client.html');
 					const htmlInput = fs.readFileSync(htmlInputPath, 'utf-8');
 					const htmlOutput = htmlInput.replace('{{hash}}', stats.hash);
 					fs.writeFileSync(htmlOutputPath, htmlOutput);
