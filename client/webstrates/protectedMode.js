@@ -76,13 +76,23 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 			attributeName));
 
 	/**
-	 * Checks if the options parameter is an object, if it has the approved property, and
-	 * if the approved property is set to true.
-	 * @param {*} options An object eventually having a property approved set to true.
-	 * @returns True if the options object has a property approved and set to true.
+	 * Approves a node to make it perist on the server. Also, overriding innerHTML of the node to
+	 * approve all descendents when set through innerHTML.
+	 * 
+	 * @param {Node} node An object eventually having a property approved set to true.
 	 */
 	const approveNode = node => {
-		node.__approved = true;
+
+		// No need to reapprove node, and no need to override innerHTML again.
+		if (node.__approved) return;
+
+		// Use defineProperty and enumerable false to disallow overriding it and
+		// hide it during enumeration.
+		Object.defineProperty(node, '__approved', {
+			get: () => { return true; },
+			enumerable: false
+		});
+
 		// overriding the innerHTML property of the node to approve its children when
 		// innerHTML is used
 		if (node.nodeType === Node.ELEMENT_NODE) {
@@ -91,8 +101,21 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 			Object.defineProperty(node, 'innerHTML', {
 				set: value => {
 					const returnValue = innerHTMLDescriptor.set.call(node, value);
-					// Approve all children.
-					coreUtils.recursiveForEach(node, approveNode);
+
+					// Approve all children and their attributes.
+					// Combine approveNode and approveElementAttribute to avoid performing the
+					// recursiveForEach twice.
+					coreUtils.recursiveForEach(node, (descendant) => {
+						approveNode(descendant);
+
+						// Only an Element has attributes.
+						if (descendant instanceof Element) {
+							Array.from(descendant.attributes).forEach(attr => {
+								approveElementAttribute(descendant, attr.name);
+							});
+						}
+					});
+
 					return returnValue;
 				},
 				get: () => innerHTMLDescriptor.get.call(node),
@@ -101,22 +124,41 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		}
 	};
 
-	const approveNodeAttribute = (node, attrName) => {
-		if (!node.__approvedAttributes) {
-			node.__approvedAttributes = new Set();
+	/**
+	 * Approve an element's attribute to make it persist on the server.
+	 * 
+	 * @param {Element} element An element.
+	 * @param {string} attrName Attribute name that will be approved.
+	 */
+	const approveElementAttribute = (element, attrName) => {
+		if (!element.__approvedAttributes) {
+			const approvedAttributes = new Set();
+
+			// Use defineProperty and enumerable false to disallow overriding it and
+			// hide it during enumeration.
+			Object.defineProperty(element, '__approvedAttributes', {
+				get: () => { return approvedAttributes; },
+				enumerable: false
+			});
 		}
 
-		if (!node.__approvedAttributes.has(attrName)) {
-			node.__approvedAttributes.add(attrName);
+		if (!element.__approvedAttributes.has(attrName)) {
+			element.__approvedAttributes.add(attrName);
 		}
 	};
 
-	const removeApproveNodeAttribute = (node, attrName) => {
-		if (!node.__approvedAttributes) {
+	/**
+	 * Removes an attribute from the list of approved attributes making it transient.
+	 * 
+	 * @param {Element} element An element. 
+	 * @param {*} attrName Attribute name that will be removed from list of approved attribute names.
+	 */
+	const removeApproveElementAttribute = (element, attrName) => {
+		if (!element.__approvedAttributes) {
 			return;
 		}
 
-		node.__approvedAttributes.delete(attrName);
+		element.__approvedAttributes.delete(attrName);
 	};
 
 	// Override some internal functions, so elements created by other modules will be pre-approved.
@@ -179,22 +221,89 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 	const setAttributeNS = Element.prototype.setAttributeNS;
 	Element.prototype.setAttributeNS = function (namespace, name, value, options, ...unused) {
-		if (options && options.approved) approveNodeAttribute(this, name);
+		if (options && options.approved) approveElementAttribute(this, name);
 		setAttributeNS.call(this, namespace, name, value, options, ...unused);
 	};
 
 	const setAttribute = Element.prototype.setAttribute;
 	Element.prototype.setAttribute = function (name, value, options, ...unused) {
-		if (options && options.approved) approveNodeAttribute(this, name);
+		// Approve any attribute set on an approved element by checking 'this.__approved'.
+		// Although, third-party libraries can still get their attributes approved by this loose
+		// check, it will still protect browser extensions from spamming DOM elements with attributes.
+		if (this.__approved || (options && options.approved)) approveElementAttribute(this, name);
 		setAttribute.call(this, name, value, options, ...unused);
 	};
 
 	const removeAttribute = Element.prototype.removeAttribute;
 	Element.prototype.removeAttribute = function (name, options, ...unused) {
 		removeAttribute.call(this, name, options, ...unused);
-		if (options && options.approved) removeApproveNodeAttribute(this, name);
+		if (options && options.approved) removeApproveElementAttribute(this, name);
 	};
 
+	// Approve the 'class' attribute that will be added, e.g., when using
+	// Element.classList.{add,toggle,replace}.
+	const classListDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'classList');
+	Object.defineProperty(Element.prototype, 'classList', {
+		set: function (value) {
+			return classListDescriptor.set.call(this, value);
+		},
+		get: function () {
+			const element = this;
+			const tokenList = classListDescriptor.get.call(element);
+
+			// This check is require to avoid constant reassignment of DOMTokenList.{add,toggle,replace},
+			// which ultimately will result in an "RangeError: Maximum call stack size exceeded" error.
+			if (!tokenList.__hooked) {
+				// Override DOMTokenList.add
+				const add = tokenList.add;
+				DOMTokenList.prototype.add = function (...tokens) {
+					if (element.__approved) approveElementAttribute(element, 'class');
+					return add.call(this, ...tokens);
+				};
+
+				// Override DOMTokenList.toggle
+				const toggle = tokenList.toggle;
+				DOMTokenList.prototype.toggle = function (token, force, ...unused) {
+					if (element.__approved) approveElementAttribute(element, 'class');
+					return toggle.call(this, token, force, ...unused);
+				};
+
+				// Override DOMTokenList.replace
+				const replace = tokenList.replace;
+				DOMTokenList.prototype.replace = function (oldToken, newToken, ...unused) {
+					if (element.__approved) approveElementAttribute(element, 'class');
+					return replace.call(this, oldToken, newToken, ...unused);
+				};
+
+				// Use defineProperty and enumerable false to disallow overriding it and
+				// hide it during enumeration.
+				Object.defineProperty(tokenList, '__hooked', {
+					get: () => { return true; },
+					enumerable: false
+				});
+			}
+
+			return tokenList;
+		},
+		configurable: false
+	});
+
+	// Approve the 'contenteditable' attribute that will be added when setting the
+	// HTMLElement.contentEditable property.
+	const contentEditableDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,
+		'contentEditable');
+	Object.defineProperty(HTMLElement.prototype, 'contentEditable', {
+		set: function (value) {
+			// The approved attribute contentEditable has to be lower-case 'e' in order to be approved
+			// properly in the isTransientAttribute check.
+			if (this.__approved) approveElementAttribute(this, 'contenteditable');
+			return contentEditableDescriptor.set.call(this, value);
+		},
+		get: function () {
+			return contentEditableDescriptor.get.call(this);
+		},
+		configurable: false
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 module.exports = protectedModeModule;

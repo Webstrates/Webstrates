@@ -5,7 +5,7 @@ const assert = require('chai').assert;
 const config = require('../config.js');
 const util = require('../util.js');
 
-describe('Protected Mode', function() {
+describe('Protected Mode', function () {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
@@ -110,32 +110,31 @@ describe('Protected Mode', function() {
 
 	it('inserted non-transient div with defined namespace should be visible on inserting client',
 		async () => {
-		await pageA.evaluate(() => {
-			const div = document.createElementNS('http://www.w3.org/1999/xhtml', 'div',
-				{ approved: true });
-			div.innerHTML = 'Y';
-			document.body.appendChild(div);
+			await pageA.evaluate(() => {
+				const div = document.createElementNS('http://www.w3.org/1999/xhtml', 'div',
+					{ approved: true });
+				div.innerHTML = 'Y';
+				document.body.appendChild(div);
+			});
+
+			const bodyHasThreeChildren = await util.waitForFunction(pageA, () =>
+				document.body.children.length === 3);
+			assert.isTrue(bodyHasThreeChildren,
+				'body has two children (transient div and non-transient div)');
+
+			const childContentsA = await pageA.evaluate(() => document.body.lastElementChild.innerHTML);
+			assert.equal(childContentsA, 'Y', 'div should contain exactly \'Y');
 		});
-
-		const bodyHasThreeChildren = await util.waitForFunction(pageA, () =>
-			document.body.children.length === 3);
-		assert.isTrue(bodyHasThreeChildren,
-			'body has two children (transient div and non-transient div)');
-
-		const childContentsA = await pageA.evaluate(() => document.body.lastElementChild.innerHTML);
-		assert.equal(childContentsA, 'Y', 'div should contain exactly \'Y');
-	});
 
 	it('inserted non-transient div with defined namespace should be visible on other client',
 		async () => {
-		const bodyHasTwoChildrenB = await util.waitForFunction(pageB, () =>
-			document.body.children.length === 2);
-		assert.isTrue(bodyHasTwoChildrenB, 'body should have exactly one child');
-	});
+			const bodyHasTwoChildrenB = await util.waitForFunction(pageB, () =>
+				document.body.children.length === 2);
+			assert.isTrue(bodyHasTwoChildrenB, 'body should have exactly one child');
+		});
 
 
-	it('transient attribute set should be visible on inserting client', async () =>
-	{
+	it('transient attribute set should be visible on inserting client', async () => {
 		await pageA.evaluate(() =>
 			document.body.lastElementChild.setAttribute('x', 'Transient attribute'));
 
@@ -147,14 +146,12 @@ describe('Protected Mode', function() {
 		assert.equal(attribute, 'Transient attribute', 'Attribute is \'Transient attribute!\'');
 	});
 
-	it('transient attribute set should not be visible on other client', async () =>
-	{
+	it('transient attribute set should not be visible on other client', async () => {
 		const hasAttributeB = await util.waitForFunction(pageB, () => document.body.getAttribute('x'));
 		assert.isFalse(hasAttributeB, 'attribute should not be visible');
 	});
 
-	it('non-transient attribute set should be visible on inserting client', async () =>
-	{
+	it('non-transient attribute set should be visible on inserting client', async () => {
 		await pageA.evaluate(() =>
 			document.body.lastElementChild.setAttribute('y', 'Non-transient attribute',
 				{ approved: true }));
@@ -167,14 +164,12 @@ describe('Protected Mode', function() {
 		assert.equal(attribute, 'Non-transient attribute', 'Attribute is \'Non-transient attribute\'');
 	});
 
-	it('non-transient attribute set should be visible on other client', async () =>
-	{
+	it('non-transient attribute set should be visible on other client', async () => {
 		const hasAttributeB = await util.waitForFunction(pageB, () => document.body.getAttribute('y'));
 		assert.isFalse(hasAttributeB, 'attribute should be visible');
 	});
 
-	it('edit on non-transient attribute set should be visible to other clients', async () =>
-	{
+	it('edit on non-transient attribute set should be visible to other clients', async () => {
 		await util.sleep(1);
 
 		await pageA.evaluate(() => document.body.lastElementChild.setAttribute('y', 'Edit A'));
@@ -188,7 +183,6 @@ describe('Protected Mode', function() {
 		const correctAttributeValueB = await util.waitForFunction(pageA, () =>
 			document.body.lastElementChild.getAttribute('y') === 'Edit B');
 		assert.isTrue(correctAttributeValueB, 'attribute set on client B gets reflected to A');
-
 	});
 
 });
