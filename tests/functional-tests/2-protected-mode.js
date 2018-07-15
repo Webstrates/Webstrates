@@ -231,4 +231,83 @@ describe('Protected Mode', function () {
 			const attributeValue = await pageB.evaluate(() => document.body.getAttribute('class'));
 			assert.equal(attributeValue, 'class1', 'The id attribute is not \'class1\'');
 		});
+
+	it('classList.contains should work on both clients',
+		async () => {
+			const pageAContainsClass = await util.waitForFunction(pageA, () =>
+				document.body.classList.contains('class1'));
+			assert.isTrue(pageAContainsClass, 'class attribute does not contain \'class1\'');
+
+			const pageBContainsClass = await util.waitForFunction(pageB, () =>
+				document.body.classList.contains('class1'));
+			assert.isTrue(pageBContainsClass, 'class attribute does not contain \'class1\'');
+		});
+
+	it('style properties should be visible as non-transient style attribute on inserting client',
+		async () => {
+			await pageA.evaluate(() => document.body.style.backgroundColor = 'hotpink');
+
+			const hasAttribute = await util.waitForFunction(pageA, () =>
+				document.body.getAttribute('style'));
+			assert.isTrue(hasAttribute, 'style attribute not visible');
+
+			const propertyValue = await pageA.evaluate(() => document.body.style.backgroundColor);
+			assert.equal(propertyValue, 'hotpink',
+				'style.backgroundColor property is not \'hotpink\'');
+
+			const attributeValue = await pageA.evaluate(() =>
+				document.body.getAttribute('style'));
+			assert.equal(attributeValue, 'background-color: hotpink;',
+				'style attribute is not \'background-color: hotpink\'');
+		});
+
+	it('style properties should be visible as non-transient style attribute on other client',
+		async () => {
+			const hasAttribute = await util.waitForFunction(pageB, () =>
+				document.body.getAttribute('style'));
+			assert.isTrue(hasAttribute, 'style attribute not visible');
+
+			const propertyValue = await pageB.evaluate(() => document.body.style.backgroundColor);
+			assert.equal(propertyValue, 'hotpink',
+				'style.backgroundColor property is not \'hotpink\'');
+
+			const attributeValue = await pageB.evaluate(() =>
+				document.body.getAttribute('style'));
+			assert.equal(attributeValue, 'background-color: hotpink;',
+				'style attribute is not \'background-color: hotpink\'');
+		});
+
+	it('dataset properties should be visible as non-transient data-* attribute on inserting client',
+		async () => {
+			await pageA.evaluate(() => document.body.dataset.camelCase = 'kebab-case');
+
+			const hasAttribute = await util.waitForFunction(pageA, () =>
+				document.body.getAttribute('data-camel-case'));
+			assert.isTrue(hasAttribute, 'attribute not visible');
+
+			const datasetValue = await pageA.evaluate(() => document.body.dataset.camelCase);
+			assert.equal(datasetValue, 'kebab-case',
+				'The data-camel-case property is not \'kebab-case\'');
+
+			const attributeValue = await pageA.evaluate(() =>
+				document.body.getAttribute('data-camel-case'));
+			assert.equal(attributeValue, 'kebab-case',
+				'The data-camel-case attribute is not \'kebab-case\'');
+		});
+
+	it('dataset properties should be visible as non-transient data-* attribute on other client',
+		async () => {
+			const hasAttribute = await util.waitForFunction(pageB, () =>
+				document.body.getAttribute('data-camel-case'));
+			assert.isTrue(hasAttribute, 'attribute not visible');
+
+			const datasetValue = await pageB.evaluate(() => document.body.dataset.camelCase);
+			assert.equal(datasetValue, 'kebab-case',
+				'The data-camel-case property is not \'kebab-case\'');
+
+			const attributeValue = await pageB.evaluate(() =>
+				document.body.getAttribute('data-camel-case'));
+			assert.equal(attributeValue, 'kebab-case',
+				'The data-camel-case attribute is not \'kebab-case\'');
+		});
 });

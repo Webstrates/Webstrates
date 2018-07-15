@@ -109,7 +109,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 						approveNode(descendant);
 
 						// Only an Element has attributes.
-						if (descendant instanceof Element) {
+						if (descendant.nodeType === Node.ELEMENT_NODE) {
 							Array.from(descendant.attributes).forEach(attr => {
 								approveElementAttribute(descendant, attr.name);
 							});
@@ -151,7 +151,8 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	 * Removes an attribute from the list of approved attributes making it transient.
 	 * 
 	 * @param {Element} element An element. 
-	 * @param {*} attrName Attribute name that will be removed from list of approved attribute names.
+	 * @param {String} attrName Attribute name that will be removed from list of approved attribute
+	 * names.
 	 */
 	const removeApproveElementAttribute = (element, attrName) => {
 		if (!element.__approvedAttributes) {
@@ -200,15 +201,22 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		options = {}, ...unused) => {
 		const element = importNode(externalNode, deep, ...unused);
 		coreUtils.recursiveForEach(element, childNode => {
-			if (options && options.approved) approveNode(childNode);
+			if (options && options.approved) {
+				approveNode(childNode);
+				if (childNode.nodeType === Node.ELEMENT_NODE) {
+					Array.from(childNode.attributes).forEach(attr => {
+						approveElementAttribute(childNode, attr.name);
+					});
+				}
+			}
 			else childNode.nodeType === document.ELEMENT_NODE && childNode.setAttribute('unapproved', '');
 		});
 		return element;
 	});
 
 	// The elementOptions object should get passed into all prototype function calls (e.g.
-	// Element.setAttribute) made by other modules. This allows us to inject a setting on the object,
-	// so we can make all calls from other modules pre-approved.
+	// Element.setAttribute) made by other modules. This allows us to inject a setting on the
+	// object, so we can make all calls from other modules pre-approved.
 	coreDOM.elementOptions.approved = true;
 
 	const cloneNode = Node.prototype.cloneNode;
@@ -240,83 +248,169 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		if (options && options.approved) removeApproveElementAttribute(this, name);
 	};
 
-	// Approve the 'class' attribute that will be added, e.g., when using
-	// Element.classList.{add,toggle,replace}.
-	const classListDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'classList');
-	Object.defineProperty(Element.prototype, 'classList', {
-		set: function (value) {
-			return classListDescriptor.set.call(this, value);
-		},
-		get: function () {
-			const element = this;
-			const tokenList = classListDescriptor.get.call(element);
-
-			// This check is require to avoid constant reassignment of DOMTokenList.{add,toggle,replace},
-			// which ultimately will result in an "RangeError: Maximum call stack size exceeded" error.
-			if (tokenList && !tokenList.__hooked) {
-				// Override DOMTokenList.add
-				const add = tokenList.add;
-				tokenList.add = function (...tokens) {
-					if (element.__approved) approveElementAttribute(element, 'class');
-					return add.call(this, ...tokens);
-				};
-
-				// Override DOMTokenList.toggle
-				const toggle = tokenList.toggle;
-				tokenList.toggle = function (token, force, ...unused) {
-					if (element.__approved) approveElementAttribute(element, 'class');
-					return toggle.call(this, token, force, ...unused);
-				};
-
-				// Override DOMTokenList.replace
-				const replace = tokenList.replace;
-				tokenList.replace = function (oldToken, newToken, ...unused) {
-					if (element.__approved) approveElementAttribute(element, 'class');
-					return replace.call(this, oldToken, newToken, ...unused);
-				};
-
-				// Use defineProperty and enumerable false to disallow overriding it and
-				// hide it during enumeration.
-				Object.defineProperty(tokenList, '__hooked', {
-					get: () => { return true; },
-					enumerable: false
+	// Proxy all configurable properties with a set function to intercept calls to properties
+	// and approve their corresponding element attributes.
+	const proxyDescriptors = (prototype, properties) => {
+		properties.forEach(propertyName => {
+			const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyName);
+			// Check if descriptor is configurable and has a set function already
+			if (descriptor.configurable && typeof descriptor.set === 'function') {
+				Object.defineProperty(prototype, propertyName, {
+					configurable: descriptor.configurable,
+					enumerable: descriptor.enumerable,
+					set: function (value) {
+						// The approved attributes need to be lower-case in order to be approved
+						// properly in the isTransientAttribute check.
+						if (this.__approved) approveElementAttribute(this, propertyName.toLowerCase());
+						return descriptor.set.call(this, value);
+					},
+					get: descriptor.get
 				});
 			}
+		});
+	};
 
-			return tokenList;
-		},
-		configurable: false
-	});
+	// Proxy Element.prototype and HTMLElement.prototype to approve attribute, e.g.,
+	// Element.prototype.id -> 'id' or HTMLElement.prototype.contentEditable -> 'contenteditable'.
+	proxyDescriptors(Element.prototype, ['id']);
+	proxyDescriptors(HTMLElement.prototype, ['accessKey', 'contentEditable', 'dir', 'draggable',
+		'hidden', 'lang', 'tabIndex', 'title', 'translate']);
 
-	// Approve the 'id' attribute that will be added when setting the Element.id property.
-	const idDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'id');
-	Object.defineProperty(Element.prototype, 'id', {
-		set: function (value) {
-			if (this.__approved) approveElementAttribute(this, 'id');
-			return idDescriptor.set.call(this, value);
-		},
-		get: function () {
-			return idDescriptor.get.call(this);
-		},
-		configurable: false
-	});
+	// Convert Strings from camelCase to kebab-case.
+	const camelToKebab = (input) => {
+		return input.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
+	};
 
-	// Approve the 'contenteditable' attribute that will be added when setting the
-	// HTMLElement.contentEditable property.
-	const contentEditableDescriptor = Object.getOwnPropertyDescriptor(HTMLElement.prototype,
-		'contentEditable');
-	Object.defineProperty(HTMLElement.prototype, 'contentEditable', {
-		set: function (value) {
-			// The approved attribute contentEditable has to be lower-case 'e' in order to be approved
-			// properly in the isTransientAttribute check.
-			if (this.__approved) approveElementAttribute(this, 'contenteditable');
-			return contentEditableDescriptor.set.call(this, value);
+	// Proxy definitions for 'classList', 'dataset', and 'style'.
+	const propertiesElement = [
+		{
+			propertyName: 'classList',
+			prototype: Element.prototype,
+			get: function (element, target, propName) {
+				let returnValue = target[propName];
+				const hook = this.functions[propName];
+				if (hook) {
+					const hookReturnValue = hook.call(element, returnValue, target, propName);
+					if (hookReturnValue) {
+						returnValue = hookReturnValue;
+					}
+				}
+				// Bind to target, otherwise it'll throw an "TypeError: Illegal invocation"
+				return returnValue.bind(target);
+			},
+			functions: {
+				add: function (nativeAddFunc, tokenList, propName) {
+					const element = this;
+					return function (...tokens) {
+						if (element.__approved) approveElementAttribute(element, 'class');
+						return nativeAddFunc.call(tokenList, ...tokens);
+					};
+				},
+				toggle: function (nativeToggleFunc, tokenList, propName) {
+					const element = this;
+					return function (token, force, ...unused) {
+						if (element.__approved) approveElementAttribute(element, 'class');
+						return nativeToggleFunc.call(tokenList, token, force, ...unused);
+					};
+				},
+				replace: function (nativeReplaceFunc, tokenList, propName) {
+					const element = this;
+					return function (oldToken, newToken, ...unused) {
+						if (element.__approved) approveElementAttribute(element, 'class');
+						return nativeReplaceFunc.call(tokenList, oldToken, newToken, ...unused);
+					};
+				}
+			}
 		},
-		get: function () {
-			return contentEditableDescriptor.get.call(this);
+		{
+			propertyName: 'dataset',
+			prototype: HTMLElement.prototype,
+			set: function (element, target, propName, value) {
+				target[propName] = value;
+				const attributeName = camelToKebab(propName);
+				// console.log('approve dataset', { propName, value, target, attributeName });
+				if (element.__approved) approveElementAttribute(element, `data-${attributeName}`);
+				return true;
+			}
 		},
-		configurable: false
-	});
+		{
+			propertyName: 'style',
+			prototype: HTMLElement.prototype,
+			set: function (element, target, propName, value) {
+				target[propName] = value;
+				if (element.__approved) approveElementAttribute(element, 'style');
+				return true;
+			}
+		}
+	];
+
+	// Proxy each property defined in the properties array. A property definition looks like:
+	//
+	// {
+	// 		// The name of the property that will get a new descriptor.
+	// 		propertyName: 'classList',
+	// 		// The object object or prototype that will get a new descriptor.
+	// 		prototype: HTMLElement.prototype,
+	// 		// This is the same as Proxy.prototype.get but with element as first parameter and 'this'
+	// 		// refers the definition itself.
+	// 		get: function(element, target, propName) {
+	// 			return target[propName];
+	// 		},
+	// 		This is the same as Proxy.prototype.set but with element as first parameter and 'this'
+	// 		// refers the definition itself.
+	// 		set: function(element, target, propName, value) {
+	// 			target[propName] = value;
+	// 			return true;
+	// 		}
+	// }
+	const proxyDescriptorsAndvanced = (propertyDefinitions) => {
+
+		propertyDefinitions.forEach((definition) => {
+
+			const { prototype, propertyName, get, set } = definition;
+
+			const descriptor = Object.getOwnPropertyDescriptor(prototype, propertyName);
+
+			Object.defineProperty(prototype, propertyName, {
+				configurable: descriptor.configurable,
+				enumerable: descriptor.enumerable,
+				set: function (value) {
+					return descriptor.set.call(this, value);
+				},
+				get: function () {
+					const element = this;
+					const result = descriptor.get.call(element);
+
+					// Proxy property with either get, set, or both. This means that each call
+					// to a child property will be forwarded to the get or set respectively. In
+					// case not get or set is defined, the default get/set behavior applies.
+					if (get || set) {
+						return new Proxy(result, {
+							get: function (target, propName) {
+								if (get) {
+									return get.call(definition, element, target, propName);
+								}
+								return target[propName];
+							},
+							set: function (target, propName, value) {
+								if (set) {
+									return set.call(definition, element, target, propName, value);
+								}
+								target[propName] = value;
+								return true;
+							}
+						});
+					}
+
+					return result;
+				}
+			});
+		});
+	};
+
+	// Proxy properties like 'classList', 'dataset', and 'style'.
+	proxyDescriptorsAndvanced(propertiesElement);
+
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 module.exports = protectedModeModule;
