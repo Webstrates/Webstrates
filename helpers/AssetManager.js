@@ -128,6 +128,8 @@ module.exports.getCurrentAssets = function(webstrateId, next) {
 		.toArray(function(err, assets) {
 			if (err) return next && next(err);
 			assets = filterNewestAssets(assets);
+			// Filter out deleted assets.
+			assets = assets.filter(asset => !asset.deletedAt);
 			return next(null, assets);
 		});
 };
@@ -144,9 +146,36 @@ module.exports.getCurrentAssets = function(webstrateId, next) {
 module.exports.getAsset = async function({ webstrateId, assetName, version }) {
 	var query = { webstrateId, originalFileName: assetName };
 	if (version) query.v = { $lte: +version };
-	const assets = await db.assets.find(query).sort({ v: -1 }).limit(1).toArray();
-	return assets[0];
+	const asset = await db.assets.findOne(query, { sort: { v: -1 } });
+	// If the asset has been deleted, we can't serve it if it was deleted at a prior version than the
+	// request, as the asset thus still would be deleted. If we're requesting the current version,
+	// the fact that it has been deleted also means we can't serve it. Keep in mind that it's still
+	// possible to access a deleted asset at a version prior to its deletion.
+	if (asset.deletedAt && ((version && asset.deletedAt <= version) || !version)) return undefined;
+	return asset;
 };
+
+/**
+ * Mark an asset as deleted at a version. This doesn't actually delete the asset from the database
+ * or disk, but just marks the asset in the database as deleted. This means that when trying to
+ * access the asset at the specific version (or later), it'll appear as if it doesn't exist. When
+ * downloading a webstrate at the version (or later), the asset will also not appear in the archive.
+ * @param  {string}   webstrateId      WebstrateId.
+ * @param  {string}   assetName        Asset name.
+ * @param  {Function} next             Callback.
+ * @public
+ */
+module.exports.markAssetAsDeleted = (webstrateId, assetName) => new Promise((accept, reject) => {
+	documentManager.getDocumentVersion(webstrateId, (err, version) => {
+		db.assets.findOneAndUpdate({ webstrateId, originalFileName: assetName, },
+			{ $set: { deletedAt: version } },
+			// Sort to ensure that we mark the newest verison of the file as deleted.
+			{ sort: { v: -1 } }, (err, res) => {
+				if (err || res.value === null) return reject(new Error('Update failed'));
+				return accept(res.value);
+		});
+	});
+});
 
 /**
  * Delete asset from database. This is useful if, for some reason, an asset no longer exists in

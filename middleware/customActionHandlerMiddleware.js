@@ -1,3 +1,4 @@
+const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
@@ -118,6 +119,21 @@ exports.onmessage = (ws, req, data, next) => {
 				case 'signalUserObject': {
 					const message = data.m;
 					clientManager.signalUserObject(user.userId, socketId, message, webstrateId, true);
+					return;
+				}
+				// Mark asset as deleted.
+				case 'deleteAsset': {
+					let databaseResponse;
+					const returnObject = { wa: 'reply', token: data.token };
+					try {
+						databaseResponse = await assetManager.markAssetAsDeleted(webstrateId, data.assetName);
+						returnObject.reply = databaseResponse;
+					} catch (err) {
+						returnObject.error = err.message;
+					}
+					if (data.token) {
+						ws.send(JSON.stringify(returnObject));
+					}
 					return;
 				}
 				// Restoring a document to a previous version.

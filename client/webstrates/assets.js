@@ -68,6 +68,11 @@ globalObject.publicObject.uploadAsset = (callback = () => {}, options = {}) => {
 	input.click();
 };
 
+globalObject.publicObject.deleteAsset = (assetName, callback) => {
+	websocket.send({ wa: 'deleteAsset', d: webstrateId, assetName },
+		(err, result) => callback && callback(err, result));
+};
+
 globalObject.publicObject.searchAsset = (assetIdentifier, query = {}, callback) => {
 	if (typeof callback !== 'function') throw new Error('Must provide callback function');
 
