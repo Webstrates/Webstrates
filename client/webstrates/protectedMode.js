@@ -281,22 +281,38 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		return input.replace(/([a-z])([A-Z])/g, '$1-$2').toLowerCase();
 	};
 
+	/**
+	 * Applies function hook when the target object returns a function for the property name, and
+	 * a hook was defined for the property name. It will return the target's default value if no
+	 * hook was defined or the returned value is not a function.
+	 * 
+	 * @param {*} element The element associated with the property calls.
+	 * @param {*} target The proxied object.
+	 * @param {*} propName The property name.
+	 */
+	const applyHookWhenPropertyIsFunction = function (element, target, propName) {
+		// Apply hook only if returned value is a function
+		let returnValue = target[propName];
+		if (typeof returnValue === 'function') {
+			const hook = this.functions[propName];
+			if (hook) {
+				const hookReturnValue = hook.call(element, returnValue, target, propName);
+				if (hookReturnValue) {
+					returnValue = hookReturnValue;
+				}
+			}
+			// Bind to target, otherwise it'll throw an "TypeError: Illegal invocation"
+			return returnValue.bind(target);
+		}
+	};
+
 	// Proxy definitions for 'classList', 'dataset', and 'style'.
 	const propertiesElement = [
 		{
 			propertyName: 'classList',
 			prototype: Element.prototype,
 			get: function (element, target, propName) {
-				let returnValue = target[propName];
-				const hook = this.functions[propName];
-				if (hook) {
-					const hookReturnValue = hook.call(element, returnValue, target, propName);
-					if (hookReturnValue) {
-						returnValue = hookReturnValue;
-					}
-				}
-				// Bind to target, otherwise it'll throw an "TypeError: Illegal invocation"
-				return returnValue.bind(target);
+				return applyHookWhenPropertyIsFunction.call(this, element, target, propName);
 			},
 			functions: {
 				add: function (nativeAddFunc, tokenList, propName) {
@@ -332,10 +348,22 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		{
 			propertyName: 'style',
 			prototype: HTMLElement.prototype,
+			get: function (element, target, propName) {
+				return applyHookWhenPropertyIsFunction.call(this, element, target, propName);
+			},
 			set: function (element, target, propName, value) {
 				target[propName] = value;
 				if (element.__approved) approveElementAttribute(element, 'style');
 				return true;
+			},
+			functions: {
+				setProperty: function (nativeSetPropertyFunc, cssStyleDeclaration, propName) {
+					return (propertyName, value, priority, ...unused) => {
+						if (this.__approved) approveElementAttribute(this, 'style');
+						return nativeSetPropertyFunc.call(cssStyleDeclaration, propertyName, value, priority,
+							...unused);
+					};
+				}
 			}
 		}
 	];
