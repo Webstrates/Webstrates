@@ -27,6 +27,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 	websocket.onjsonmessage = (message) => {
 		switch (message.wa) {
 			case 'hello': {
+				console.log(message.allClients);
 				// Merge the incoming information with the existing user object. We don't overwrite it, as
 				// other modules may already have added their own stuff.
 				Object.assign(publicObject, message.user);

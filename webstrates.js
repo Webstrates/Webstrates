@@ -190,7 +190,7 @@ const sessionMiddleware = function(req, res, next) {
 	}
 
 	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
-	req.user.provider = req.user.provider || '';
+	req.user.provider = req.user.providerName || req.user.provider || '';
 	req.user.userId = req.user.username + ':' + req.user.provider;
 	req.webstrateId = webstrateId;
 	next();

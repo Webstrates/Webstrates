@@ -34,6 +34,9 @@ const joinTimeouts = {};
 // clients.
 const userIds = {};
 
+// One-to-many mapping from userId to a user's client objects (including device type, IP, etc.)
+const userClients = {};
+
 // Listen for events happening on other server instances. This is only used when using multi-
 // threading and Redis.
 if (pubsub) {
@@ -48,10 +51,12 @@ if (pubsub) {
 
 		switch (message.action) {
 			case 'clientJoin':
-				module.exports.addClientToWebstrate(message.socketId, message.userId, message.webstrateId);
+				module.exports.addClientToWebstrate(message.socketId, message.userId,
+					message.userClient, message.webstrateId);
 				break;
 			case 'clientPart':
-				module.exports.removeClientFromWebstrate(message.socketId, message.webstrateId);
+				module.exports.removeClientFromWebstrate(message.socketId, message.webstrateId,
+					message.userId);
 				break;
 			case 'publish':
 				module.exports.publish(message.senderSocketId, message.webstrateId, message.nodeId,
@@ -87,15 +92,27 @@ module.exports.addClient = function(ws, user) {
 	if (!userIds[user.userId]) userIds[user.userId] = [];
 	userIds[user.userId].push(socketId);
 
+	// This is the object we'll make available on webstrate.user.allClients..
+	const userClient = {
+		socketId,
+		ipAddress: ws.upgradeReq.remoteAddress,
+		webstrateId: ws.upgradeReq.webstrateId,
+		userAgent: ws.upgradeReq.headers['user-agent']
+	};
+	userClients[user.userId] = userClients[user.userId] || [];
+	userClients[user.userId][socketId] = userClient;
+
 	clients[socketId] = {
 		socket: ws,
+		userClient,
 		user: {
 			userId: user.userId,
 			username: user.username,
 			provider: user.provider,
 			displayName: user.displayName,
-			userUrl: user._json && user._json.html_url,
-			avatarUrl: user._json && (user._json.avatar_url || (user._json.image && user._json.image.url))
+			userUrl: user.userUrl || (user._json && user._json.html_url),
+			avatarUrl: user.avatarUrl ||
+				(user._json && (user._json.avatar_url || (user._json.image && user._json.image.url)))
 		},
 		webstrates: {} // contains a one-to-many mapping from webstrateIds to nodeIds.
 	};
@@ -116,8 +133,10 @@ module.exports.removeClient = function(socketId) {
 		return;
 	}
 
+	const userId = clients[socketId].user && clients[socketId].user.userId;
+
 	Object.keys(clients[socketId].webstrates).forEach(function(webstrateId) {
-		module.exports.removeClientFromWebstrate(socketId, webstrateId, true);
+		module.exports.removeClientFromWebstrate(socketId, webstrateId, userId, true);
 	});
 
 	delete clients[socketId];
@@ -138,13 +157,15 @@ module.exports.triggerJoin = function(socketId) {
  * Add client to Webstrate and broadcast join.
  * @param {string} socketId    SocketId.
  * @param {string} webstrateId WebstrateId.
+ * @param {obj} userClient     The user client object will not exist locally, but could be derived
+ *                             easily.
  * @param {bool}   local       Whether the client joined locally (on this server instance) or
  *                             remotely (on another server instance). We should only forward local
  *                             client joins, otherwise we end up in a livelock where we
  *                             continuously send the same join back and forth between instances.
  * @public
  */
-module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, local) {
+module.exports.addClientToWebstrate = function(socketId, userId, userClient, webstrateId, local) {
 	if (!webstrates[webstrateId]) {
 		webstrates[webstrateId] = new Map();
 	}
@@ -184,6 +205,7 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 		});
 	}
 
+	console.log(Array.from(userClients[userId]));
 	// Message to be sent to client joining the webstrate.
 	const helloMsgObj = {
 		wa: 'hello',
@@ -191,7 +213,8 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 		d: webstrateId,
 		defaultPermissions: global.config.auth.defaultPermissions,
 		user: user,
-		clients: Array.from(webstrates[webstrateId].keys())
+		clients: Array.from(webstrates[webstrateId].keys()),
+		allClients: Array.from(userClients[userId])
 	};
 
 	// If no userId is defined, the user isn't logged in and therefore can't have cookies attached,
@@ -263,7 +286,8 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 		if (pubsub) {
 			const userId = clients[socketId].user.userId;
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'clientJoin', userId, socketId, webstrateId, WORKER_ID
+				action: 'clientJoin', userClient: clients[socketId].userClient,
+				userId, socketId, webstrateId, WORKER_ID
 			}));
 		}
 	};
@@ -276,24 +300,29 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
  * Remove client from webstrate and broadcast departure.
  * @param {string} socketId    SocketId.
  * @param {string} webstrateId WebstrateId.
+ * @param {string} userId      UserId if user is logged in.
  * @param {bool}   local       Whether the client joined locally (on this server instance) or
  *                             remotely (on another server instance). We should only forward local
  *                             client joins, otherwise we end up in a livelock where we
  *                             continuously send the same join back and forth between instances.
  * @public
  */
-module.exports.removeClientFromWebstrate = function(socketId, webstrateId, local) {
+module.exports.removeClientFromWebstrate = function(socketId, webstrateId, userId, local) {
+
 	if (local) {
 		clients[socketId].webstrates[webstrateId].forEach(function(nodeId) {
 			module.exports.unsubscribe(socketId, webstrateId, nodeId);
 		});
 
 		if (pubsub) {
-			const userId = clients[socketId].user.userId;
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 				action: 'clientPart', userId, socketId, webstrateId, WORKER_ID
 			}));
 		}
+	}
+
+	if (userClients[userId]) {
+		delete userClients[userId][socketId];
 	}
 
 	var partFn = function() {
