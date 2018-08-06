@@ -83,29 +83,31 @@ if (config.auth) {
 	passport.serializeUser(sessionManager.serializeUser);
 	passport.deserializeUser(sessionManager.deserializeUser);
 
-	for (var key in config.auth.providers) {
-		var PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
-		passport.use(new PassportStrategy(config.auth.providers[key].config,
-			function(request, accessToken, refreshToken, profile, done) {
-				return process.nextTick(function() {
-					return done(null, profile);
-				});
-			}));
+	for (let key in config.auth.providers) {
+		const PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
+		const passportInstance = new PassportStrategy(config.auth.providers[key].config,
+			(request, accessToken, refreshToken, profile, done) => {
+				profile.provider = key;
+				process.nextTick(() => done(null, profile));
+			});
+		config.auth.providers[key].name = passportInstance.name;
+		passport.use(passportInstance);
 	}
 
 	app.use(passport.initialize());
 	app.use(passport.session());
 
-	for (var provider in config.auth.providers) {		
-		app.get('/auth/' + provider, 
-			passport.authenticate(provider, config.auth.providers[provider].authOptions), 
+	for (let key in config.auth.providers) {
+		const strategy = config.auth.providers[key].name;
+		app.get('/auth/' + key,
+			passport.authenticate(strategy, config.auth.providers[key].authOptions),
 			function(req, res) {});
-		app.get('/auth/' + provider + '/callback', passport.authenticate(provider, {
-			failureRedirect: '/auth/' + provider
+		app.get('/auth/' + key + '/callback', passport.authenticate(strategy, {
+			failureRedirect: '/auth/' + key
 		}), function(req, res) {
 			return res.redirect('/');
 		});
-		if (WORKER_ID === 1) console.log(provider + '-based authentication enabled');
+		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
 	}
 
 	app.get('/auth/logout', function(req, res) {
