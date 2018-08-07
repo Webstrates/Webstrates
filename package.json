@@ -55,6 +55,7 @@
     "passport": "^0.2.1",
     "passport-github": "^0.1.5",
     "passport-google-oauth2": "^0.1.6",
+    "passport-oauth2-profilemap": "0.0.1",
     "redis": "^2.6.3",
     "request": "^2.83.0",
     "sharedb": "^1.0.0-beta.6",

@@ -51,12 +51,13 @@ if (pubsub) {
 
 		switch (message.action) {
 			case 'clientJoin':
-				module.exports.addClientToWebstrate(message.socketId, message.userId,
-					message.userClient, message.webstrateId);
+				addUserClient(message.socketId, message.userId, message.userClient);
+				module.exports.addClientToWebstrate(message.socketId, message.userId, message.webstrateId);
 				break;
 			case 'clientPart':
 				module.exports.removeClientFromWebstrate(message.socketId, message.webstrateId,
 					message.userId);
+				removeUserClient(message.socketId, message.userId);
 				break;
 			case 'publish':
 				module.exports.publish(message.senderSocketId, message.webstrateId, message.nodeId,
@@ -99,8 +100,8 @@ module.exports.addClient = function(ws, user) {
 		webstrateId: ws.upgradeReq.webstrateId,
 		userAgent: ws.upgradeReq.headers['user-agent']
 	};
-	userClients[user.userId] = userClients[user.userId] || [];
-	userClients[user.userId][socketId] = userClient;
+
+	addUserClient(socketId, user.userId, userClient);
 
 	clients[socketId] = {
 		socket: ws,
@@ -123,6 +124,45 @@ module.exports.addClient = function(ws, user) {
 };
 
 /**
+ * Add a user client to userClients and broadcast it (so it ends up in webstrate.user.allClients).
+ * @param  {string} socketId   Unique ID generated for each socket.
+ * @param  {string} userId     userId (e.g. kbadk:github).
+ * @param  {mixed} userClient  User client object.
+ * @private
+ */
+const addUserClient = (socketId, userId, userClient) => {
+	userClients[userId] = userClients[userId] || {};
+	userClients[userId][socketId] = userClient;
+
+	module.exports.broadcastToUserClients(userId, {
+		wa: 'userClientJoin',
+		id: socketId,
+		userClient
+	});
+};
+
+/**
+ * Remove a user client from userClients and broadcast it (so it gets removed from
+ * webstrate.user.allClients).
+ * @param  {string} socketId   Unique ID generated for each socket.
+ * @param  {string} userId     userId (e.g. kbadk:github).
+ * @private
+ */
+const removeUserClient = (socketId, userId) => {
+	if (userClients[userId]) {
+		delete userClients[userId][socketId];
+	}
+
+	// There is no specific 'userClientPart' command, because we can just try to remove all
+	// parting clients from the clients and allClients lists. If we try to remove something that
+	// doesn't exist... Well, big whoop.
+	module.exports.broadcastToUserClients(userId, {
+		wa: 'clientPart',
+		id: socketId
+	});
+};
+
+/**
  * Remove client from all webstrates (and broadcast departure) and remove client itself from
  * ClientManager.
  * @param {string} socketId SocketId.
@@ -140,6 +180,7 @@ module.exports.removeClient = function(socketId) {
 	});
 
 	delete clients[socketId];
+	removeUserClient(socketId, userId);
 };
 
 module.exports.triggerJoin = function(socketId) {
@@ -157,15 +198,13 @@ module.exports.triggerJoin = function(socketId) {
  * Add client to Webstrate and broadcast join.
  * @param {string} socketId    SocketId.
  * @param {string} webstrateId WebstrateId.
- * @param {obj} userClient     The user client object will not exist locally, but could be derived
- *                             easily.
  * @param {bool}   local       Whether the client joined locally (on this server instance) or
  *                             remotely (on another server instance). We should only forward local
  *                             client joins, otherwise we end up in a livelock where we
  *                             continuously send the same join back and forth between instances.
  * @public
  */
-module.exports.addClientToWebstrate = function(socketId, userId, userClient, webstrateId, local) {
+module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, local) {
 	if (!webstrates[webstrateId]) {
 		webstrates[webstrateId] = new Map();
 	}
@@ -200,12 +239,12 @@ module.exports.addClientToWebstrate = function(socketId, userId, userClient, web
 	// Add a list of all the user's connected clients to the user object.
 	if (userId !== 'anonymous:') {
 		user.clients = [];
+		user.allClients = userClients[userId] || {};
 		webstrates[webstrateId].forEach((assUserId, socketId) => {
 			if (assUserId === userId) user.clients.push(socketId);
 		});
 	}
 
-	console.log(Array.from(userClients[userId]));
 	// Message to be sent to client joining the webstrate.
 	const helloMsgObj = {
 		wa: 'hello',
@@ -214,7 +253,6 @@ module.exports.addClientToWebstrate = function(socketId, userId, userClient, web
 		defaultPermissions: global.config.auth.defaultPermissions,
 		user: user,
 		clients: Array.from(webstrates[webstrateId].keys()),
-		allClients: Array.from(userClients[userId])
 	};
 
 	// If no userId is defined, the user isn't logged in and therefore can't have cookies attached,
@@ -660,7 +698,7 @@ function broadcastToUserClientsInWebstrate(webstrateId, userId, message) {
 }
 
 /**
- * Send message to all clients currently connected and logged in as userId.
+ * Send message to all clients currently connected and logged in as userId (locally).
  * @param  {string} userId  User Id (of the format <username>:<provider, e.g. "kbadk:github").
  * @param  {obj}    message     Message object.
  * @public
