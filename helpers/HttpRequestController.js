@@ -9,6 +9,7 @@ const mime = require('mime-types');
 const request = require('request');
 const shortId = require('shortid');
 const tmp = require('tmp');
+const util = require('util');
 const url = require('url');
 const yauzl = require('yauzl');
 const SELFCLOSING_TAGS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
@@ -143,7 +144,7 @@ function setCorsHeaders(req, res, snapshot) {
  * @param {obj} res Express response object.
  * @public
  */
-module.exports.requestHandler = function(req, res) {
+module.exports.requestHandler = async function(req, res) {
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
 	if (req.query.v && !req.versionOrTag) {
@@ -165,7 +166,7 @@ module.exports.requestHandler = function(req, res) {
 			return res.status(409).send(String(err));
 		}
 
-		req.user.permissions = permissionManager.getUserPermissionsFromSnapshot(req.user.username,
+		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 			req.user.provider, snapshot);
 
 		// If the webstrate doesn't exist, write permissions are required to create it.
@@ -492,7 +493,7 @@ function serveTokenList(req, res) {
  * @param {snapshot} snapshot Document snapshot.
  * @private
  */
-function copyWebstrate(req, res, snapshot) {
+async function copyWebstrate(req, res, snapshot) {
 	let webstrateId = req.query.copy || generateWebstrateId(req);
 
 	// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
@@ -501,7 +502,7 @@ function copyWebstrate(req, res, snapshot) {
 		if (req.user.username === 'anonymous' && req.user.provider === '') {
 			snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
 		} else {
-			snapshot = permissionManager.addPermissionsToSnapshot(req.user.username,
+			snapshot = await permissionManager.addPermissionsToSnapshot(req.user.username,
 				req.user.provider, 'rw', snapshot);
 		}
 	}
@@ -710,7 +711,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 
 											if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
 												htmlDocumentFound = true;
-												streamToString(readStream, htmlDoc => {
+												streamToString(readStream, async htmlDoc => {
 													let jsonml = htmlToJsonML(htmlDoc);
 													// MongoDB doesn't accept periods in keys, so we replace them with
 													// `&dot;`s when storing them in the database.
@@ -719,7 +720,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 														type: 'http://sharejs.org/types/JSONv0',
 														data: jsonml
 													};
-													const userPermissions = permissionManager
+													const userPermissions = await permissionManager
 														.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
 															snapshot);
 													// If user doesn't have write permissions to the docuemnt, add them if

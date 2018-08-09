@@ -105,111 +105,107 @@ share.use(['after submit'], (req, next) => {
 });
 
 share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete'],
-	function(req, next) {
+	async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about.
-		if (!req.agent.user) return next();
+	if (!req.agent.user) return next();
 
-		const socketId = req.agent.socketId;
-		const user = req.agent.user;
-		const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
+	const socketId = req.agent.socketId;
+	const user = req.agent.user;
+	const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
 
-		// If the user is creating a new document, it makes no sense to verify whether he has access to
-		// said document.
-		if (req.op && req.op.create) {
-			return next();
-		}
+	// If the user is creating a new document, it makes no sense to verify whether he has access to
+	// said document.
+	if (req.op && req.op.create) {
+		return next();
+	}
 
-		permissionManager.getUserPermissions(user.username, user.provider, webstrateId,
-			(err, permissions) => {
-				if (err) {
-					return next(err);
+	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
+		webstrateId);
+
+	// If the user doesn't have any permissions.
+	if (!permissions) {
+		return next(new Error('Forbidden'));
+	}
+
+	switch (req.action) {
+		case 'fetch':
+		case 'getOps': // Operations request.
+		case 'query': // Document request.
+			if (permissions.includes('r')) {
+				return next();
+			}
+			break;
+		case 'submit': // Operation submission.
+			if (permissions.includes('w')) {
+				return next();
+			}
+			break;
+		case 'receive':
+		// u = unsubscribe.
+			if (req.data.a === 'u') {
+				clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
+				return;
+			}
+
+			// Check if the incoming update is an op (and not a create op).
+			if (req.data.a === 'op' && Array.isArray(req.data.op)) {
+			// Check if the update changes the permissions of the document.
+				const permissionsChanged = req.data.op.some(op =>
+					op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+				// And if the permissions have changed, invalidate the permissions cache and expire
+				// all access tokens.
+				if (permissionsChanged) {
+					permissionManager.invalidateCachedPermissions(webstrateId, true);
+					permissionManager.expireAllAccessTokens(webstrateId, true);
 				}
+			}
 
-				// If the user doesn't have any permissions.
-				if (!permissions) {
-					return next(new Error('Forbidden'));
-				}
+			// Anything but a subscribe request.
+			if (req.data.a !== 's') {
+				return next();
+			}
 
-				switch (req.action) {
-					case 'fetch':
-					case 'getOps': // Operations request.
-					case 'query': // Document request.
-						if (permissions.includes('r')) {
-							return next();
-						}
-						break;
-					case 'submit': // Operation submission.
-						if (permissions.includes('w')) {
-							return next();
-						}
-						break;
-					case 'receive':
-					// u = unsubscribe.
-						if (req.data.a === 'u') {
-							clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
-							return;
-						}
+			// Initial document request (s = subscribe).
+			if (req.data.a === 's' && permissions.includes('r')) {
+				// Add client and send "hello" message including client list.
+				clientManager.addClientToWebstrate(socketId, user.userId, webstrateId, true);
 
-						// Check if the incoming update is an op (and not a create op).
-						if (req.data.a === 'op' && Array.isArray(req.data.op)) {
-						// Check if the update changes the permissions of the document.
-							const permissionsChanged = req.data.op.some(op =>
-								op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
-							// And if the permissions have changed, invalidate the permissions cache and expire
-							// all access tokens.
-							if (permissionsChanged) {
-								permissionManager.invalidateCachedPermissions(webstrateId, true);
-								permissionManager.expireAllAccessTokens(webstrateId, true);
-							}
-						}
+				// Send list of tags to clients if any.
+				documentManager.getTags(webstrateId, function(err, tags) {
+					if (err) console.error(err);
+					if (tags) {
+						clientManager.sendToClient(socketId, {
+							wa: 'tags', d: webstrateId, tags
+						});
+					}
+				});
 
-						// Anything but a subscribe request.
-						if (req.data.a !== 's') {
-							return next();
-						}
+				// Send list of assets to clients if any.
+				assetManager.getAssets(webstrateId, function(err, assets) {
+					if (err) console.error(err);
+					if (assets) {
+						clientManager.sendToClient(socketId, {
+							wa: 'assets', d: webstrateId, assets
+						});
+					}
+				});
 
-						// Initial document request (s = subscribe).
-						if (req.data.a === 's' && permissions.includes('r')) {
-							// Add client and send "hello" message including client list.
-							clientManager.addClientToWebstrate(socketId, user.userId, webstrateId, true);
+				// No reason to lock up the execution by waiting for the tags and assets to be loaded;
+				// they will be sent when they arrive, so we just return now.
+				return next();
+			}
+			break;
+		case 'bulk fetch':
+			console.log('req.action bulk fetch');
+			break;
+		case 'delete':
+			console.log('req.action delete');
+			break;
+	}
 
-							// Send list of tags to clients if any.
-							documentManager.getTags(webstrateId, function(err, tags) {
-								if (err) console.error(err);
-								if (tags) {
-									clientManager.sendToClient(socketId, {
-										wa: 'tags', d: webstrateId, tags
-									});
-								}
-							});
-
-							// Send list of assets to clients if any.
-							assetManager.getAssets(webstrateId, function(err, assets) {
-								if (err) console.error(err);
-								if (assets) {
-									clientManager.sendToClient(socketId, {
-										wa: 'assets', d: webstrateId, assets
-									});
-								}
-							});
-
-							// No reason to lock up the execution by waiting for the tags and assets to be loaded;
-							// they will be sent when they arrive, so we just return now.
-							return next();
-						}
-						break;
-					case 'bulk fetch':
-						console.log('req.action bulk fetch');
-						break;
-					case 'delete':
-						console.log('req.action delete');
-						break;
-				}
-
-				return next(new Error('Forbidden'));
-			});
-	});
+	return next(new Error('Forbidden'));
+});
 
 module.exports.submit = (webstrateId, op, next) => {
 	share.submit(agent, COLLECTION_NAME, webstrateId, op, null, next);

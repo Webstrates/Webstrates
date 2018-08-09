@@ -434,23 +434,20 @@ module.exports.addAssets = function(webstrateId, assets, searchables, source, ne
  * @return {bool}          (async) Whether the file is permitted to be uploaded or not.
  * @private
  */
-function fileFilter(req, file, next) {
-	return documentManager.getDocument({ webstrateId: req.webstrateId }, function(err, snapshot) {
-		if (err) {
-			return next(err);
-		}
+async function fileFilter(req, file, next) {
+	const snapshot = await util.promisify(documentManager.getDocument)({
+		webstrateId: req.webstrateId });
 
-		if (!snapshot.type) {
-			return next(new Error('Document doesn\'t exist.'));
-		}
+	if (!snapshot.type) {
+		return next(new Error('Document doesn\'t exist.'));
+	}
 
-		var permissions = permissionManager.getUserPermissionsFromSnapshot(req.user.username,
-			req.user.provider, snapshot);
+	const permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
+		req.user.provider, snapshot);
 
-		if (!permissions.includes('w')) {
-			return next(new Error('Insufficient permissions.'));
-		}
+	if (!permissions.includes('w')) {
+		return next(new Error('Insufficient permissions.'));
+	}
 
-		return next(null, true);
-	});
+	return next(null, true);
 }
