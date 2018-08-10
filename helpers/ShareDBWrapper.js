@@ -48,6 +48,15 @@ share.use('connect', (req, next) => {
 	next();
 });
 
+/**
+ * Check if the update changes the permissions of the document.
+ * @param  {Array} ops List of ops.
+ * @return {bool}      Whether any of the ops modify the permission property on the HTML element.
+ * @private
+ */
+const changesPermissions = (ops) => ops.some(op =>
+		op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+
 if (global.config.tagging) {
 	const webstrateActivites = {};
 
@@ -89,13 +98,8 @@ share.use(['after submit'], (req, next) => {
 		return next();
 	}
 
-	// Check if the update changes the permissions of the document.
-	const permissionsChanged = req.op.op.some(op =>
-		op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
-
-	// And if the permissions have changed, invalidate the permissions cache and expire
-	// all access tokens.
-	if (permissionsChanged) {
+	// If the permissions have changed, invalidate the permissions cache and expire all access tokens.
+	if (changesPermissions(req.op.op)) {
 		const webstrateId = req.op.d;
 		permissionManager.invalidateCachedPermissions(webstrateId, true);
 		permissionManager.expireAllAccessTokens(webstrateId, true);
@@ -142,7 +146,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			}
 			break;
 		case 'receive':
-		// u = unsubscribe.
+			// u = unsubscribe.
 			if (req.data.a === 'u') {
 				clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
 				return;
@@ -150,12 +154,15 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 
 			// Check if the incoming update is an op (and not a create op).
 			if (req.data.a === 'op' && Array.isArray(req.data.op)) {
-			// Check if the update changes the permissions of the document.
-				const permissionsChanged = req.data.op.some(op =>
-					op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
-				// And if the permissions have changed, invalidate the permissions cache and expire
+				// If the permissions have changed, invalidate the permissions cache and expire
 				// all access tokens.
-				if (permissionsChanged) {
+				if (changesPermissions(req.data.op)) {
+					// If a non-admin attempts to modify the permissions in a document with an admin, we throw
+					// an error.
+					if (!permissions.includes('a') && await permissionManager.webstrateHasAdmin(webstrateId)) {
+						return next(new Error('Forbidden, admin permission required'));
+					}
+
 					permissionManager.invalidateCachedPermissions(webstrateId, true);
 					permissionManager.expireAllAccessTokens(webstrateId, true);
 				}
@@ -204,7 +211,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			break;
 	}
 
-	return next(new Error('Forbidden'));
+	return next(new Error('Forbidden, write permissions required'));
 });
 
 module.exports.submit = (webstrateId, op, next) => {

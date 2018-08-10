@@ -217,12 +217,39 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 		return permissions;
 	}
 
-	const snapshot = util.promisify(documentManager.getDocument)({ webstrateId });
+	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
 	permissions = await module.exports.getUserPermissionsFromSnapshot(username, provider,
 		snapshot);
 
 	setCachedPermissions(username, provider, permissions, snapshot.id);
 	return permissions;
+};
+
+/**
+ * Get all permissions from a webstrate.
+ * @param  {string} webstrateId WebstrateId.
+ * @return {[type]}             List of permissions from webstrate.
+ * @private
+ */
+async function getPermissions(webstrateId) {
+	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+	return await module.exports.getPermissionsFromSnapshot(snapshot, false);
+}
+
+/**
+ * Whether a user in the permissions list has the 'a' (admin) flag set, in which case any changes
+ * made to the permissions list (data-auth property on the HTML element) has to be made by an admin.
+ * I.e. a user with the regular `w` write permission will be unable.
+ * @param  {string} webstrateId WebstrateId.
+ * @return {bool}               Whether a user with the `a` property exists.
+ * @public
+ */
+module.exports.webstrateHasAdmin = async (webstrateId) => {
+	const permissions = await getPermissions(webstrateId);
+	if (!permissions) return false;
+
+	return permissions.some(permissionObject =>
+		permissionObject.permissions && permissionObject.permissions.includes('a'));
 };
 
 /**
@@ -246,7 +273,7 @@ module.exports.getUserPermissionsFromSnapshot = async (username, provider, snaps
 	return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
 };
 
-const ALLOWED_RECURSIVE_INHERITANCES = 5;
+const ALLOWED_RECURSIVE_INHERITANCES = 3;
 /**
  * Get all permissions from a specific snapshot.
  * @param  {JsonML} snapshot              ShareDB document snapshot.
@@ -282,7 +309,7 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 		// permissions from Y, inheriting from Z, and so forth. If this is exceeded, we ignore the
 		// "deeper" permissions (and also log a warning on the server).
 		if (recursionCount > ALLOWED_RECURSIVE_INHERITANCES) {
-			console.warn('Too many recurisve inheritances in', snapshot._id);
+			console.warn('Too many recursive inheritances in', snapshot.id);
 			return permissionsList;
 		}
 
@@ -346,7 +373,7 @@ module.exports.getDefaultPermissions = function(username, provider) {
  */
 module.exports.addPermissions = async function(username, provider, permissions, webstrateId, source,
 	next) {
-	const snapshot = util.promisify(documentManager.getDocument)({ webstrateId });
+	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||
 		typeof snapshot.data[1] !== 'object') {

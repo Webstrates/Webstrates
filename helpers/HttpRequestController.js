@@ -313,12 +313,26 @@ module.exports.requestHandler = async function(req, res) {
 				return res.status(403).send('Write permissions are required to restore a document.');
 			}
 
+			// If the document contains a user with admin permissions, only admins can restore the
+			// document.
+			if (!req.user.permissions.includes('a') &&
+				await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+				return res.status(403).send('Admin permissions are required to restore this document.');
+			}
+
 			return restoreWebstrate(req, res, snapshot);
 		}
 
 		if ('delete' in req.query) {
 			if (!req.user.permissions.includes('w')) {
 				return res.status(403).send('Write permissions are required to delete a document.');
+			}
+
+			// If the document contains a user with admin permissions, only admins can delete the
+			// document.
+			if (!req.user.permissions.includes('a') &&
+				await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+				return res.status(403).send('Admin permissions are required to delete this document.');
 			}
 
 			return deleteWebstrate(req, res);

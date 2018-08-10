@@ -138,11 +138,20 @@ exports.onmessage = async (ws, req, data, next) => {
 			// Restoring a document to a previous version.
 			case 'restore': {
 				if (!permissions.includes('w')) {
-					console.error('Insufficient write permissions in', data.wa, 'call');
 					ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-						error: 'Insufficient write permissions in restore call.' }));
+						error: 'Write permissions are required to restore a document.' }));
 					return;
 				}
+
+				// If the document contains a user with admin permissions, only admins can restore the
+				// document.
+				if (!permissions.includes('a') &&
+					await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+					ws.send(JSON.stringify({ wa: 'reply', token: data.token,
+						error: 'Admin permissions are required to restore this document.' }));
+					return;
+				}
+
 				const version = data.v;
 				const tag = data.l;
 				// Only one of these should be defined. We can't restore to a version and a tag.

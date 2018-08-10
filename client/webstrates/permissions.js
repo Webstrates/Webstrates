@@ -128,7 +128,6 @@ if (!coreUtils.getLocationObject().staticMode) {
 		if (!coreUtils.objectEquals(userPermissions, newUserPermissions)) {
 			userPermissions = newUserPermissions;
 			coreEvents.triggerEvent('userPermissions', userPermissions);
-			globalObject.triggerEvent('userPermissionsChanged', permissionsList, oldPermissionsList);
 		}
 	};
 
