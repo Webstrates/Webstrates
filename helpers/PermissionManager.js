@@ -325,8 +325,7 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 
 async function getInheritedPermissions(permissionsList, recursionCount) {
 
-	const inheritWebstrateIds = permissionsList.filter(permissionObject =>
-			permissionObject.webstrateId !== undefined);
+	const inheritWebstrateIds = permissionsList.filter(o => o.webstrateId !== undefined);
 
 	// We do this "the slow way", i.e. not async/parallel, because somebody could otherwise easily
 	// DoS the server by forcing the server to fill up the memory with huge webstrate documents all
@@ -339,9 +338,15 @@ async function getInheritedPermissions(permissionsList, recursionCount) {
 			const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
 			const otherPermissionList = await module.exports.getPermissionsFromSnapshot(snapshot,
 				false, recursionCount);
+
+			// We don't want admin permissions to be inherited, so we remove the 'a' flag.
+			otherPermissionList.forEach(o => o.permissions = o.permissions.replace(/a/i, ''));
+
+			// Add all inherited permissions to the passed-in permissions list.
 			permissionsList.push(...otherPermissionList);
 		}
 	}
+	// We update permisisonsList above by side effects, but we return it anyway for good measure.
 	return permissionsList;
 }
 
