@@ -68,10 +68,17 @@ if (!coreUtils.getLocationObject().staticMode) {
 		if (doc && doc.data && doc.data[0] && doc.data[0] === 'html' &&
 		doc.data[1] && doc.data[1]['data-auth']) {
 			try {
-				return JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
+				const permissions = JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
 					.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
+
+				if (!Array.isArray(permissions)) {
+					console.warn('Couldn\'t parse document permissions - expected an array.');
+					return [];
+				}
+				return permissions;
+
 			} catch (err) {
-				console.warn('Couldn\'t parse document permission');
+				console.warn('Couldn\'t parse document permission - malformed.');
 			}
 		}
 		return [];

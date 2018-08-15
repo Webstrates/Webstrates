@@ -129,7 +129,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 
 	// If the user doesn't have any permissions.
 	if (!permissions) {
-		return next(new Error('Forbidden'));
+		return next('Forbidden');
 	}
 
 	switch (req.action) {
@@ -160,7 +160,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 					// If a non-admin attempts to modify the permissions in a document with an admin, we throw
 					// an error.
 					if (!permissions.includes('a') && await permissionManager.webstrateHasAdmin(webstrateId)) {
-						return next(new Error('Forbidden, admin permission required'));
+						return next('Forbidden, admin permission required');
 					}
 
 					permissionManager.invalidateCachedPermissions(webstrateId, true);
@@ -211,7 +211,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			break;
 	}
 
-	return next(new Error('Forbidden, write permissions required'));
+	return next('Forbidden, write permissions required');
 });
 
 module.exports.submit = (webstrateId, op, next) => {

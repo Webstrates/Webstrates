@@ -17,7 +17,14 @@ const createConfig = () => {
 };
 
 /** Read config file from disk. */
-const getConfig = () => fss.readJSON(APP_PATH + '/config.json');
+const getConfig = () => {
+	try {
+		return fss.readJSON(APP_PATH + '/config.json');
+	} catch (e) {
+		console.error('Unable to parse config file.');
+		process.exit(1);
+	}
+};
 
 /** Read sample config from disk and add a randomly generated cookie encryption key. */
 const getSampleConfig = () => {

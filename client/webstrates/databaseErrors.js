@@ -7,7 +7,7 @@ const corePathTree = require('./corePathTree');
 globalObject.createEvent('editingError');
 
 coreEvents.addEventListener('databaseError', error => {
-	if (error.data.a !== 'op' || error.message !== 'Forbidden') return;
+	if (error.data.a !== 'op') return;
 	error.data.op.forEach(op => {
 		const [,, parentElement] = corePathTree.elementAtPath(document.documentElement, op.p);
 		let type = ['si', 'sd', 'oi', 'od', 'li', 'ld'].find(type => type in op);

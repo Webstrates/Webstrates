@@ -73,7 +73,7 @@ function attributeMutation(mutation, targetPathNode) {
 		return;
 	}
 
-	// MongoDB doesn't support periods (.) i nkeys, so we store them as &dot; instead.
+	// MongoDB doesn't support periods (.) in keys, so we store them as &dot; instead.
 	const cleanAttributeName = coreUtils.escapeDots(mutation.attributeName);
 	const targetPathNodeJsonML = targetPathNode.toPath();
 	const path = [...targetPathNodeJsonML, ATTRIBUTE_INDEX, cleanAttributeName];
@@ -106,7 +106,7 @@ function attributeMutation(mutation, targetPathNode) {
 	let ops;
 	if (oldValue === null || newValue.length < 50 || !jsonmlAttrs[cleanAttributeName]
 		|| !coreConfig.attributeValueDiffing || mutation.target.hasAttribute('op-throttle')) {
-		ops = [{ oi: newValue, p: path }];
+		ops = [{ od: oldValue, oi: newValue, p: path }];
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[cleanAttributeName], newValue);
 	}
