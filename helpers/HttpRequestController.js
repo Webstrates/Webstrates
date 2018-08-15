@@ -20,10 +20,10 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
 
-function generateWebstrateId(req) {
+async function generateWebstrateId(req) {
 	if (config.niceWebstrateIds) {
 		const startingLetter = req.user.userId !== 'anonymous:' && req.user.username.charAt(0);
-		return niceWebstrateIds.generate(startingLetter);
+		return await niceWebstrateIds.generate(startingLetter);
 	} else {
 		return shortId.generate();
 	}
@@ -237,7 +237,7 @@ module.exports.requestHandler = async function(req, res) {
 				res.type(asset.mimeType);
 				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
 			} catch (error) {
-				console.error(err);
+				console.error(error);
 				return res.status(409).send(String(err));
 			}
 		}
@@ -508,7 +508,7 @@ function serveTokenList(req, res) {
  * @private
  */
 async function copyWebstrate(req, res, snapshot) {
-	let webstrateId = req.query.copy || generateWebstrateId(req);
+	let webstrateId = req.query.copy || await generateWebstrateId(req);
 
 	// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
 	// otherwise just delete all permissions on the new document.
@@ -678,7 +678,7 @@ function streamToString(stream, callback) {
  * @param {obj} res Express response object.
  * @public
  */
-module.exports.newWebstrateRequestHandler = function(req, res) {
+module.exports.newWebstrateRequestHandler = async function(req, res) {
 	// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
 	// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
 
@@ -750,7 +750,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 														}
 													}
 													documentManager.createNewDocument({
-														webstrateId: req.query.id || generateWebstrateId(req),
+														webstrateId: req.query.id || await generateWebstrateId(req),
 														snapshot
 													}, function(err, _webstrateId) {
 														if (err) {
@@ -887,7 +887,7 @@ module.exports.newWebstrateRequestHandler = function(req, res) {
 		return res.status(403).send('Write permissions are required to create a new document');
 	}
 
-	const webstrateId = generateWebstrateId(req);
+	const webstrateId = await generateWebstrateId(req);
 	res.redirect(url.format({
 		pathname: `/${webstrateId}/`,
 		query: req.query
