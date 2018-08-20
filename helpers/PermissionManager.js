@@ -51,6 +51,30 @@ if (pubsub) {
 }
 
 /**
+ * Determines whether a user is allowed to create a webstrate.
+ * @param  {Object} user User object (retrieved from the request object).
+ * @return {boolean}     True if allowed to create a webstrate, false otherwise.
+ * @public
+ */
+module.exports.userIsAllowedToCreateWebstrate = (user) => {
+	// All users are allowed.
+	if (!config.loggedInToCreateWebstrates) return true;
+
+	// If not all users are allowed, and the user isn't logged in.
+	if (user.provider === '') return false;
+
+	// If loggedInToCreateWebstrates is set to an array, the provider must be in the array to be
+	// allowed to create a webstrate.
+	if (Array.isArray(config.loggedInToCreateWebstrates)
+		&& !config.loggedInToCreateWebstrates.includes(user.provider))
+		return false;
+
+	// Otherwise, if loggedInToCreateWebstrates is just a boolean, any logged in user is allowed to
+	// create a webstrate.
+	return true;
+};
+
+/**
  * Get user object from access token.
  * @param  {string} webstrateId WebstrateId
  * @param  {string} token       Access token.

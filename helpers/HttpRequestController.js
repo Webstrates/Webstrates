@@ -298,6 +298,17 @@ module.exports.requestHandler = async function(req, res) {
 			var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
 				req.user.provider);
 
+			// If a user is required to be logged in (through loggedInToCreateWebstrates) to create a
+			// webstrate, we also require them to be logged in to copy a webstrate.
+			if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
+				let err = 'Must be logged in to copy a webstrate.';
+				if (Array.isArray(config.loggedInToCreateWebstrates)) {
+					const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+					err =  `Must be logged in with ${allowedProviders} to copy a webstrate.`;
+				}
+				return res.status(403).send(err);
+			}
+
 			// If the user has no default write permissions, they're not allowed to create documents.
 			if (!defaultPermissions.includes('w')) {
 				return res.status(403).send('Write permissions are required to create a new document.');
@@ -324,6 +335,17 @@ module.exports.requestHandler = async function(req, res) {
 		}
 
 		if ('delete' in req.query) {
+			// If a user is required to be logged in (through loggedInToCreateWebstrates) to create a
+			// webstrate, we also require them to be logged in to delete a webstrate.
+			if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
+				let err = 'Must be logged in to delete a webstrate.';
+				if (Array.isArray(config.loggedInToCreateWebstrates)) {
+					const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+					err =  `Must be logged in with ${allowedProviders} to delete a webstrate.`;
+				}
+				return res.status(403).send(err);
+			}
+
 			if (!req.user.permissions.includes('w')) {
 				return res.status(403).send('Write permissions are required to delete a document.');
 			}
@@ -344,25 +366,6 @@ module.exports.requestHandler = async function(req, res) {
 	});
 
 };
-
-function createNewWebstrate(req, res) {
-	// If a specific version is requested, we create a new webstrate from the requested
-	// version with a name of the format /<id>-<version|tag>-<random string> and redirect the
-	// user to it. Only one of `version` and `tag` will be defined.
-	var newWebstrateId = req.webstrateId + '-' + (req.version || req.tag)
-		+ '-' + shortId.generate();
-	return documentManager.createNewDocument({
-		webstrateId: newWebstrateId,
-		prototypeId: req.webstrateId,
-		version: req.version, tag: req.tag
-	}, function(err, newWebstrateId) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-		res.redirect('/' + newWebstrateId);
-	});
-}
 
 /**
  * Requesting current document version number by calling `/<id>?v`.
@@ -681,6 +684,16 @@ function streamToString(stream, callback) {
 module.exports.newWebstrateRequestHandler = async function(req, res) {
 	// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
 	// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
+
+	if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
+		let err = 'Must be logged in to create a webstrate.';
+		if (Array.isArray(config.loggedInToCreateWebstrates)) {
+			const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+			err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
+		}
+
+		return res.status(409).send(err);
+	}
 
 	if ('prototypeUrl' in req.query) {
 		return request({url: req.query.prototypeUrl, encoding: 'binary' },

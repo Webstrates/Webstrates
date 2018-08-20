@@ -111,7 +111,7 @@ share.use(['after submit'], (req, next) => {
 share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete'],
 	async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
-	// about.
+	// about (in the sense that we don't want to check for permissions or anything).
 	if (!req.agent.user) return next();
 
 	const socketId = req.agent.socketId;
@@ -121,6 +121,15 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 	// If the user is creating a new document, it makes no sense to verify whether he has access to
 	// said document.
 	if (req.op && req.op.create) {
+		// But we should check whether the user has access to create documents.
+		if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
+			let err = 'Must be logged in to create a webstrate.';
+			if (Array.isArray(config.loggedInToCreateWebstrates)) {
+				const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+				err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
+			}
+			return next(err);
+		}
 		return next();
 	}
 
