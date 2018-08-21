@@ -229,14 +229,15 @@ app.ws('*', (ws, req) => {
 		try {
 			ws.__send(data);
 		} catch (err) {
-			console.error(req.socketId, data + ':', err);
-			ws.close();
+			ws.close(err);
 			return false;
 		}
 		return true;
 	};
 
-	runMiddleware('onconnect', [ws, req], ...middleware);
+	ws.on('close', reason => {
+		runMiddleware('onclose', [ws, req, reason], ...middleware);
+	});
 
 	ws.on('message', data => {
 		try {
@@ -248,10 +249,7 @@ app.ws('*', (ws, req) => {
 		runMiddleware('onmessage', [ws, req, data], ...middleware);
 	});
 
-	ws.on('close', reason => {
-		runMiddleware('onclose', [ws, req, reason], ...middleware);
-	});
-
+	runMiddleware('onconnect', [ws, req], ...middleware);
 });
 
 app.use((err, req, res, next) => {
