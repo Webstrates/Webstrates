@@ -95,8 +95,8 @@ if (!global.config.pubsub) {
 					});
 					break;
 				}
-				default:
-					console.log(message);
+				//default:
+				//	console.log(message);
 			}
 		});
 	});

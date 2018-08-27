@@ -235,6 +235,11 @@ app.ws('*', (ws, req) => {
 		return true;
 	};
 
+
+	ws.on('error', err => {
+		ws.close(err)
+	});
+
 	ws.on('close', reason => {
 		runMiddleware('onclose', [ws, req, reason], ...middleware);
 	});
@@ -250,6 +255,7 @@ app.ws('*', (ws, req) => {
 	});
 
 	runMiddleware('onconnect', [ws, req], ...middleware);
+
 });
 
 app.use((err, req, res, next) => {
