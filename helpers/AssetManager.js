@@ -144,13 +144,14 @@ module.exports.getCurrentAssets = function(webstrateId, next) {
  * @public
  */
 module.exports.getAsset = async function({ webstrateId, assetName, version }) {
-	var query = { webstrateId, originalFileName: assetName };
-	if (version) query.v = { $lte: +version };
+	version = Number.parseInt(version);
+	const query = { webstrateId, originalFileName: assetName };
+	if (version) query.v = { $lte: version };
 	const asset = await db.assets.findOne(query, { sort: { v: -1 } });
-	// If the asset has been deleted, we can't serve it if it was deleted at a prior version than the
-	// request, as the asset thus still would be deleted. If we're requesting the current version,
-	// the fact that it has been deleted also means we can't serve it. Keep in mind that it's still
-	// possible to access a deleted asset at a version prior to its deletion.
+	if (!asset) return undefined;
+	// If the asset has been deleted (i.e. deletedAt exists), we only serve the asset if it's being
+	// requested at a version prior to its deletion. E.g. if it was deleted at version 5, it should
+	// still be accessible at version 3, otherwise deletions would break history.
 	if (asset.deletedAt && ((version && asset.deletedAt <= version) || !version)) return undefined;
 	return asset;
 };
