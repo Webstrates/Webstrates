@@ -717,7 +717,7 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 							yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
 								if (err) {
 									console.error(err);
-									cleanupFileCallback();
+									return cleanupFileCallback();
 								}
 
 								let webstrateId, htmlDocumentFound = false;
