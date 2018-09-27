@@ -24,18 +24,18 @@ coreEventsModule.PRIORITY = new Proxy(priorities, {
 });
 
 /**
- * Create new event.
- * @param  {string}  eventName  Event name.
- * @param  {object} options     An object of options:
- *                              idempotent:      Whether we allow the same event to be created
- *                                               multiple times without throwing an error.
- *                              addListener:     A callback to be triggered when an eventListener
- *                                               gets added.
- *                              removeListener:  A callback to be triggered when an eventListener
- *                                               gets added.
+* Create new event.
+* @param  {string}  eventName  Event name.
+* @param  {object} options     An object of options:
+*                              idempotent:      Whether we allow the same event to be created
+*                                               multiple times without throwing an error.
+*                              addListener:     A callback to be triggered when an eventListener
+*                                               gets added.
+*                              removeListener:  A callback to be triggered when an eventListener
+*                                               gets added.
 
- * @public
- */
+* @public
+*/
 coreEventsModule.createEvent = (eventName, options = {}) => {
 	if (coreEventsModule.eventExists(eventName) && !options.idempotent) {
 		throw new Error(`Event ${eventName} already exists.`);
