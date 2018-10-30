@@ -55,7 +55,7 @@ share.use('connect', (req, next) => {
  * @private
  */
 const changesPermissions = (ops) => ops.some(op =>
-		op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+	op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
 
 if (global.config.tagging) {
 	const webstrateActivites = {};
@@ -112,116 +112,117 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 	async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).
-	if (!req.agent.user) return next();
+		if (!req.agent.user) return next();
 
-	const socketId = req.agent.socketId;
-	const user = req.agent.user;
-	const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
+		const socketId = req.agent.socketId;
+		const user = req.agent.user;
+		const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
 
-	// If the user is creating a new document, it makes no sense to verify whether he has access to
-	// said document.
-	if (req.op && req.op.create) {
+		// If the user is creating a new document, it makes no sense to verify whether he has access to
+		// said document.
+		if (req.op && req.op.create) {
 		// But we should check whether the user has access to create documents.
-		if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
-			let err = 'Must be logged in to create a webstrate.';
-			if (Array.isArray(config.loggedInToCreateWebstrates)) {
-				const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
-				err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
+			if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
+				let err = 'Must be logged in to create a webstrate.';
+				if (Array.isArray(config.loggedInToCreateWebstrates)) {
+					const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+					err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
+				}
+				return next(err);
 			}
-			return next(err);
+			return next();
 		}
-		return next();
-	}
 
-	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
-		webstrateId);
+		const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
+			webstrateId);
 
-	// If the user doesn't have any permissions.
-	if (!permissions) {
-		return next('Forbidden');
-	}
+		// If the user doesn't have any permissions.
+		if (!permissions) {
+			return next('Forbidden');
+		}
 
-	switch (req.action) {
-		case 'fetch':
-		case 'getOps': // Operations request.
-		case 'query': // Document request.
-			if (permissions.includes('r')) {
-				return next();
-			}
-			break;
-		case 'submit': // Operation submission.
-			if (permissions.includes('w')) {
-				return next();
-			}
-			break;
-		case 'receive':
+		switch (req.action) {
+			case 'fetch':
+			case 'getOps': // Operations request.
+			case 'query': // Document request.
+				if (permissions.includes('r')) {
+					return next();
+				}
+				break;
+			case 'submit': // Operation submission.
+				if (permissions.includes('w')) {
+					return next();
+				}
+				break;
+			case 'receive':
 			// u = unsubscribe.
-			if (req.data.a === 'u') {
-				clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
-				return;
-			}
+				if (req.data.a === 'u') {
+					clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
+					return;
+				}
 
-			// Check if the incoming update is an op (and not a create op).
-			if (req.data.a === 'op' && Array.isArray(req.data.op)) {
+				// Check if the incoming update is an op (and not a create op).
+				if (req.data.a === 'op' && Array.isArray(req.data.op)) {
 				// If the permissions have changed, invalidate the permissions cache and expire
 				// all access tokens.
-				if (changesPermissions(req.data.op)) {
+					if (changesPermissions(req.data.op)) {
 					// If a non-admin attempts to modify the permissions in a document with an admin, we throw
 					// an error.
-					if (!permissions.includes('a') && await permissionManager.webstrateHasAdmin(webstrateId)) {
-						return next('Forbidden, admin permission required');
-					}
+						if (!permissions.includes('a') &&
+							await permissionManager.webstrateHasAdmin(webstrateId)) {
+							return next('Forbidden, admin permission required');
+						}
 
-					permissionManager.invalidateCachedPermissions(webstrateId, true);
-					permissionManager.expireAllAccessTokens(webstrateId, true);
+						permissionManager.invalidateCachedPermissions(webstrateId, true);
+						permissionManager.expireAllAccessTokens(webstrateId, true);
+					}
 				}
-			}
 
-			// Anything but a subscribe request.
-			if (req.data.a !== 's') {
-				return next();
-			}
+				// Anything but a subscribe request.
+				if (req.data.a !== 's') {
+					return next();
+				}
 
-			// Initial document request (s = subscribe).
-			if (req.data.a === 's' && permissions.includes('r')) {
+				// Initial document request (s = subscribe).
+				if (req.data.a === 's' && permissions.includes('r')) {
 				// Add client and send "hello" message including client list.
-				clientManager.addClientToWebstrate(socketId, user.userId, webstrateId, true);
+					clientManager.addClientToWebstrate(socketId, user.userId, webstrateId, true);
 
-				// Send list of tags to clients if any.
-				documentManager.getTags(webstrateId, function(err, tags) {
-					if (err) console.error(err);
-					if (tags) {
-						clientManager.sendToClient(socketId, {
-							wa: 'tags', d: webstrateId, tags
-						});
-					}
-				});
+					// Send list of tags to clients if any.
+					documentManager.getTags(webstrateId, function(err, tags) {
+						if (err) console.error(err);
+						if (tags) {
+							clientManager.sendToClient(socketId, {
+								wa: 'tags', d: webstrateId, tags
+							});
+						}
+					});
 
-				// Send list of assets to clients if any.
-				assetManager.getAssets(webstrateId, function(err, assets) {
-					if (err) console.error(err);
-					if (assets) {
-						clientManager.sendToClient(socketId, {
-							wa: 'assets', d: webstrateId, assets
-						});
-					}
-				});
+					// Send list of assets to clients if any.
+					assetManager.getAssets(webstrateId, function(err, assets) {
+						if (err) console.error(err);
+						if (assets) {
+							clientManager.sendToClient(socketId, {
+								wa: 'assets', d: webstrateId, assets
+							});
+						}
+					});
 
-				// No reason to lock up the execution by waiting for the tags and assets to be loaded;
-				// they will be sent when they arrive, so we just return now.
-				return next();
-			}
-			break;
-		case 'bulk fetch':
-			console.log('req.action bulk fetch');
-			break;
-		case 'delete':
-			console.log('req.action delete');
-			break;
-	}
+					// No reason to lock up the execution by waiting for the tags and assets to be loaded;
+					// they will be sent when they arrive, so we just return now.
+					return next();
+				}
+				break;
+			case 'bulk fetch':
+				console.log('req.action bulk fetch');
+				break;
+			case 'delete':
+				console.log('req.action delete');
+				break;
+		}
 
-	return next('Forbidden, write permissions required');
-});
+		return next('Forbidden, write permissions required');
+	});
 
 module.exports.submit = (webstrateId, op, next) => {
 	share.submit(agent, COLLECTION_NAME, webstrateId, op, null, next);

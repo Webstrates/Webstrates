@@ -174,7 +174,7 @@ module.exports.markAssetAsDeleted = (webstrateId, assetName) => new Promise((acc
 			{ sort: { v: -1 } }, (err, res) => {
 				if (err || res.value === null) return reject(new Error('Update failed'));
 				return accept(res.value);
-		});
+			});
 	});
 });
 
