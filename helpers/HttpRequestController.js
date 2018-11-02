@@ -151,7 +151,6 @@ const getZipStructure = async (fileName) => new Promise((accept, reject) => {
 			zipFile.readEntry();
 		});
 		zipFile.once('end', () => {
-			console.log('yeah');
 			accept(fileList);
 		});
 		zipFile.readEntry();
@@ -236,7 +235,6 @@ module.exports.requestHandler = async function(req, res) {
 								// If requested file is a directory, list directory files.
 								if (entry.fileName.endsWith('/')) {
 									const zipStructure = await getZipStructure(asset.fileName);
-									console.log(zipStructure, entry.fileName);
 									const filteredZipStructure = zipStructure.filter(path =>
 										path.startsWith(entry.fileName));
 									return res.json(filteredZipStructure);
@@ -786,7 +784,7 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 														if (req.user.username === 'anonymous' && req.user.provider === '') {
 															snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
 														} else {
-															snapshot = permissionManager
+															snapshot = await permissionManager
 																.addPermissionsToSnapshot(req.user.username, req.user.provider,
 																	'rw', snapshot);
 														}
