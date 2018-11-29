@@ -2,7 +2,7 @@
 
 const archiver = require('archiver');
 const crypto = require('crypto');
-const fs = require('fs');
+const fs = require('graceful-fs');
 const jsonmlTools = require('jsonml-tools');
 const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
