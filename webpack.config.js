@@ -65,7 +65,7 @@ const config = {
 };
 
 // In production
-if (process.env.NODE_ENV === 'production') {
+if (process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production') {
 	// Uglify/minify the code.
 	config.plugins.push(new webpack.optimize.UglifyJsPlugin());
 
