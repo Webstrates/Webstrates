@@ -6,6 +6,8 @@ const fs = require('graceful-fs');
 const jsonmlTools = require('jsonml-tools');
 const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
+const multer = require('multer');
+const os = require('os');
 const request = require('request');
 const shortId = require('shortid');
 const tmp = require('tmp');
@@ -703,12 +705,12 @@ function streamToString(stream, callback) {
 }
 
 /**
- * Handles requests to "/new".
+ * Handles GET requests to "/new".
  * @param {obj} req Express request object.
  * @param {obj} res Express response object.
  * @public
  */
-module.exports.newWebstrateRequestHandler = async function(req, res) {
+module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 	// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
 	// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
 
@@ -720,6 +722,15 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 		}
 
 		return res.status(409).send(err);
+	}
+
+	if ('prototypeFile' in req.query) {
+		return res.send(`
+			<form method="post" action="/new?id=${req.query.id}" enctype="multipart/form-data">
+				<input type="file" name="file" accept=".zip"><br>
+				<input type="submit" value="Upload ZIP">
+			</form>
+		`);
 	}
 
 	if ('prototypeUrl' in req.query) {
@@ -735,141 +746,21 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 				}
 				if (response.headers['content-type'] === 'application/zip' ||
 						response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i)) {
-					return tmp.file((err, filePath, fd, cleanupFileCallback) => {
-						return fs.writeFile(filePath, body, 'binary', err => {
+					return tmp.file((err, filePath, fd, cleanUpCallback) => {
+						return fs.writeFile(filePath, body, 'binary', async err => {
 							if (err) {
 								console.error(err);
-								return cleanupFileCallback();
 							}
-							yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
-								if (err) {
-									console.error(err);
-									return cleanupFileCallback();
-								}
-
-								let webstrateId, htmlDocumentFound = false;
-								let assets = [];
-								zipFile.on('entry', entry => {
-									if (/\/$/.test(entry.fileName)) {
-									// Directory file names end with '/'.
-									// Note that entries for directories themselves are optional.
-									// An entry's fileName implicitly requires its parent directories to exist.
-										zipFile.readEntry();
-									} else {
-									// file entry
-										zipFile.openReadStream(entry, (err, readStream) => {
-											if (err) return console.error(err);
-											readStream.on('end', function() {
-												zipFile.readEntry();
-											});
-
-											if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
-												htmlDocumentFound = true;
-												streamToString(readStream, async htmlDoc => {
-													let jsonml = htmlToJsonML(htmlDoc);
-													// MongoDB doesn't accept periods in keys, so we replace them with
-													// `&dot;`s when storing them in the database.
-													jsonml = replaceInKeys(jsonml, '.', '&dot;');
-													let snapshot = {
-														type: 'http://sharejs.org/types/JSONv0',
-														data: jsonml
-													};
-													const userPermissions = await permissionManager
-														.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
-															snapshot);
-													// If user doesn't have write permissions to the docuemnt, add them if
-													// the user is logged in, otherwise just delete all permissions on the
-													// new document.
-													if (!userPermissions.includes('w')) {
-														if (req.user.username === 'anonymous' && req.user.provider === '') {
-															snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
-														} else {
-															snapshot = await permissionManager
-																.addPermissionsToSnapshot(req.user.username, req.user.provider,
-																	'rw', snapshot);
-														}
-													}
-													documentManager.createNewDocument({
-														webstrateId: req.query.id || await generateWebstrateId(req),
-														snapshot
-													}, function(err, _webstrateId) {
-														if (err) {
-															console.error(err);
-															return;
-														}
-														webstrateId = _webstrateId;
-													});
-												});
-											}
-											else {
-												crypto.pseudoRandomBytes(16, (err, raw) => {
-													const fileName =  raw.toString('hex');
-													const filePath = assetManager.UPLOAD_DEST + fileName;
-													const writeStream = fs.createWriteStream(filePath);
-													readStream.pipe(writeStream);
-													assets.push({
-														filename: fileName,
-														originalname: entry.fileName.match(/([^/]+)$/)[0],
-														size: entry.uncompressedSize,
-														mimetype: mime.lookup(entry.fileName)
-													});
-												});
-											}
-										});
-									}
-								});
-
-								function addAssetsToWebstrateOrDeleteTheAssets() {
-									if (!webstrateId) {
-										assets.forEach(asset => {
-											fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
-										});
-										return res.status(409).send(htmlDocumentFound
-											? 'Unable to create webstrate from index.html file.'
-											: 'No index.html found.');
-									}
-
-									var source = `${req.user.userId} (${req.remoteAddress})`;
-									// Assets ending in .searchable aren't real assets, but just an indication that
-									// the asset they're referring to should be searchable. E.g. if two assets
-									// data.csv and data.csv.searchable are uploaded, the ladder just serves to let us
-									// know that the former should be made searchable.
-									let searchables = assets.filter(asset =>
-										asset.originalname.endsWith('.searchable'));
-
-									// Remove dummy files from assets list.
-									assets = assets.filter(asset =>
-										!asset.originalname.endsWith('.searchable'));
-
-									// Delete the dummy files from the system.
-									searchables.forEach(asset => {
-										fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
-									});
-
-									// Now create a simple list (no objects, just asset nameS) of the asset names
-									// that should be searchable. We remember to remove the 11-character long
-									// '.searchable'  prefix.
-									searchables = searchables.map(asset => asset.originalname.slice(0, -11));
-									assetManager.addAssets(webstrateId, assets, searchables, source,
-										(err, assetRecords) => {
-											res.redirect(`/${webstrateId}/`);
-										});
-								}
-
-								zipFile.once('end', function() {
-									zipFile.close();
-									cleanupFileCallback();
-
-									if (webstrateId) {
-										return addAssetsToWebstrateOrDeleteTheAssets();
-									}
-
-									// If no webstrateId exists, we're waiting for MongoDB, so we'll wait 500ms.
-									setTimeout(addAssetsToWebstrateOrDeleteTheAssets, 500);
-								});
-
-								zipFile.readEntry();
-							});
+							const webstrateId = req.query.id || await generateWebstrateId(req);
+							try {
+								await createWebstrateFromZipFile(filePath, webstrateId, req);
+								res.redirect(`/${webstrateId}/`);
+							} catch (err) {
+								console.error(err);
+								res.status(409).send(err);
+							}
+							// Tell the tmp package to delete the temporary file it created.
+							cleanUpCallback();
 						});
 					});
 				}
@@ -892,7 +783,7 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 						}
 						delete req.query.prototypeUrl;
 						delete req.query.id;
-						res.redirect(url.format({
+						return res.redirect(url.format({
 							pathname:`/${webstrateId}/`,
 							query: req.query
 						}));
@@ -933,3 +824,192 @@ module.exports.newWebstrateRequestHandler = async function(req, res) {
 		query: req.query
 	}));
 };
+
+const TMP_DIR = os.tmpdir();
+const upload = multer({
+	dest: TMP_DIR,
+	limits: { fileSize: (config.maxAssetSize || 20) * 1024 * 1024 }, // 20 MB default.
+}).single('file');
+
+module.exports.newWebstratePostRequestHandler = async function(req, res) {
+	if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
+		let err = 'Must be logged in to create a webstrate.';
+		if (Array.isArray(config.loggedInToCreateWebstrates)) {
+			const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+			err =  `Must be logged in with ${allowedProviders} to create a webstrate.˛`;
+		}
+
+		return res.status(409).send(err);
+	}
+
+	upload(req, res, async function(err) {
+		if (err) {
+			console.error(err);
+			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
+				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` } : err);
+		}
+
+		if (!req.file) {
+			return res.status(409).json(`No file received.`);
+		}
+
+		if (req.file.mimetype !== 'application/zip') {
+			return res.status(409).send('Can only prototype from application/zip files. ' +
+				' Received content-type: ' + req.file.mimetype);
+		}
+
+		const webstrateId = req.query.id || req.body.id || await generateWebstrateId(req);
+		try {
+			await createWebstrateFromZipFile(req.file.path, webstrateId, req);
+			res.redirect(`/${webstrateId}/`);
+		} catch (err) {
+			res.status(409).send(String(err));
+		}
+	});
+};
+
+/**
+ * Create a webstrate from a ZIP file on disk.
+ * @param  {string} filePath    Path to ZIP file.
+ * @param  {string} webstrateId Desired webstrateId.
+ * @param  {object} req         Request object.
+ * @return {Promise}            Rejection on failure.
+ * @private
+ */
+async function createWebstrateFromZipFile(filePath, webstrateId, req) {
+	return new Promise((accept, reject) => {
+		yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
+			if (err) {
+				console.error(err);
+				reject(err);
+			}
+
+			let htmlDocumentFound = false, createdWebstrate = false;
+			let assets = [];
+			zipFile.on('entry', entry => {
+				if (/\/$/.test(entry.fileName)) {
+				// Directory file names end with '/'.
+				// Note that entries for directories themselves are optional.
+				// An entry's fileName implicitly requires its parent directories to exist.
+					zipFile.readEntry();
+				} else {
+				// file entry
+					zipFile.openReadStream(entry, (err, readStream) => {
+						if (err) {
+							console.error(err);
+							reject(err);
+						}
+						readStream.on('end', function() {
+							zipFile.readEntry();
+						});
+
+						if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
+							htmlDocumentFound = true;
+							streamToString(readStream, async htmlDoc => {
+								let jsonml = htmlToJsonML(htmlDoc);
+								// MongoDB doesn't accept periods in keys, so we replace them with
+								// `&dot;`s when storing them in the database.
+								jsonml = replaceInKeys(jsonml, '.', '&dot;');
+								let snapshot = {
+									type: 'http://sharejs.org/types/JSONv0',
+									data: jsonml
+								};
+								const userPermissions = await permissionManager
+									.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
+										snapshot);
+								// If user doesn't have write permissions to the docuemnt, add them if
+								// the user is logged in, otherwise just delete all permissions on the
+								// new document.
+								if (!userPermissions.includes('w')) {
+									if (req.user.username === 'anonymous' && req.user.provider === '') {
+										snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+									} else {
+										snapshot = await permissionManager
+											.addPermissionsToSnapshot(req.user.username, req.user.provider,
+												'rw', snapshot);
+									}
+								}
+								documentManager.createNewDocument({
+									webstrateId, snapshot
+								}, function(err, _webstrateId) {
+									if (err) {
+										console.error(err);
+										return reject(err);
+									}
+									createdWebstrate = true;
+								});
+							});
+						}
+						else {
+							crypto.pseudoRandomBytes(16, (err, raw) => {
+								const fileName =  raw.toString('hex');
+								const filePath = assetManager.UPLOAD_DEST + fileName;
+								const writeStream = fs.createWriteStream(filePath);
+								readStream.pipe(writeStream);
+								assets.push({
+									filename: fileName,
+									originalname: entry.fileName.match(/([^/]+)$/)[0],
+									size: entry.uncompressedSize,
+									mimetype: mime.lookup(entry.fileName)
+								});
+							});
+						}
+					});
+				}
+			});
+
+			function addAssetsToWebstrateOrDeleteTheAssets() {
+				if (!createdWebstrate) {
+					assets.forEach(asset => {
+						fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
+					});
+					if (htmlDocumentFound) {
+						reject('index.html found, but unable to create webstrate from it. Aborting.');
+					} else {
+						reject('No index.html found.');
+					}
+				}
+
+				var source = `${req.user.userId} (${req.remoteAddress})`;
+				// Assets ending in .searchable aren't real assets, but just an indication that
+				// the asset they're referring to should be searchable. E.g. if two assets
+				// data.csv and data.csv.searchable are uploaded, the ladder just serves to let us
+				// know that the former should be made searchable.
+				let searchables = assets.filter(asset =>
+					asset.originalname.endsWith('.searchable'));
+
+				// Remove dummy files from assets list.
+				assets = assets.filter(asset =>
+					!asset.originalname.endsWith('.searchable'));
+
+				// Delete the dummy files from the system.
+				searchables.forEach(asset => {
+					fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
+				});
+
+				// Now create a simple list (no objects) of the asset names that should be
+				// searchable. We remember to remove the 11-character long '.searchable' prefix.
+				searchables = searchables.map(asset => asset.originalname.slice(0, -11));
+				assetManager.addAssets(webstrateId, assets, searchables, source,
+					(err, assetRecords) => {
+						accept(webstrateId);
+					});
+			}
+
+			zipFile.once('end', function() {
+				zipFile.close();
+
+				// If the webstrate has been created, we continue to add assets.
+				if (createdWebstrate) {
+					return addAssetsToWebstrateOrDeleteTheAssets();
+				}
+
+				// If no webstrateId exists, either the creation of the webstrate failed or we're waiting
+				// on mongodb. Eiter way, we give mongodb 500ms to figure it out.
+				setTimeout(addAssetsToWebstrateOrDeleteTheAssets, 500);
+			});
+
+			zipFile.readEntry();
+		});
+	});
+}

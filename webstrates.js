@@ -126,7 +126,9 @@ app.use(function(req, res, next) {
 });
 
 app.get('/', httpRequestController.rootRequestHandler);
-app.get('/new', httpRequestController.newWebstrateRequestHandler);
+app.get('/new', httpRequestController.newWebstrateGetRequestHandler);
+app.post('/new', httpRequestController.extractQuery,
+	httpRequestController.newWebstratePostRequestHandler);
 
 // Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
 // Handles mostly all requests.
