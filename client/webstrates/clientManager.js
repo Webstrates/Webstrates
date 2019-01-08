@@ -70,7 +70,14 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 			case 'clientPart': {
 				const partingClientId = message.id;
-				clients.splice(clients.indexOf(partingClientId), 1);
+				const partingClientIdIdx = clients.indexOf(partingClientId);
+				// If we haven't registered the client joining, don't register it leaving (and also don't
+				// try to remove it from the client list. That won't end well.)
+				if (partingClientIdIdx === -1) {
+					return;
+				}
+
+				clients.splice(partingClientIdIdx, 1);
 
 				// Trigger internally.
 				coreEvents.triggerEvent('clientPart', partingClientId);

@@ -77,6 +77,6 @@
     "eslint": "^4.7.2",
     "eslint-loader": "^1.9.0",
     "mocha": "^3.5.3",
-    "puppeteer": "^1.0.0"
+    "puppeteer": "^1.11.0"
   }
 }
