@@ -225,6 +225,8 @@ app.ws('*', (ws, req) => {
 	var socketId = clientManager.addClient(ws, req.user);
 	req.socketId = socketId;
 
+	req.socket.setTimeout(30 * 1000);
+
 	// We replace `ws.send` with a function that doesn't throw an exception if the message fails.
 	ws.__send = ws.send;
 	ws.send = data => {
