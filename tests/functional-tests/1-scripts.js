@@ -45,7 +45,7 @@ describe('Script Insertion and Execution', function() {
 
 	it('inserting a script should not execute it on other client', async () => {
 		const scriptsRun = await util.waitForFunction(pageB, () =>
-			window.__scriptRunPre || window.__scriptRunPost || window.jQuery,);
+			window.__scriptRunPre || window.__scriptRunPost || window.jQuery);
 
 		assert.isFalse(scriptsRun);
 	});

@@ -47,7 +47,8 @@ util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
 	try {
 		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);
 	} catch (e) {
-		if (e.message.match(/^waiting failed: timeout \d+ms exceeded$/)) {
+		// Using (.*) wildcard to be compatible with error messages from older versions of Puppeteer.
+		if (e.message.match(/^waiting (.*)failed: timeout \d+ms exceeded$/)) {
 			return false;
 		}
 		throw e;

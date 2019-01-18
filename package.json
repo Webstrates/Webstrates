@@ -61,7 +61,7 @@
     "passport-google-oauth2": "^0.1.6",
     "passport-oauth2-profilemap": "0.0.1",
     "redis": "^2.6.3",
-    "request": "^2.83.0",
+    "request": "^2.88.0",
     "sharedb": "^1.0.0-beta.6",
     "sharedb-mongo": "1.0.0-beta.2",
     "sharedb-redis-pubsub": "^1.0.0-beta.1",
