@@ -34,6 +34,7 @@
     "babel-loader": "^7.1.2",
     "babel-preset-es2015": "^6.24.1",
     "body-parser": "^1.17.2",
+    "bson": "^4.0.1",
     "client-sessions": "^0.7.0",
     "console-stamp": "^0.2.2",
     "crypto": "^1.0.1",

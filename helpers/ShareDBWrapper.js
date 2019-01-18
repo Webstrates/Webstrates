@@ -1,5 +1,7 @@
 'use strict';
 
+const bson = require('bson');
+const v8 = require('v8');
 const redis = require('redis');
 const sharedb = require('sharedb');
 const sharedbMongo = require('sharedb-mongo');
@@ -229,7 +231,28 @@ module.exports.submit = (webstrateId, op, next) => {
 };
 
 module.exports.getOps = (webstrateId, versionFrom, versionTo, next) => {
-	share.getOps(agent, COLLECTION_NAME, webstrateId, versionFrom, versionTo, next);
+	share.getOps(agent, COLLECTION_NAME, webstrateId, versionFrom, versionTo, (err, ops) => {
+		if (err || ops.length < 1000) return next(err, ops);
+
+		const heapStats = v8.getHeapStatistics();
+		const opsInMB = bson.calculateObjectSize(ops) / (1024 * 1024);
+		const availMemInMB = (heapStats.heap_size_limit - heapStats.used_heap_size) / (1024 * 1024);
+		const estimatedRequiredMemInMB = 8 * opsInMB;
+
+		// When stringifying ops, they'll take up about 7 times as much memory as they do right now,
+		// so we throw an error if we're at risk of approaching this memory limit. We'd rather ask the
+		// user to request fewer ops than to risk the server crashing, because it runs out of memory.
+		if (estimatedRequiredMemInMB < availMemInMB) return next(err, ops);
+
+		// Calculate (and round) an amount of ops the server will likely be able to serve.
+		// This is 80% of what the server appears to be able to handle with current memory consumption.
+		let suggestedOps = .8 * ops.length * (availMemInMB / estimatedRequiredMemInMB);
+		suggestedOps = Math.floor((suggestedOps / 1000)) * 1000;
+
+		err = new Error(`Memory consumption of requested ops too high. Try requesting only ` +
+			`${suggestedOps} ops at a time instead of the requested ${ops.length} ops.`);
+		next(err, null);
+	});
 };
 
 module.exports.fetch = (webstrateId, next) => {

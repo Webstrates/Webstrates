@@ -26,7 +26,8 @@ const cleanServerConfig = {
 	rateLimit: serverConfig.rateLimit,
 	basicAuth: serverConfig.basicAuth,
 	providers: serverConfig.providers && Object.keys(serverConfig.providers),
-	gitCommit
+	gitCommit,
+	nodeVersion: process.version
 };
 
 const config = {
