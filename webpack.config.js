@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const execSync = require('child_process').execSync;
 const webpack = require('webpack');
 const wrapperPlugin = require('wrapper-webpack-plugin');
 const fileWatcherPlugin = require('filewatcher-webpack-plugin');
@@ -10,12 +11,10 @@ global.APP_PATH = __dirname;
 // Find last Git commit, so we can expose it to the client.
 let gitCommit;
 try {
-	gitCommit = require('child_process')
-		.execSync('git log -1 --oneline')
-		.toString().trim()
-}
-catch (error) {
-	console.warn('Couldn\'t get last Git commit', error.toString());
+	gitCommit = execSync('git log -1 --oneline 2>/dev/null').toString().trim();
+} catch (error) {
+	// Couldn't find git commit, continuing without it silently. Printing any error message here would
+	// needlessly intimidate newcomers.
 }
 
 const serverConfig = configHelper.getConfig();
