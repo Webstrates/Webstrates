@@ -105,14 +105,14 @@ if (config.auth) {
 		app.get('/auth/' + key + '/callback', passport.authenticate(strategy, {
 			failureRedirect: '/auth/' + key
 		}), function(req, res) {
-			return res.redirect('/');
+			return res.redirect(req.header('referer') || '/');
 		});
 		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
 	}
 
 	app.get('/auth/logout', function(req, res) {
 		req.logout();
-		return res.redirect('/');
+		return res.redirect(req.header('referer') || '/');
 	});
 }
 
