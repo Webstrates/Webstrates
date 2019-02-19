@@ -70,7 +70,7 @@
     "url": "^0.11.0",
     "webpack": "^2.5.1",
     "wrapper-webpack-plugin": "^1.0.0",
-    "ws": "0.4.32",
+    "ws": "1.1.1",
     "yauzl": "^2.9.1"
   },
   "devDependencies": {
