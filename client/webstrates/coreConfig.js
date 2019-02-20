@@ -20,6 +20,14 @@ Object.defineProperty(coreConfigModule, 'isTransientAttribute', {
 	}
 });
 
+Object.defineProperty(coreConfigModule, 'peerConnectionConfig', {
+	get: () => config.peerConnectionConfig,
+	set: obj => {
+		if (typeof obj !== 'object') throw new Error('peerConnectionConfig must be an object');
+		return config.peerConnectionConfig = obj;
+	}
+});
+
 Object.defineProperty(coreConfigModule, 'serverConfig', {
 	// serverConfig gets injected with webpack at compile-time, the string serverConfig below will
 	// literally be replaced with the value defined in webpack.config.js. Therefore, we have to have
