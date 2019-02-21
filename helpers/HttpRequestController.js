@@ -725,8 +725,9 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 	}
 
 	if ('prototypeFile' in req.query) {
+		const action = req.query.id ? `/new?id=${req.query.id}` : '/new';
 		return res.send(`
-			<form method="post" action="/new?id=${req.query.id}" enctype="multipart/form-data">
+			<form method="post" action="${action}" enctype="multipart/form-data">
 				<input type="file" name="file" accept=".zip"><br>
 				<input type="submit" value="Upload ZIP">
 			</form>
