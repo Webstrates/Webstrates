@@ -241,7 +241,7 @@ app.ws('*', (ws, req) => {
 
 
 	ws.on('error', err => {
-		ws.close(err)
+		ws.close(err);
 	});
 
 	ws.on('close', reason => {

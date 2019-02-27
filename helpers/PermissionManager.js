@@ -402,7 +402,7 @@ module.exports.getDefaultPermissions = function(username, provider) {
  */
 module.exports.addPermissions = async function(username, provider, permissions, webstrateId, source,
 	next) {
-	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+	let snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||
 		typeof snapshot.data[1] !== 'object') {

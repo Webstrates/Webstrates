@@ -37,35 +37,54 @@ Object.defineProperty(globalObject.publicObject, 'assets', {
 });
 
 /**
- * Makes it possible to select and upload files .
+ * Makes it possible to select and upload files.
  * @param  {Function} callback Callback with two arguments, error and response. First argument will
  *                             be null on success.
+ * @return {Promise}  Promise that gets resolved with the result.
  * @public
  */
 globalObject.publicObject.uploadAsset = (callback = () => {}, options = {}) => {
-	const input = document.createElement('input');
-	input.setAttribute('multiple', true);
-	input.setAttribute('type', 'file');
+	return new Promise((accept, reject) => {
+		const input = document.createElement('input');
+		input.setAttribute('multiple', true);
+		input.setAttribute('type', 'file');
 
-	input.addEventListener('change', event => {
-		const formData = new FormData();
-		Object.entries(options).forEach(([key, value]) => formData.append(key, value));
+		input.addEventListener('change', event => {
+			const formData = new FormData();
+			Object.entries(options).forEach(([key, value]) => formData.append(key, value));
 
-		for (let i=0; i < input.files.length; i++) {
-			formData.append('file[]', input.files.item(i));
-		}
-		fetch('', {
-			method: 'post',
-			credentials: 'include',
-			body: formData
-		})
-			.then(res => res.json()
-				.then(json => callback(null, json))
-				.catch(err => callback(err)))
-			.catch(err => callback(err));
+			for (let i=0; i < input.files.length; i++) {
+				formData.append('file[]', input.files.item(i));
+			}
+
+			fetch('', {
+				method: 'post',
+				credentials: 'include',
+				body: formData
+			})
+				.then(res => res.json()
+					.then(json => {
+						if (res.ok) {
+							accept(json);
+							callback(null, json);
+						} else {
+							reject(json.error);
+							callback(json.error);
+						}
+					})
+					.catch(err => {
+						reject(err);
+						callback(err);
+					})
+				)
+				.catch(err => {
+					reject(err);
+					callback(err);
+				});
+		});
+
+		input.click();
 	});
-
-	input.click();
 };
 
 globalObject.publicObject.deleteAsset = (assetName, callback) => {

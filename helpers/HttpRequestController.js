@@ -851,20 +851,32 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 		}
 
 		if (!req.file) {
-			return res.status(409).json(`No file received.`);
+			return res.status(409).json({
+				error: 'No file received.'
+			});
 		}
 
 		if (req.file.mimetype !== 'application/zip') {
-			return res.status(409).send('Can only prototype from application/zip files. ' +
-				' Received content-type: ' + req.file.mimetype);
+			return res.status(409).json({
+				error: 'Can only prototype from application/zip files. Received content-type: '
+					+ req.file.mimetype
+			});
 		}
 
 		const webstrateId = req.query.id || req.body.id || await generateWebstrateId(req);
 		try {
 			await createWebstrateFromZipFile(req.file.path, webstrateId, req);
-			res.redirect(`/${webstrateId}/`);
+			// If `apiCall` has been set, this call is being made programatically and should thus return
+			// a machine parsable result, like a JSON reply, instead of a redirect.
+			if (req.body.apiCall || req.query.apiCall) {
+				res.json({ webstrateId });
+			} else {
+				res.redirect(`/${webstrateId}/`);
+			}
 		} catch (err) {
-			res.status(409).send(String(err));
+			res.status(409).json({
+				error: err.message
+			});
 		}
 	});
 };

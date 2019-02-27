@@ -1,5 +1,6 @@
 'use strict';
 
+const util = require('util');
 const jsondiff = require('json0-ot-diff');
 const ot = require('sharedb/lib/ot');
 const db = require(APP_PATH + '/helpers/database.js');
@@ -22,8 +23,8 @@ const ShareDbWrapper = require(APP_PATH + '/helpers/ShareDBWrapper.js');
  * @return {string}                      (async) Name of new webstrate.
  * @public
  */
-module.exports.createNewDocument = function({ webstrateId, prototypeId, version, tag, snapshot },
-	next) {
+module.exports.createNewDocument = async function({ webstrateId, prototypeId, version, tag,
+	snapshot }, next) {
 	// If we're not prototyping (or creating from a snapshot), we can just return a new id. We don't
 	// have to build anything.
 	if (!prototypeId && !snapshot) {
@@ -39,6 +40,14 @@ module.exports.createNewDocument = function({ webstrateId, prototypeId, version,
 				module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot },
 					next);
 			});
+	}
+
+	// If the document already exists and is empty, we just delete it, so unused documents won't take
+	// up webstrate names. This would especially be annoying if somebody navigated to /<nice-name>,
+	// then tried to use `webstrate.newPrototypeFromFile` in the same document.
+	const existingSnapshot = await util.promisify(module.exports.getDocument)({ webstrateId });
+	if (isSnapshotEmpty(existingSnapshot.data)) {
+		await util.promisify(module.exports.deleteDocument)(webstrateId, 'empty-document');
 	}
 
 	// Let ShareDB handle the creation of the document.
@@ -65,6 +74,32 @@ module.exports.createNewDocument = function({ webstrateId, prototypeId, version,
 	});
 };
 
+/**
+ * Checks whether a snapshot is "empty", i.e. just a shell with an (almost) empty head and body.
+ * @param  {Snapshot}  snapshot ShareDB snapshot.
+ * @return {Boolean}            Whether snapshot is empty or not.
+ * @private
+ */
+function isSnapshotEmpty(snapshot) {
+	if (!snapshot)
+		return true;
+
+	// Remove empty elements like '\n' from the root of the document.
+	snapshot = snapshot.filter(o => !(typeof o === 'string' && o.trim() === ''));
+
+	if (snapshot[2] && snapshot[2][0].toLowerCase() !== 'head' // head tag exists
+		&& (Object.keys(snapshot[2][1]).length > 1))  // has no attributes (other than wid)
+		return false;
+
+	// Remove empty elements like '\n' from the head.
+	snapshot[2] = snapshot[2].filter(o => !(typeof o === 'string' && o.trim() === ''));
+	return (!snapshot[2][2] // has an empty head
+				|| (Array.isArray(snapshot[2][2]) // or has a head
+					&& snapshot[2][2][0].toLowerCase() === 'title')) // that element being a title tag
+		&& snapshot[3] && snapshot[3][0].toLowerCase() === 'body' // body tag exists
+		&& (Object.keys(snapshot[3][1]).length <= 1) // has no attributes (other than wid)
+		&& snapshot[3].slice(2).join('').trim() === ''; // and an empty body
+}
 /**
  * Retrieve a document snapshot from the database.
  * @param  {string}   options.webstrateId WebstrateId.
@@ -317,7 +352,6 @@ module.exports.getTags = function(webstrateId, next) {
  */
 module.exports.tagDocument = function(webstrateId, version, label, next) {
 	if (!label || label.includes('.')) {
-		console.log(next, 'error');
 		return next && next(new Error('Tag names should not contain periods.'));
 	}
 
