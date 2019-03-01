@@ -745,8 +745,9 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 					console.error(err);
 					return res.status(409).send(String(err));
 				}
-				if (response.headers['content-type'] === 'application/zip' ||
-						response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i)) {
+				if (response.headers['content-type'] === 'application/zip'
+					|| (response.headers['content-disposition']
+						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i))) {
 					return tmp.file((err, filePath, fd, cleanUpCallback) => {
 						return fs.writeFile(filePath, body, 'binary', async err => {
 							if (err) {
@@ -758,7 +759,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 								res.redirect(`/${webstrateId}/`);
 							} catch (err) {
 								console.error(err);
-								res.status(409).send(err);
+								res.status(409).send(String(err));
 							}
 							// Tell the tmp package to delete the temporary file it created.
 							cleanUpCallback();
@@ -768,8 +769,10 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 
 				// `startsWith` and not a direct match, because the content-type often (always?) is followed
 				// by a charset declaration, which we don't care about.
-				if (response.headers['content-type'].startsWith('text/html') ||
-						response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i)) {
+				if ((response.headers['content-type']
+					&& response.headers['content-type'].startsWith('text/html'))
+					|| (response.headers['content-disposition']
+						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i))) {
 					const jsonml = htmlToJsonML(body);
 					documentManager.createNewDocument({
 						webstrateId: req.query.id,

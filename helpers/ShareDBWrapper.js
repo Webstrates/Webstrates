@@ -249,7 +249,7 @@ module.exports.getOps = (webstrateId, versionFrom, versionTo, next) => {
 		let suggestedOps = .8 * ops.length * (availMemInMB / estimatedRequiredMemInMB);
 		suggestedOps = Math.floor((suggestedOps / 1000)) * 1000;
 
-		err = new Error(`Memory consumption of requested ops too high. Try requesting only ` +
+		err = new Error('Memory consumption of requested ops too high. Try requesting only ' +
 			`${suggestedOps} ops at a time instead of the requested ${ops.length} ops.`);
 		next(err, null);
 	});
