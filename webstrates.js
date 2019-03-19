@@ -205,6 +205,7 @@ middleware.push(require('./middleware/keepAliveMiddleware.js'));
 if (config.godApi) {
 	middleware.push(require('./middleware/godApiMiddleware.js'));
 }
+middleware.push(require('./middleware/userHistory.js'));
 middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
 middleware.push(require('./middleware/shareDbMiddleware.js'));
 
@@ -238,7 +239,6 @@ app.ws('*', (ws, req) => {
 		}
 		return true;
 	};
-
 
 	ws.on('error', err => {
 		ws.close(err);

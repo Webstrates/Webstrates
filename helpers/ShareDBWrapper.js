@@ -84,7 +84,12 @@ if (global.config.tagging) {
 
 				var label = global.config.tagging.tagPrefix + new Date(timestamp);
 				documentManager.tagDocument(webstrateId, version, label, function(err) {
-					if (err) console.error('Auto-tagging failed', err);
+					// We ignore error 11000 (duplicate key), because they're fairly inconsequential.
+					// Prior to MongoDB 4.1.6 (see https://jira.mongodb.org/browse/SERVER-14322), MongoDB
+					// would throw this error when trying to create the same entry multiple times (due to
+					// race conditions), even though it should have resorted to upserting. In other words,
+					// this is a fix for people running MongoDB older than 4.1.6.
+					if (err && err.code !== 11000) console.error('Auto-tagging failed', err);
 				});
 			});
 		}
