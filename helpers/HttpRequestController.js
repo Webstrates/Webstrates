@@ -497,13 +497,13 @@ function serveCompressedWebstrate(req, res, snapshot) {
 			return res.status(409).send(String(err));
 		}
 
-		var format = req.query.dl === 'tar' ? 'tar' : 'zip';
-		var archive = archiver(format, { store: true });
+		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
+		const archive = archiver(format, { store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
 			{ name: `${req.webstrateId}/index.html` });
 
 		assets.forEach(function(asset) {
-			var filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
+			const filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
 			if (fs.existsSync(filePath)) {
 				archive.file(filePath,
 					{ name: `${req.webstrateId}/${asset.originalFileName}` });
@@ -522,8 +522,9 @@ function serveCompressedWebstrate(req, res, snapshot) {
 			}
 		});
 		archive.finalize();
-		var potentialTag = req.tag ? ('-' + req.tag) : '';
-		res.attachment(`${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`);
+		const potentialTag = req.tag ? ('-' + req.tag) : '';
+		const filename = req.query.filename || `${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
+		res.attachment(filename);
 		archive.pipe(res);
 	});
 }
