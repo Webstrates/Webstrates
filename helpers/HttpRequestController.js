@@ -416,7 +416,8 @@ function serveVersion(req, res, snapshot) {
 function serveOps(req, res) {
 	documentManager.getOps({
 		webstrateId: req.webstrateId,
-		version: req.version
+		version: Number(req.version || req.query.to) || undefined,
+		initialVersion: Number(req.query.from) || undefined
 	}, function(err, ops) {
 		if (err) {
 			console.error(err);
