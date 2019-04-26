@@ -100,19 +100,29 @@ if (config.auth) {
 	for (let key in config.auth.providers) {
 		const strategy = config.auth.providers[key].name;
 		app.get('/auth/' + key,
-			passport.authenticate(strategy, config.auth.providers[key].authOptions),
-			function(req, res) {});
+			(req, res, next) => {
+				let referer = req.header('referer');
+				if (req.query.webstrateId) {
+					const origin = new URL(req.header('referer')).origin;
+					referer = origin + '/' + req.query.webstrateId;
+				}
+				req.session.referer = referer;
+				next();
+			},
+			passport.authenticate(strategy, config.auth.providers[key].authOptions));
 		app.get('/auth/' + key + '/callback', passport.authenticate(strategy, {
 			failureRedirect: '/auth/' + key
 		}), function(req, res) {
-			return res.redirect(req.header('referer') || '/');
+			let referer = req.session.referer;
+			delete req.session.referer;
+			res.redirect(referer || '/');
 		});
 		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
 	}
 
 	app.get('/auth/logout', function(req, res) {
 		req.logout();
-		return res.redirect(req.header('referer') || '/');
+		res.redirect(req.header('referer') || '/');
 	});
 }
 
