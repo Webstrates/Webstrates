@@ -748,6 +748,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 					return res.status(409).send(String(err));
 				}
 				if (response.headers['content-type'] === 'application/zip'
+					|| response.headers['content-type'] === 'application/x-zip-compressed'
 					|| (response.headers['content-disposition']
 						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i))) {
 					return tmp.file((err, filePath, fd, cleanUpCallback) => {
@@ -861,7 +862,8 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 			});
 		}
 
-		if (req.file.mimetype !== 'application/zip') {
+		if (req.file.mimetype !== 'application/zip' && req.file.mimetype !== 'application/x-zip-compressed'
+			&& !req.file.originalname.match(/\.zip$/i)) {
 			return res.status(409).json({
 				error: 'Can only prototype from application/zip files. Received content-type: '
 					+ req.file.mimetype
