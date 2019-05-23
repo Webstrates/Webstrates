@@ -192,13 +192,13 @@ module.exports.requestHandler = async function(req, res) {
 
 		// If the webstrate doesn't exist, write permissions are required to create it.
 		if (!snapshot.type && !req.user.permissions.includes('w')) {
-			return res.status(403).send('Insufficient permissions.');
+			return res.status(403).send('Insufficient permissions. Write is required to create a new webstrate.');
 		}
 
 		// If the webstrate does exist, read permissions are required to access it (or any of its
 		// assets).
 		if (!req.user.permissions.includes('r')) {
-			return res.status(403).send('Insufficient permissions.');
+			return res.status(403).send('Insufficient permissions. Read is required to access this webstrate.');
 		}
 
 		// Set CORS header on a response, assuming the requesting host is allowed it.

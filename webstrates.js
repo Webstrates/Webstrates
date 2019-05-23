@@ -132,7 +132,7 @@ app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i,
 
 // This middleware gets triggered on both regular HTTP request and websocket connections.
 app.use(function(req, res, next) {
-	sessionMiddleware(req, null, next);
+	sessionMiddleware(req, res, next);
 });
 
 app.get('/', httpRequestController.rootRequestHandler);
@@ -191,19 +191,18 @@ const sessionMiddleware = function(req, res, next) {
 
 	if (req.query.token) {
 		const userObj = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
-		if (userObj) {
-			req.user.token = req.query.token;
-			req.user.username = userObj.username;
-			req.user.provider = userObj.provider;
+		if (!userObj) {
+			if (req.ws) req.ws.close(1002, 'Invalid access token.');
+			else res.status(403).send('Invalid access token.');
+			return;
 		}
-		else if (res) {
-			return res.status(403).send('Invalid access token.');
-		}
+		req.user = userObj;
+		req.user.token = req.query.token;
 	}
 
 	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
 	req.user.provider = req.user.providerName || req.user.provider || '';
-	req.user.userId = req.user.username + ':' + req.user.provider;
+	req.user.userId = req.user.userId || (req.user.username + ':' + req.user.provider);
 	req.webstrateId = webstrateId;
 	next();
 };

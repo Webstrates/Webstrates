@@ -40,15 +40,8 @@ share.use('connect', (req, next) => {
 	req.agent.user = req.req.user;
 	req.agent.remoteAddress = req.req.remoteAddress;
 	req.agent.socketId = req.req.socketId;
+	req.agent.req = req.req;
 
-	if (!config.disableSessionLog) {
-		insertSessionLog({
-			sessionId: req.agent.clientId,
-			userId: req.req.user.userId,
-			connectTime: req.agent.connectTime,
-			remoteAddress: req.req.remoteAddress
-		});
-	}
 	next();
 });
 
@@ -124,8 +117,25 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		if (!req.agent.user) return next();
 
 		const socketId = req.agent.socketId;
-		const user = req.agent.user;
+		let user = req.agent.user;
 		const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
+
+		// We have already resolved the user from the token in the sessionMiddleware, but we have to do it here as well,
+		// because the webstrateId here may differ from the original req.webstrateId, and so may the permissions.
+		if (req.agent.req.webstrateId !== webstrateId) {
+			const token = req.agent.req.query.token;
+			user = permissionManager.getUserFromAccessToken(webstrateId, token);
+		}
+
+		if (!config.disableSessionLog && !req.agent.sessionLogged) {
+			insertSessionLog({
+				sessionId: req.agent.clientId,
+				userId: user.userId,
+				connectTime: req.agent.connectTime,
+				remoteAddress: req.agent.remoteAddress
+			});
+			req.agent.sessionLogged = true;
+		}
 
 		// If the user is creating a new document, it makes no sense to verify whether he has access to
 		// said document.

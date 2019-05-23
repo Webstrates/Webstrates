@@ -10,7 +10,11 @@ exports.onmessage = async (ws, req, data, next) => {
 
 	const webstrateId = data.d;
 	const socketId = req.socketId;
-	const user = req.user;
+	let user = req.user;
+
+	if (req.query.token) {
+		user = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
+	}
 
 	// Here we handle all requests which do not require any sort of permissions.
 	switch (data.wa) { // 'wa' for 'webstrates action'.
@@ -145,8 +149,7 @@ exports.onmessage = async (ws, req, data, next) => {
 
 			// If the document contains a user with admin permissions, only admins can restore the
 			// document.
-			if (!permissions.includes('a') &&
-					await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+			if (!permissions.includes('a') && await permissionManager.webstrateHasAdmin(webstrateId)) {
 				ws.send(JSON.stringify({ wa: 'reply', token: data.token,
 					error: 'Admin permissions are required to restore this document.' }));
 				return;

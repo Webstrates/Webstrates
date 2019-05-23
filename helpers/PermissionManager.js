@@ -93,7 +93,7 @@ module.exports.getUserFromAccessToken = function(webstrateId, token) {
 		return;
 	}
 
-	return { username, provider };
+	return { username, provider, userId: username + ':' + provider };
 };
 
 /**
@@ -103,6 +103,7 @@ module.exports.getUserFromAccessToken = function(webstrateId, token) {
  * @public
  */
 module.exports.generateAccessToken = function(req, res) {
+	// Don't allow users accessing with a token to generate another token.
 	if (req.user.token) {
 		return res.status(403).send('Insufficient permission. Cannot generate access token from ' +
 		'token-based access (cannot generate tokens using tokens).');
@@ -190,7 +191,7 @@ module.exports.getAccessTokens = function(webstrateId) {
  */
 module.exports.expireAccessToken = function(webstrateId, token, local) {
 	if (accessTokens[webstrateId]) {
-		accessTokens[webstrateId][token];
+		delete accessTokens[webstrateId][token];
 	}
 
 	// Even if the access token doesn't exist locally, we still publish it to the other instances.
