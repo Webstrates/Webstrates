@@ -295,6 +295,10 @@ module.exports.getOps = function({ webstrateId, initialVersion, version }, next)
 			sessionsInOps.add(op.src);
 		});
 
+		if (config.disableSessionLog) {
+			return next(null, ops);
+		}
+
 		db.sessionLog.find({
 			'sessionId': { $in: Array.from(sessionsInOps) }
 		}).toArray((err, sessions) => {

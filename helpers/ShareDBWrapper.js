@@ -41,12 +41,14 @@ share.use('connect', (req, next) => {
 	req.agent.remoteAddress = req.req.remoteAddress;
 	req.agent.socketId = req.req.socketId;
 
-	insertSessionLog({
-		sessionId: req.agent.clientId,
-		userId: req.req.user.userId,
-		connectTime: req.agent.connectTime,
-		remoteAddress: req.req.remoteAddress
-	});
+	if (!config.disableSessionLog) {
+		insertSessionLog({
+			sessionId: req.agent.clientId,
+			userId: req.req.user.userId,
+			connectTime: req.agent.connectTime,
+			remoteAddress: req.req.remoteAddress
+		});
+	}
 	next();
 });
 
