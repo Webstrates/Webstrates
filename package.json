@@ -10,6 +10,7 @@
   "scripts": {
     "start": "npm run build && node webstrates.js",
     "build": "NODE_ENV='production' webpack -p",
+    "watch": "webpack -w",
     "test": "mocha --bail tests/{unit,functional}-tests"
   },
   "homepage": "https://www.webstrates.net/",

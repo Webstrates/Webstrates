@@ -1,10 +1,6 @@
 'use strict';
-const coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
-const coreWebsocket = require('./coreWebsocket');
 const globalObject = require('./globalObject');
-
-const newWebstratesModule = {};
 
 const webstrateId = coreUtils.getLocationObject().webstrateId;
 
@@ -13,16 +9,11 @@ const webstrateId = coreUtils.getLocationObject().webstrateId;
  * Accepts ZIP files with extensions ZIP and WSA (WebStrate Archieve).
  * @param  {string}   webstrateId (optional) Desired WebstrateId for the new webstrate.
  * @param  {object}   options     Some options, e.g. whether to reload the page or not.
- * @param  {Function} callback    Callback to be called on completion.
- * @return {[type]}               [description]
+ * @return {Promise}              Will accept on success or reject on failure.
+ * @public
  */
-globalObject.publicObject.newFromPrototypeFile = (desiredWebstrateId, options = {},
-	callback = () => {}) => {
-	if (typeof desiredWebstrateId === 'function') {
-		options = callback;
-		callback = desiredWebstrateId;
-		desiredWebstrateId = undefined;
-	}
+globalObject.publicObject.newFromPrototypeFile = (desiredWebstrateId, options = {}) => {
+	desiredWebstrateId = desiredWebstrateId || webstrateId;
 
 	return new Promise((accept, reject) => {
 		const input = document.createElement('input');
@@ -40,38 +31,64 @@ globalObject.publicObject.newFromPrototypeFile = (desiredWebstrateId, options = 
 				method: 'post',
 				credentials: 'include',
 				body: formData
-			})
-				.then(res => res.json()
-					.then(json => {
-						if (res.ok) {
-							accept(json);
-							callback(null, json);
-							// Reload the page if we're updating this webstrate, unless we're specifically
-							// told not to.
-							if (webstrateId === desiredWebstrateId && !options.noreload)
-								document.location.reload();
-						} else {
-							reject(json.error);
-							callback(json.error);
+			}).then(res => res.json()
+				.then(json => {
+					if (res.ok) {
+						accept(json);
+						// Reload the page if we're updating this webstrate, unless we're specifically
+						// told not to.
+						if (webstrateId === desiredWebstrateId && !options.noreload) {
+							document.location.reload();
 						}
-					})
-					.catch(err => {
-						reject(err);
-						callback(err);
-					})
-				)
+					} else {
+						reject(json.error);
+					}
+				})
 				.catch(err => {
 					reject(err);
-					callback(err);
-				});
+				})
+			).catch(err => {
+				reject(err);
+			});
 		});
 
 		input.click();
 	});
 };
 
-globalObject.publicObject.newFromPrototypeURL = (url, webstrateId) => {
+/**
+ * Prototype a webstrate to a target webstrate, potentially this webstrate.
+ * @param  {string}   webstrateId (optional) Desired WebstrateId for the new webstrate.
+ * @param  {object}   options     Some options, e.g. whether to reload the page or not.
+ * @return {Promise}              Will accept on success or reject on failure.
+ * @public
+ */
+globalObject.publicObject.newFromPrototypeURL = (url, desiredWebstrateId, options = {}) => {
+	desiredWebstrateId = desiredWebstrateId || webstrateId;
+	url = new URL(url, location.href);
 
+	return new Promise((accept, reject) => {
+		fetch(`/new?prototypeUrl=${url}&id=${desiredWebstrateId}`, {
+			method: 'get',
+			credentials: 'include'
+		}).then(res => res.text()
+			.then(text => {
+				if (res.ok) {
+					accept(text);
+					// Reload the page if we're updating this webstrate, unless we're specifically
+					// told not to.
+					if (webstrateId === desiredWebstrateId && !options.noreload) {
+						document.location.reload();
+					}
+				} else {
+					reject(text.error);
+				}
+			})
+			.catch(err => {
+				reject(err);
+			})
+		).catch(err => {
+			reject(err);
+		});
+	});
 };
-
-module.exports = newWebstratesModule;
