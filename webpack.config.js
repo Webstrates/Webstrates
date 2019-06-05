@@ -3,7 +3,6 @@ const path = require('path');
 const execSync = require('child_process').execSync;
 const webpack = require('webpack');
 const wrapperPlugin = require('wrapper-webpack-plugin');
-const fileWatcherPlugin = require('filewatcher-webpack-plugin');
 const configHelper = require('./helpers/ConfigHelper.js');
 
 global.APP_PATH = __dirname;
@@ -75,8 +74,6 @@ if (process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production') {
 		use: 'babel-loader'
 	});
 } else {
-	//config.plugins.push(new fileWatcherPlugin( {watchFileRegex: ['./client/*.js']}));
-
 	// Lint the code to make it all pretty in development environment (or anything not production).
 	config.module.rules.push({
 		test: /\.js$/,

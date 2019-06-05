@@ -83,11 +83,12 @@ if (pubsub) {
 /**
  * Add client to ClientManager.
  * @param  {Socket} ws     Client socket.
+ * @param  {Socket} req    Express request object.
  * @param  {obj}    user   User object (OAuth credentials).
  * @return {string}        Generated socketId.
  * @public
  */
-module.exports.addClient = function(ws, user) {
+module.exports.addClient = function(ws, req, user) {
 	var socketId = shortId.generate();
 
 	if (!userIds[user.userId]) userIds[user.userId] = [];
@@ -96,9 +97,9 @@ module.exports.addClient = function(ws, user) {
 	// This is the object we'll make available on webstrate.user.allClients..
 	const userClient = {
 		socketId,
-		ipAddress: ws.upgradeReq.remoteAddress,
-		webstrateId: ws.upgradeReq.webstrateId,
-		userAgent: ws.upgradeReq.headers['user-agent']
+		ipAddress: req.remoteAddress,
+		webstrateId: req.webstrateId,
+		userAgent: req.headers['user-agent']
 	};
 
 	addUserClient(socketId, user.userId, userClient);

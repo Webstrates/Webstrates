@@ -232,7 +232,7 @@ function runMiddleware(type, args, middleware, ...middlewares) {
 }
 
 app.ws('*', (ws, req) => {
-	var socketId = clientManager.addClient(ws, req.user);
+	const socketId = clientManager.addClient(ws, req, req.user);
 	req.socketId = socketId;
 
 	req.socket.setTimeout(30 * 1000);
@@ -268,7 +268,6 @@ app.ws('*', (ws, req) => {
 	});
 
 	runMiddleware('onconnect', [ws, req], ...middleware);
-
 });
 
 app.use((err, req, res, next) => {
