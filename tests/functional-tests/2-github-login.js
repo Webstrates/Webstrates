@@ -43,10 +43,7 @@ describe('GitHub Login', function() {
 	});
 
 	it('should log in to GitHub', async function() {
-		if (!util.credentialsProvided) {
-			this.skip();
-			return;
-		}
+		if (!util.credentialsProvided) return this.skip();
 
 		await util.logInToGithub(pageA);
 		const url = await pageA.url();
@@ -88,10 +85,8 @@ describe('GitHub Login', function() {
 	});
 
 	it('user object should have correct userId, username and provider', async function() {
-		if (!util.credentialsProvided) {
-			this.skip();
-			return;
-		}
+		if (!util.credentialsProvided) return this.skip();
+
 
 		assert.propertyVal(userObject, 'userId',   `${config.username}:github`);
 		assert.propertyVal(userObject, 'username', config.username);
@@ -99,10 +94,8 @@ describe('GitHub Login', function() {
 	});
 
 	it('should also log in on other pages/tabs', async function() {
-		if (!util.credentialsProvided) {
-			this.skip();
-			return;
-		}
+		if (!util.credentialsProvided) return this.skip();
+
 
 		pageB = await browser.newPage();
 		await pageB.goto(config.server_address);

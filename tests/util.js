@@ -36,9 +36,9 @@ util.isLocalhost = util.cleanServerAddress.match('https?://localhost') !== null;
 util.credentialsProvided = config.username && config.password;
 /**
  * Wait for predicate to become truthy or timeout.
- * @param  {Page}    page      Puppeteer page.
- * @param  {Function}  fn      Predicate function.
- * @param  {Number}    timeout Timeout in seconds.
+ * @param  {Page} page         Puppeteer page.
+ * @param  {Function} fn       Predicate function.
+ * @param  {Number} timeout    Timeout in seconds.
  * @param  {mixed} args        Arguments to pass to function.
  * @return {bool}              True if predicate became truthy false otherwise.
  * @public

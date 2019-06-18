@@ -62,22 +62,37 @@ describe('Page Loading', function() {
 		assert.equal(webstrateObjectWebstrateId, webstrateId);
 	});
 
+	it('should be able to delete webstrate', async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
+
+		const innerText = await pageA.evaluate(() =>
+			JSON.parse(document.querySelector('body').innerText));
+
+		if (innerText.version !== 0) {
+			util.warn('Unable to clean up after ourselves, left webstrate', webstrateId, 'on server');
+		}
+
+		assert.equal(innerText.version, 0, 'Version should be 0');
+	});
+
 	const webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
-		? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,2})'
+		? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
 		: '([A-z0-9-]{8,10})';
 
 	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + 'new', { waitUntil: 'networkidle2' });
+		await pageB.goto(config.server_address + 'new', { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
+		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
 		assert.match(redirectedUrl, new RegExp(regex));
 	});
 
 	it('root (/) redirects to /frontpage/', async () => {
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address, { waitUntil: 'networkidle2' });
+		await pageB.goto(config.server_address, { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
 		assert.equal(redirectedUrl, config.server_address + 'frontpage/');

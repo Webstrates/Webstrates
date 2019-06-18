@@ -24,7 +24,6 @@ describe('DOM Stress Test', function() {
 
 		pageA = pages[0];
 
-
 		await Promise.all(pages.map(page =>
 			page.goto(url, { waitUntil: 'networkidle2' })));
 
@@ -36,8 +35,12 @@ describe('DOM Stress Test', function() {
 	});
 
 	after(async () => {
-		await browserA.close();
-		await browserB.close();
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
+		await Promise.all([
+			browserA.close(),
+			browserB.close()
+		]);
 	});
 
 	it('body should initially be empty', async () => {

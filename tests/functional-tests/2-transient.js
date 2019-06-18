@@ -23,6 +23,8 @@ describe('Transient Tags', function() {
 	});
 
 	after(async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
 		await browser.close();
 	});
 

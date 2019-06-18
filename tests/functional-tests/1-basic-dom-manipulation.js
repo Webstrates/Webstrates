@@ -25,6 +25,8 @@ describe('Basic DOM Manipulation', function() {
 	});
 
 	after(async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
 		await browser.close();
 	});
 
@@ -94,7 +96,7 @@ describe('Basic DOM Manipulation', function() {
 		await pageA.reload({ waitUntil: 'networkidle2' });
 
 		await pageA.evaluate(() => {
-			document.body.innerHTML = `<div foo"="bar"></div>`;
+			document.body.innerHTML = '<div foo"="bar"></div>';
 		});
 
 		await util.sleep(1);
@@ -102,7 +104,7 @@ describe('Basic DOM Manipulation', function() {
 		const attrsA = await pageA.evaluate(() => document.querySelector('div').outerHTML);
 		const attrsB = await pageB.evaluate(() => document.querySelector('div').outerHTML);
 
-		assert.deepEqual(attrsA, `<div foo_="bar"></div>`);
+		assert.deepEqual(attrsA, '<div foo_="bar"></div>');
 		assert.deepEqual(attrsA, attrsB);
 	});
 
@@ -124,5 +126,5 @@ describe('Basic DOM Manipulation', function() {
 			await util.sleep(.5);
 
 			assert.equal(error, false);
-	});
+		});
 });

@@ -8,10 +8,10 @@ const util = require('../util.js');
 describe('Cookies', function() {
 	this.timeout(10000);
 
-	const webstrateId = 'test-' + util.randomString();
-	const otherWebstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
-	const otherUrl = config.server_address + otherWebstrateId;
+	const webstrateIdA = 'test-' + util.randomString();
+	const WebstrateIdB = 'test-' + util.randomString();
+	const urlA = config.server_address + webstrateIdA;
+	const urlB = config.server_address + WebstrateIdB;
 
 	const cookieValue1 = util.randomString();
 	const cookieValue2 = util.randomString();
@@ -34,9 +34,9 @@ describe('Cookies', function() {
 		}
 
 		await Promise.all([
-			pageA.goto(url, { waitUntil: 'networkidle2' }),
-			pageB.goto(url, { waitUntil: 'networkidle2' }),
-			pageC.goto(url, { waitUntil: 'networkidle2' })
+			pageA.goto(urlA, { waitUntil: 'networkidle2' }),
+			pageB.goto(urlA, { waitUntil: 'networkidle2' }),
+			pageC.goto(urlA, { waitUntil: 'networkidle2' })
 		]);
 
 		await Promise.all([
@@ -48,7 +48,15 @@ describe('Cookies', function() {
 	});
 
 	after(async () => {
-		await Promise.all([ browserA.close(), browserB.close() ]);
+		await Promise.all([
+			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+		]);
+
+		await Promise.all([
+			browserA.close(),
+			browserB.close()
+		]);
 
 		if (!util.credentialsProvided) {
 			util.warn('Skipping most cookie tests as no GitHub credentials were provided.');
@@ -194,7 +202,7 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 
 		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
@@ -211,7 +219,7 @@ describe('Cookies', function() {
 		}
 
 		await util.logInToGithub(pageC);
-		await pageC.goto(url, { waitUntil: 'networkidle2' });
+		await pageC.goto(urlA, { waitUntil: 'networkidle2' });
 
 		const hereCookies = await pageC.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, {
@@ -230,7 +238,7 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await pageA.goto(otherUrl, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlB, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookies);

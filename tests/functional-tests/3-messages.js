@@ -10,8 +10,8 @@ describe('Messages', function() {
 
 	const webstrateId = 'test-' + util.randomString();
 	const otherWebstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
-	const otherUrl = config.server_address + otherWebstrateId;
+	const urlA = config.server_address + webstrateId;
+	const urlB = config.server_address + otherWebstrateId;
 	const userId = config.username + ':github';
 
 	const messageValue1 = util.randomString();
@@ -34,9 +34,9 @@ describe('Messages', function() {
 		}
 
 		await Promise.all([
-			pageA.goto(url, { waitUntil: 'networkidle2' }),
-			pageB.goto(otherUrl, { waitUntil: 'networkidle2' }),
-			pageC.goto(otherUrl, { waitUntil: 'networkidle2' })
+			pageA.goto(urlA, { waitUntil: 'networkidle2' }),
+			pageB.goto(urlB, { waitUntil: 'networkidle2' }),
+			pageC.goto(urlB, { waitUntil: 'networkidle2' })
 		]);
 
 		await Promise.all([
@@ -48,7 +48,15 @@ describe('Messages', function() {
 	});
 
 	after(async () => {
-		await Promise.all([ browserA.close(), browserB.close() ]);
+		await Promise.all([
+			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+		]);
+
+		await Promise.all([
+			browserA.close(),
+			browserB.close()
+		]);
 
 		if (!util.credentialsProvided) {
 			util.warn('Skipping most messages tests as no GitHub credentials were provided.');

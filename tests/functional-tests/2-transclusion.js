@@ -28,6 +28,11 @@ describe('Transclusion', function() {
 	});
 
 	after(async () => {
+		await Promise.all([
+			pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlInner + '?delete', { waitUntil: 'domcontentloaded' })
+		]);
+
 		await browser.close();
 	});
 

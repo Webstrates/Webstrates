@@ -239,9 +239,23 @@ module.exports.restoreDocument = function({ webstrateId, version, tag }, source,
  * @param  {Function} next        Callback (optional).
  * @public
  */
-module.exports.deleteDocument = function(webstrateId, source, next) {
+module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0) {
 	db.webstrates.remove({ _id: webstrateId }, function(err, res) {
 		if (err) return next && next(err);
+
+		// When creating a webstrate and then quickly deleting it aftewards, the document may not
+		// have made its way into the database when we try to delete it. If this happens, we wait
+		// a little and then try again a couple of times.
+		if (res.result.n === 0) {
+			if (attempts > 5) {
+				return next && next(new Error('No webstrate to delete'));
+			} else {
+				return setTimeout(() => {
+					module.exports.deleteDocument(webstrateId, source, next, attempts + 1);
+				}, 100);
+			}
+		}
+
 
 		clientManager.sendToClients(webstrateId, {
 			wa: 'delete',

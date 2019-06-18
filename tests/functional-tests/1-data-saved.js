@@ -23,6 +23,11 @@ describe('DOM Manipulation with dataSaved', function() {
 	});
 
 	after(async () => {
+		await Promise.all([
+			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+		]);
+
 		await browser.close();
 
 		if (util.isLocalhost) {

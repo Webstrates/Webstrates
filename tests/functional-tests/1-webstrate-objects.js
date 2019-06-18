@@ -8,7 +8,7 @@ const util = require('../util.js');
 describe('Webstrate Object', function() {
 	this.timeout(10000);
 
-	const webstrateId = 'r1kITEqnb';//'test-' + util.randomString();
+	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
 	let browser, pageA, pageB;
 
@@ -16,7 +16,6 @@ describe('Webstrate Object', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		util.showLogs(pageA);
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
@@ -24,6 +23,8 @@ describe('Webstrate Object', function() {
 	});
 
 	after(async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
 		await browser.close();
 	});
 

@@ -647,7 +647,7 @@ function deleteWebstrate(req, res) {
 			return res.status(409).send(String(err));
 		}
 
-		documentManager.deleteDocument(req.webstrateId, source, function(err) {
+		documentManager.deleteDocument(req.webstrateId, source, function(err, result) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(String(err));
