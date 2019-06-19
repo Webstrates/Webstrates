@@ -46,7 +46,7 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	// up webstrate names. This would especially be annoying if somebody navigated to /<nice-name>,
 	// then tried to use `webstrate.newPrototypeFromFile` in the same document.
 	const existingSnapshot = await util.promisify(module.exports.getDocument)({ webstrateId });
-	if (isSnapshotEmpty(existingSnapshot.data)) {
+	if (isSnapshotEmpty(existingSnapshot.data) && existingSnapshot.v > 0) {
 		await util.promisify(module.exports.deleteDocument)(webstrateId, 'empty-document');
 	}
 
