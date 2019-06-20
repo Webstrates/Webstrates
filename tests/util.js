@@ -24,6 +24,10 @@ util.escapeRegExp = function(s) {
 	return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 };
 
+util.webstrateIdRegex =  (config.server && config.server.niceWebstrateIds)
+	? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
+	: '([A-z0-9-]{8,10})';
+
 // Remove HTTP basic auth credentials from the server address, e.g. http://web:strate@domain.tld/
 // becomes http://domain.tld/. Useful for comparing page URL with server address and for iframes,
 // as having credentials in iframe src attributes is prohibited.
@@ -44,6 +48,9 @@ util.credentialsProvided = config.username && config.password;
  * @public
  */
 util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
+	if (typeof timeout !== 'number') {
+		throw new Error(`Invalid timeout: ${timeout}, expected number.`);
+	}
 	try {
 		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);
 	} catch (e) {
