@@ -25,7 +25,9 @@ if (!coreUtils.getLocationObject().staticMode) {
 	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
 	const webstrateId = coreUtils.getLocationObject().webstrateId;
 
-	let clientId, clients;
+	 // We initialize clients, so we won't do splice/indexOf if we receive a clientPart
+	 // event before a hello event.
+	let clientId, clients = [];
 
 	Object.defineProperty(globalObject.publicObject, 'clients', {
 		get: () => coreUtils.objectCloneAndLock(clients)
