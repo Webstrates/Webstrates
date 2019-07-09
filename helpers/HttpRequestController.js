@@ -555,6 +555,9 @@ async function copyWebstrate(req, res, snapshot) {
 		}
 	}
 
+	// Remove all admin permissions from the snapshot.
+	snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
+
 	documentManager.createNewDocument({ webstrateId, snapshot }, function(err, webstrateId) {
 		if (err) {
 			console.error(err);

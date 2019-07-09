@@ -54,7 +54,8 @@ describe('Versioning', function() {
 		assert.exists(tags[0]); // tags is an object, 0 is the key name.
 	});
 
-	const tagName = util.randomString();
+	// Tags can't begin with a number, so we prepend an x to ensure that it won't.
+	const tagName = 'x' + util.randomString();
 	it('should be possible to create tag', async () => {
 		await page.evaluate((t) => window.webstrate.tag(t), tagName);
 

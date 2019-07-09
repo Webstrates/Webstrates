@@ -453,12 +453,28 @@ module.exports.addPermissionsToSnapshot = async function(username, provider, per
 };
 
 /**
- * Remove all permissions from snapshot
+ * Remove all permissions from snapshot.
  * @param  {JsonML} snapshot ShareDB document snapshot.
  * @return {string}          ShareDB document snapshot without permissions.
  */
 module.exports.clearPermissionsFromSnapshot = function(snapshot) {
 	delete snapshot.data[1]['data-auth'];
+	return snapshot;
+};
+
+/**
+ * Remove admin permissions from snapshot.
+ * @param  {JsonML} snapshot ShareDB document snapshot.
+ * @return {string}          ShareDB document snapshot without admin permissions.
+ */
+module.exports.removeAdminPermissionsFromSnapshot = async function(snapshot) {
+	const permissionsList = await module.exports.getPermissionsFromSnapshot(snapshot, false);
+
+	if (permissionsList) {
+		permissionsList.forEach(user => user.permissions = user.permissions.replace(/a/gi, ''));
+		snapshot.data[1]['data-auth'] = JSON.stringify(permissionsList);
+	}
+
 	return snapshot;
 };
 

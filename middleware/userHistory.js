@@ -17,7 +17,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		const result = await db.userHistory.aggregate([
 			{ $match: { userId } },
 			{ $project: { webstrates: { $objectToArray: '$webstrates' } } },
-			{ $unwind: "$webstrates" },
+			{ $unwind: '$webstrates' },
 			{ $replaceRoot: { newRoot: '$webstrates' } },
 			{ $sort: { 'v' : -1 } },
 			{ $limit: limit }
@@ -46,7 +46,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		$set[`webstrates.${webstrateId}`] = now;
 
 		db.userHistory.update({ userId }, { $set }, { upsert: true }, (err, res) => {
-				if (err) console.error(err);
+			if (err) console.error(err);
 		});
 	}
 
