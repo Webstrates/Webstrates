@@ -325,11 +325,6 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 			// We don't have to do anything. No valid document permissions.
 		}
 
-		// If we found no permissions, return default permissions, unless specified otherwise.
-		if (!Array.isArray(permissionsList) || Object.keys(permissionsList).length === 0) {
-			return useDefaultPermissions ? defaultPermissionsList : undefined;
-		}
-
 		// We allow a certain number of recursive permission inheritances, i.e. webstrate X inheriting
 		// permissions from Y, inheriting from Z, and so forth. If this is exceeded, we ignore the
 		// "deeper" permissions (and also log a warning on the server).
@@ -343,6 +338,11 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 		await getInheritedPermissions(permissionsList, recursionCount + 1);
 
 		return permissionsList;
+	}
+
+	// If we found no permissions, return default permissions, unless specified otherwise.
+	if (useDefaultPermissions && (!Array.isArray(permissionsList) || Object.keys(permissionsList).length === 0)) {
+		return useDefaultPermissions ? defaultPermissionsList : undefined;
 	}
 
 	return undefined;
