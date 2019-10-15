@@ -103,10 +103,15 @@ const findDuplicateAsset = (asset) =>
  * @return {array}                (async) List of assets.
  * @public
  */
-module.exports.getAssets = function(webstrateId, next) {
+module.exports.getAssets = function(webstrateId, next, latestOnly = false) {
 	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
 		.toArray(function(err, assets) {
 			if (err) return next && next(err);
+			
+			if(latestOnly) {
+				assets = filterNewestAssets(assets);
+			}
+			
 			assets.forEach(function(asset) {
 				asset.identifier = asset.fileName;
 				asset.fileName = asset.originalFileName;
