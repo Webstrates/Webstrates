@@ -10,12 +10,16 @@ let resolves = [];
 // submitted to the database.
 Object.defineProperty(globalObject.publicObject, 'dataSaved', {
 	get: () => () => new Promise((accept, reject) => {
-		// If there are no pending operations (i.e. ops the server is yet to acknowledge), resolve
-		// immediately.
-		if (!coreDatabase.getDocument().hasPending()) accept();
-		// Otherwise, add the promise's accept resolver to a list, so we can resolve it once the
-		// pending operations have been acknowledged.
-		else resolves.push(accept);
+		//Make sure that any mutations are actually picked up by mutation observers.
+		//As dataSaved() might be called in same Task as the mutation introducing code.
+		setTimeout(()=>{
+			// If there are no pending operations (i.e. ops the server is yet to acknowledge), resolve
+			// immediately.
+			if (!coreDatabase.getDocument().hasPending()) accept();
+			// Otherwise, add the promise's accept resolver to a list, so we can resolve it once the
+			// pending operations have been acknowledged.
+			else resolves.push(accept);
+		},0);
 	}),
 	set: () => { throw new Error('dataSaved cannot be overwritten'); },
 	enumerable: true

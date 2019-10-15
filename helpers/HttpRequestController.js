@@ -450,13 +450,14 @@ function serveTags(req, res) {
  * @private
  */
 function serveAssets(req, res) {
+	let latestOnly = 'latest' in req.query;
 	assetManager.getAssets(req.webstrateId, function(err, assets) {
 		if (err) {
 			console.error(err);
 			return res.status(409).send(String(err));
 		}
 		res.json(assets);
-	});
+	}, latestOnly);
 }
 
 function serveJsonMLWebstrate(req, res, snapshot) {
