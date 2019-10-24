@@ -342,7 +342,7 @@ function findOffsetElement(element, offset) {
  */
 function getSelectionRange(textNode) {
 	// If there are no selections, return.
-	if (window.getSelection().rangeCount === 0) {
+	if (!window.getSelection() || window.getSelection().rangeCount === 0) {
 		return;
 	}
 
