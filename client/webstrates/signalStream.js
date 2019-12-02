@@ -123,7 +123,9 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 		peerConnection.onicecandidate = gotIceCandidate;
 		peerConnection.oniceconnectionstatechange = gotStateChange;
 		if (streamer) {
-			peerConnection.addStream(localStream);
+			localStream.getTracks().forEach((track)=>{
+				peerConnection.addTrack(track, localStream);
+			});
 			peerConnection.createOffer().then(createdDescription).catch(errorHandler);
 		}
 		if (listener) {
