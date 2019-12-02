@@ -129,7 +129,7 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 			peerConnection.createOffer().then(createdDescription).catch(errorHandler);
 		}
 		if (listener) {
-			peerConnection.onaddstream = gotRemoteStream;
+			peerConnection.ontrack = gotRemoteStream;
 		}
 	};
 
@@ -185,7 +185,7 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 	};
 
 	const gotRemoteStream = (event) => {
-		onRemoteStreamCallback(event.stream);
+		onRemoteStreamCallback(event.streams[0]);
 	};
 
 	const errorHandler = (...error) => {
