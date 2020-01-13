@@ -50,7 +50,7 @@ module.exports.makeSearchable = async (assetId, filePath) => {
 	const startTime = Date.now();
 	await batchInsertJsonToMongo(filePath, assetId);
 	console.log('Insertion of', assetId, 'took', (Date.now() - startTime) / 1000 + 's');
-	return db.assets.update({ _id: assetId }, { $set: { searchable: true }});
+	return db.assets.updateOne({ _id: assetId }, { $set: { searchable: true }});
 };
 
 /**

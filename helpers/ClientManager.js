@@ -589,13 +589,13 @@ module.exports.updateCookie = function(userId, webstrateId, key, value, local) {
 
 	if (local) {
 		var webstrateIdQuery = webstrateId || { '$exists': false };
-		db.cookies.update({ userId, webstrateId: webstrateIdQuery, cookies: { key } },
+		db.cookies.updateOne({ userId, webstrateId: webstrateIdQuery, cookies: { key } },
 			{ $set: { 'cookies.$.value': value } }, function(err, res) {
 				if (err) return console.error(err);
 				// If our update didn't update anything, we have to add it first. Maybe this could be done
 				// in one query, but as this point, I've given up trying to get clever with MongoDB.
 				if (res.result.nModified === 0) {
-					db.cookies.update({ userId, webstrateId: webstrateIdQuery },
+					db.cookies.updateOne({ userId, webstrateId: webstrateIdQuery },
 						// We still have to upsert, because even though the particular cookie key from above
 						// doesn't exist, the document may still exist.
 						{ $push: { cookies: { key, value } } }, { upsert: true }, function(err, res) {

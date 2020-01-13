@@ -365,7 +365,7 @@ function filterNewestAssets(assets) {
 module.exports.addAsset = function(webstrateId, asset, searchable, source, next) {
 	return documentManager.sendNoOp(webstrateId, 'assetAdded', source, function() {
 		return documentManager.getDocumentVersion(webstrateId, function(err, version) {
-			db.assets.insert({
+			db.assets.insertOne({
 				webstrateId,
 				v: version,
 				// asset.filename is the name of the file on our system, originalname is what the file was

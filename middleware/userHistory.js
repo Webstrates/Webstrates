@@ -45,7 +45,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		const $set = {};
 		$set[`webstrates.${webstrateId}`] = now;
 
-		db.userHistory.update({ userId }, { $set }, { upsert: true }, (err, res) => {
+		db.userHistory.updateOne({ userId }, { $set }, { upsert: true }, (err, res) => {
 			if (err) console.error(err);
 		});
 	}
