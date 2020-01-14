@@ -67,9 +67,17 @@ describe('Versioning', function() {
 	});
 
 	it('should be possible to restore to previous version', async () => {
-		await page.evaluate((t) => window.webstrate.restore(2));
-
-		await util.sleep(1);
+		await page.evaluate(async () => {
+			await new Promise((resolve, reject)=>{
+				window.webstrate.restore(2, (err, v)=>{
+					if(err) {
+						reject();
+					} else {
+						resolve();
+					}
+				});
+			});
+		});
 
 		const innerText = await page.evaluate(() => document.body.innerText);
 
@@ -88,9 +96,17 @@ describe('Versioning', function() {
 	});
 
 	it('should be possible to restore to previous tag', async () => {
-		await page.evaluate((t) => window.webstrate.restore(t), tagName);
-
-		await util.sleep(1);
+		await page.evaluate(async (t) => {
+			await new Promise((resolve, reject)=>{
+				window.webstrate.restore(t, (err, v)=>{
+					if(err) {
+						reject();
+					} else {
+						resolve();
+					}
+				});
+			});
+		}, tagName);
 
 		const innerText = await page.evaluate(() => document.body.innerText);
 
