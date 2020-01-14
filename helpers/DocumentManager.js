@@ -389,7 +389,7 @@ module.exports.tagDocument = function(webstrateId, version, label, next) {
 		// All labels and versions have to be unique, so this is how we enforce that. First, try to
 		// set the label for a specific version. Due to our collection's uniqueness constraint, this
 		// will fail if the label already exists.
-		db.tags.update({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true },
+		db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true },
 			function(err) {
 				if (!err) {
 					return next && next(null, version, label);
@@ -399,7 +399,7 @@ module.exports.tagDocument = function(webstrateId, version, label, next) {
 				db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]}, function(err) {
 					if (err) return next && next(err);
 					// And now reinsert.
-					db.tags.insert({ webstrateId, v: version, label, data, type }, function(err) {
+					db.tags.insertOne({ webstrateId, v: version, label, data, type }, function(err) {
 						if (err) return next && next(err);
 						return next && next(null, version, label);
 					});

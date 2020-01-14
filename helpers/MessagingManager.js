@@ -184,7 +184,7 @@ module.exports.deleteAllMessages = function(userId, local) {
  * @private
  */
 function saveMessage(userId, messageId, message, senderId) {
-	db.messages.insert({
+	db.messages.insertOne({
 		userId,
 		messageId,
 		message,

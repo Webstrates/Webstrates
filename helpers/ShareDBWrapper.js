@@ -15,7 +15,7 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const COLLECTION_NAME = 'webstrates';
 
 const share = sharedb({
-	db: sharedbMongo(global.config.db),
+	db: sharedbMongo(global.config.db,{mongoOptions: {useUnifiedTopology: true}}),
 	pubsub: global.config.pubsub && sharedbRedisPubSub({
 		client: redis.createClient(global.config.pubsub),
 		observer: redis.createClient(global.config.pubsub)
@@ -27,12 +27,12 @@ const agent = share.connect();
 const insertSessionLog = (log, attempts = 10) => {
 	if (attempts === 0) throw new Error('Unable to insert session log');
 	if (!db.sessionLog) return insertSessionLog(log, attempts - 1);
-	db.sessionLog.insert(log, (err, db) => {
+	db.sessionLog.insertOne(log, (err, db) => {
 		if (err) return setTimeout(() => insertSessionLog(log, attempts - 1), 50);
 	});
 };
 
-share.use('connect', (req, next) => {
+share.use(['connect'], (req, next) => {
 	// req is the sharedb request, req.req is the HTTP request that we've attached ourselves
 	// when we did share.listen(stream, req). We copy useful user data from the HTTP request to the
 	// agent, because the agent always is available in the sharedb trigger callbacks (like  'op' and
@@ -57,7 +57,7 @@ const changesPermissions = (ops) => ops.some(op =>
 if (global.config.tagging) {
 	const webstrateActivites = {};
 
-	share.use('op', (req, next) => {
+	share.use(['submit'], (req, next) => {
 		// req is the sharedb request, req.req is the HTTP request that we've attached ourselves
 		// when we did share.listen(stream, req).
 
@@ -95,7 +95,7 @@ if (global.config.tagging) {
 }
 
 // Invalidate permissions cache after a permission-changing op has been applied.
-share.use(['after submit'], (req, next) => {
+share.use(['afterWrite'], (req, next) => {
 	if (req.op && req.op.create) {
 		return next();
 	}
