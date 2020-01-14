@@ -240,7 +240,7 @@ module.exports.restoreDocument = function({ webstrateId, version, tag }, source,
  * @public
  */
 module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0) {
-	db.webstrates.remove({ _id: webstrateId }, function(err, res) {
+	db.webstrates.deleteOne({ _id: webstrateId }, function(err, res) {
 		if (err) return next && next(err);
 
 		// When creating a webstrate and then quickly deleting it aftewards, the document may not
@@ -262,8 +262,8 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
 			d: webstrateId
 		});
 
-		db.tags.remove({ webstrateId });
-		db.ops.remove({ d: webstrateId });
+		db.tags.deleteOne({ webstrateId });
+		db.ops.deleteOne({ d: webstrateId });
 		next && next();
 	});
 };
@@ -277,7 +277,12 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
 module.exports.getDocumentVersion = function(webstrateId, next) {
 	db.webstrates.findOne({ _id: webstrateId }, { _v: 1}, function(err, doc) {
 		if (err) return next && next(err);
-		return next && next(null, Number(doc._v));
+		try {
+			return next && next(null, Number(doc._v));
+		} catch(e) {
+			console.log("Error in getDocumentVersion:", e, doc);
+			return next && next(err);
+		}
 	});
 };
 
@@ -424,7 +429,7 @@ module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 	else {
 		query.label = tag;
 	}
-	db.tags.remove(query, function(err, res) {
+	db.tags.deleteOne(query, function(err, res) {
 		// Only inform clients of a tag deletion if the tag existed.
 		if (res.result.n === 1) {
 			clientManager.sendToClients(webstrateId, {
