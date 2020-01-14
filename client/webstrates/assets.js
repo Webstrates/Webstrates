@@ -27,7 +27,7 @@ function waitForAssets() {
 			resolve();
 		} else {
 			coreEvents.addEventListener('receivedAssets', function once() {
-				coreEvents.addEventListener('receivedAssets', once);
+				coreEvents.removeEventListener('receivedAssets', once);
 				weHaveReceivedTags = true;
 				resolve();
 			});
