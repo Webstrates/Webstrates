@@ -9,6 +9,10 @@ const assetsModule = {};
 // Create internal event that other modules may subscribe to
 coreEvents.createEvent('asset');
 
+// Create an internal event to wait for tags array
+coreEvents.createEvent('receivedAssets');
+let weHaveReceivedTags = false;
+
 // Create event in userland.
 globalObject.createEvent('asset');
 
@@ -17,23 +21,42 @@ let assets;
 const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
 const webstrateId = coreUtils.getLocationObject().webstrateId;
 
+function waitForAssets() {
+	return new Promise((resolve, reject)=>{
+		if(weHaveReceivedTags) {
+			resolve();
+		} else {
+			coreEvents.addEventListener('receivedAssets', function once() {
+				coreEvents.addEventListener('receivedAssets', once);
+				weHaveReceivedTags = true;
+				resolve();
+			});
+		}
+	});
+}
+
 websocket.onjsonmessage = (message) => {
 	if (message.d !== webstrateId) return;
 	switch (message.wa) {
 		case 'assets':
 			assets = message.assets;
+			coreEvents.triggerEvent('receivedAssets', assets);
 			break;
 		case 'asset':
-			assets.push(message.asset);
-			coreEvents.triggerEvent('asset', message.asset);
-			globalObject.triggerEvent('asset', message.asset);
+			waitForAssets().then(()=>{
+				assets.push(message.asset);
+				coreEvents.triggerEvent('asset', message.asset);
+				globalObject.triggerEvent('asset', message.asset);
+			});
 			break;
 	}
 };
 
 // Define webstrate.assets. Returns a frozen copy, so users won't modify it.
 Object.defineProperty(globalObject.publicObject, 'assets', {
-	get: () => Object.freeze(coreUtils.objectClone(assets))
+	get: () => {
+		return Object.freeze(coreUtils.objectClone(assets));
+	}
 });
 
 /**
