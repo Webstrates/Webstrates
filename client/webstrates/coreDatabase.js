@@ -169,7 +169,7 @@ exports.fetch = (webstrateId, tagOrVersion) => {
  * reverted as this is ShareDB's job.
  * @param  {string} tagOrVersion Tag label or version number.
  */
-exports.restore = (webstrateId, tagOrVersion) => {
+exports.restore = (webstrateId, tagOrVersion, callback) => {
 	var msgObj = {
 		wa: 'restore',
 		d: webstrateId
@@ -181,7 +181,7 @@ exports.restore = (webstrateId, tagOrVersion) => {
 		msgObj.l = tagOrVersion;
 	}
 
-	coreWebsocket.send(msgObj);
+	coreWebsocket.send(msgObj, callback);
 };
 
 /**
