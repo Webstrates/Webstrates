@@ -36,7 +36,9 @@ describe('GitHub Login', function() {
 		assert.property(userObject,    'permissions');
 	});
 
-	it('/auth/github redirects to github.com/login?...', async () => {
+	it('/auth/github redirects to github.com/login?...', async function () {
+		if (!util.credentialsProvided) return this.skip();
+
 		await pageA.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle2' });
 		const url = pageA.url();
 		assert.match(url, /^https:\/\/github.com\/login?/);
