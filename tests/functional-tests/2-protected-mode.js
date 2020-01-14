@@ -55,7 +55,7 @@ describe('Protected Mode', function () {
 	// We don't do this just to test the attribute, the page must be reloaded after making the body
 	// protected.
 	it('data-protected attribute should be visible after reload', async () => {
-		await Promise.all([pageA.reload(), pageB.reload()]);
+		await Promise.all([pageA.reload({ waitUntil: 'networkidle2' }), pageB.reload({ waitUntil: 'networkidle2' })]);
 
 		const attributeSetA = await util.waitForFunction(pageA, () =>
 			document.documentElement.getAttribute('data-protected') === '');
