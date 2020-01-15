@@ -123,4 +123,14 @@ util.sleep = async function(seconds) {
 	return new Promise(resolve => setTimeout(resolve, seconds * 1000));
 };
 
+util.waitForWebstrateLoaded = async (page) => {
+	await util.waitForFunction(page, async ()=>{
+		await new Promise((resolve, reject)=>{
+			window.webstrate.on("loaded",()=>{
+				resolve();
+			});
+		});
+	}, 2);
+};
+
 module.exports = util;

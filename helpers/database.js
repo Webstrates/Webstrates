@@ -9,7 +9,7 @@ MongoClient.connect(global.config.db, { useUnifiedTopology: true }, function(err
 	if (err)
 		throw err;
 
-	let _db = client.db("webstrate");
+	let _db = client.db();
 
 	db.sessionLog = _db.collection('sessionLog');
 	db.webstrates = _db.collection('webstrates');

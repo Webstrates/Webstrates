@@ -22,15 +22,28 @@ const cleanUp = async () => {
 	const readdir = util.promisify(fs.readdir);
 	const unlink = util.promisify(fs.unlink);
 
-	const assetsFs = await readdir(UPLOAD_DEST);
+	const assetsFs = new Set(await readdir(UPLOAD_DEST));
 	const assetDbCursor = await db.assets.find({}, { fileName: 1, _id: 0 });
-	const assetsDb = (await assetDbCursor.toArray()).map(o => o.fileName);
+	const assetsDb = new Set((await assetDbCursor.toArray()).map(o => o.fileName));
 
-	console.log('Found', assetsDb.length, 'assets in database,', assetsFs.length, 'in file system.');
+	console.log('Found', assetsFs.size, 'assets in database,', assetsDb.size, 'in file system.');
 	console.log('Now finding dangling files/entries. This can take a few minutes...');
 
-	const assetsOnlyInDb = assetsDb.filter(asset => !assetsFs.includes(asset));
-	const assetsOnlyInFs = assetsFs.filter(asset => !assetsDb.includes(asset));
+	const assetsOnlyInDb = [];
+	const assetsOnlyInFs = [];
+
+	assetsFs.forEach((asset)=>{
+		if(!assetsDb.has(asset)) {
+			assetsOnlyInFs.push(asset);
+		}
+	});
+
+	assetsDb.forEach((asset)=>{
+		if(!assetsFs.has(asset)) {
+			assetsOnlyInDb.push(asset);
+		}
+	});
+
 	console.log('Found', assetsOnlyInDb.length, 'assets that are only in database,',
 		assetsOnlyInFs.length, 'that are only in the file system.');
 	console.log('(Note that duplicates are automatically removed from the file system, so it is ' +

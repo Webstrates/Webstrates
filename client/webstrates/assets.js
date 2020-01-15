@@ -23,11 +23,11 @@ const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 function waitForAssets() {
 	return new Promise((resolve, reject)=>{
-		if(weHaveReceivedTags) {
+		if (weHaveReceivedTags) {
 			resolve();
 		} else {
 			coreEvents.addEventListener('receivedAssets', function once() {
-				coreEvents.addEventListener('receivedAssets', once);
+				coreEvents.removeEventListener('receivedAssets', once);
 				weHaveReceivedTags = true;
 				resolve();
 			});

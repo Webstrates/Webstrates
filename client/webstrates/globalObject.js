@@ -116,6 +116,7 @@ publicObject.off = (eventName, eventListener) => {
  * Labels cannot begin with a digit whereas versions consist only of digits, so distinguishing
  * is easy.
  * @param  {string} tagOrVersion Tag label or version number.
+ * @param  {Function} callback Callback.
  */
 publicObject.restore = (tagOrVersion, callback) => {
 	if (publicObject.isStatic) {

@@ -55,6 +55,8 @@ describe('Script Insertion and Execution', function() {
 	it('scripts should get executed after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
 
+		await util.waitForWebstrateLoaded(pageA);
+
 		const scriptsRun = await util.waitForFunction(pageA, () =>
 			window.__scriptRunPre && window.__scriptRunPost && window.jQuery, 1);
 
