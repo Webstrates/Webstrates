@@ -88,12 +88,14 @@ util.logInToGithub = async function(page) {
 		throw new Error(`Incorrect login page title: "${title}"`);
 	}
 
+	let navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2' });
+
 	await page.type('input#login_field', config.username);
 	await page.type('input#password', config.password);
 	await page.click('input[type=submit]');
 
 	// Wait for redirect to authorize URL.
-	await page.waitForNavigation({ waitUntil: 'networkidle2' });
+	await navigationPromise;
 
 	// Sleeping to circumvent bug: https://github.com/GoogleChrome/puppeteer/issues/1325
 	await util.sleep(1);
@@ -104,8 +106,9 @@ util.logInToGithub = async function(page) {
 		// It seems the login button isn't immediately available after page load (probably to prevent
 		// automation, woups...), so we wait for it to become clickable.
 		await util.sleep(3);
+		let navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2' });
 		await page.click('button[name=authorize]');
-		await page.waitForNavigation({ waitUntil: 'networkidle2' });
+		await navigationPromise;
 	}
 
 	url = await page.url();
