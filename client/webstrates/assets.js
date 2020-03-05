@@ -41,6 +41,7 @@ websocket.onjsonmessage = (message) => {
 		case 'assets':
 			assets = message.assets;
 			coreEvents.triggerEvent('receivedAssets', assets);
+			weHaveReceivedTags = true;
 			break;
 		case 'asset':
 			waitForAssets().then(()=>{
