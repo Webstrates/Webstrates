@@ -270,15 +270,19 @@ module.exports.restoreAssets = function({ webstrateId, version, tag, newVersion 
 	}
 
 	var query = { webstrateId, v: { $lte: version } };
-	db.assets.find(query, { _id: 0 }).toArray(function(err, assets) {
-
+	db.assets.find(query).toArray(function(err, assets) {
 		// If there are no assets, we can terminate.
 		if (assets.length === 0) return next();
 
 		if (err) return next && next(err);
 		assets = filterNewestAssets(assets);
+		
 		// Bump the version of all copied assets.
-		assets.forEach(asset => asset.v = newVersion);
+		assets.forEach((asset) => {
+		     asset.v = newVersion;
+		     delete asset._id;
+		});
+		
 		db.assets.insertMany(assets, next);
 	});
 };
