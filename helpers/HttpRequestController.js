@@ -781,23 +781,26 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 					|| (response.headers['content-disposition']
 						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i))) {
 					const jsonml = htmlToJsonML(body);
-					documentManager.createNewDocument({
-						webstrateId: req.query.id,
-						snapshot: {
-							type: 'http://sharejs.org/types/JSONv0',
-							data: jsonml
-						}
-					}, function(err, webstrateId) {
-						if (err) {
-							console.error(err);
-							return res.status(409).send(String(err));
-						}
-						delete req.query.prototypeUrl;
-						delete req.query.id;
-						return res.redirect(url.format({
-							pathname:`/${webstrateId}/`,
-							query: req.query
-						}));
+					return new Promise(async (resolve, reject)=>{
+						const webstrateId = req.query.id || await generateWebstrateId(req);
+						return documentManager.createNewDocument({
+							webstrateId: webstrateId,
+							snapshot: {
+								type: 'http://sharejs.org/types/JSONv0',
+								data: jsonml
+							}
+						}, function(err, webstrateId) {
+							if (err) {
+								console.error(err);
+								return res.status(409).send(String(err));
+							}
+							delete req.query.prototypeUrl;
+							delete req.query.id;
+							return res.redirect(url.format({
+								pathname:`/${webstrateId}/`,
+								query: req.query
+							}));
+						});
 					});
 				}
 
