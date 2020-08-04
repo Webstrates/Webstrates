@@ -60,7 +60,7 @@
     "optimist": "0.6.1",
     "os": "0.1.1",
     "passport": "0.4.1",
-    "passport-github": "0.1.5",
+    "passport-github": "1.1.0",
     "passport-google-oauth2": "0.2.0",
     "passport-oauth2-profilemap": "0.0.1",
     "redis": "2.8.0",
