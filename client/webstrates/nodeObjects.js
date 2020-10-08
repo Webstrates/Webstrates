@@ -13,6 +13,8 @@ nodeObjectsModule.setEventObject = (node, eventObject) => node.__eventObject = e
 coreEvents.createEvent('webstrateObjectsAdded');
 coreEvents.createEvent('webstrateObjectAdded');
 
+coreEvents.createEvent('webstrateObjectAddedId');
+
 // Delay the loaded event, until the 'clientsReceived' event has been triggered.
 loadedEvent.delayUntil('webstrateObjectsAdded');
 
@@ -35,6 +37,8 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 		node.webstrate = {};
 	}
 
+	let addedWidToNode = false;
+
 	// If this webstrate object is being added before the element has been node to the DOM (or if the
 	// node is transient), it won't have a __wid, so we won't create an id property.
 	// attachWebstrateObjectToNode may be run multiple times for the same node (e.g. if a node is
@@ -51,6 +55,8 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 			set: () => { throw new TypeError('Cannot redefine property: id'); },
 			enumerable: true
 		});
+
+		addedWidToNode = true;
 	}
 
 	// Only continue if the event object doesn't exist. We can't just check for the existence of
@@ -58,6 +64,12 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 	// may still have a webstrate object, but won't have an event object, as the event object gets
 	// deleted whenever an element gets removed from the DOM.
 	if (eventObjectExists) {
+
+		// If we added id to the webstrate object, and are supposed to triggerEvents
+		// Tell everyone that webstrate.id and thus wid is ready now.
+		if(triggerEvent && addedWidToNode) {
+			coreEvents.triggerEvent('webstrateObjectAddedId', node, eventObjectExists);
+		}
 		return;
 	}
 
