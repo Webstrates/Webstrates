@@ -213,6 +213,11 @@ function setupSignalStream(publicObject, eventObject) {
 	// them, and thus it'd be pointless to add a signaling method and event.
 	if (!wid) return;
 
+	// Check if we already setup singal streaming
+	if(publicObject.signalStream != null) {
+		return;
+	}
+
 	webrtcClients.set(wid, new Map());
 	wantToStreamCallbacks.set(wid, new Map());
 	wantToListenCallbacks.set(wid, new Map());
@@ -294,6 +299,11 @@ coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
 
 // Add signalStream events to all webstrate objects (with wid) after they're added continually.
 coreEvents.addEventListener('webstrateObjectAdded', (node, eventObject) => {
+	setupSignalStream(node.webstrate, eventObject);
+}, coreEvents.PRIORITY.IMMEDIATE);
+
+// Listen for when webstrate.id and wid is ready on webstrateObjects
+coreEvents.addEventListener('webstrateObjectAddedId', (node, eventObject) => {
 	setupSignalStream(node.webstrate, eventObject);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
