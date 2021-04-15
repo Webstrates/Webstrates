@@ -262,8 +262,8 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
 			d: webstrateId
 		});
 
-		db.tags.deleteOne({ webstrateId });
-		db.ops.deleteOne({ d: webstrateId });
+		db.tags.deleteMany({ webstrateId });
+		db.ops.deleteMany({ d: webstrateId });
 		next && next();
 	});
 };
