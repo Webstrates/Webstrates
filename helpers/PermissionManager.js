@@ -224,6 +224,17 @@ module.exports.expireAllAccessTokens = function(webstrateId, local) {
 };
 
 /**
+ * Check if configuration option is set so users must be logged in to write in a webstrate
+ * and the given user is anonymous
+ * @param  {string}   username    Username.
+ * @param  {string}   provider    Login provider (GitHub, Facebook, OAuth, ...).
+ * @return {bool}                 The configuration option is set and the user is anonymous
+ */
+async function userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider) {
+	return global.config.loggedInToWrite && username === "anonymous" && provider === "";
+}
+
+/**
  * Get a user's permissions for a specific webstrateId.
  * @param  {string}   username    Username.
  * @param  {string}   provider    Login provider (GitHub, Facebook, OAuth, ...).
@@ -239,6 +250,7 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 
 	let permissions = getCachedPermissions(username, provider, webstrateId);
 	if (permissions) {
+		if (await userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) permissions = permissions.replace("w", "");
 		return permissions;
 	}
 
@@ -247,6 +259,7 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 		snapshot);
 
 	setCachedPermissions(username, provider, permissions, snapshot.id);
+	if (await userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) permissions = permissions.replace("w", "");
 	return permissions;
 };
 
