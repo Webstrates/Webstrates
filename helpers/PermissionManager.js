@@ -251,9 +251,6 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 
 	let permissions = getCachedPermissions(username, provider, webstrateId);
 	if (permissions) {
-		if (userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) {
-			permissions = permissions.replace(/w/g, '');
-		}
 		return permissions;
 	}
 
@@ -261,10 +258,10 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 	permissions = await module.exports.getUserPermissionsFromSnapshot(username, provider,
 		snapshot);
 
-	setCachedPermissions(username, provider, permissions, snapshot.id);
-	if (await userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) {
+	if (userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) {
 		permissions = permissions.replace(/w/g, '');
 	}
+	setCachedPermissions(username, provider, permissions, snapshot.id);
 	return permissions;
 };
 
