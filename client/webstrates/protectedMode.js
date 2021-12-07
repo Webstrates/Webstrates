@@ -79,10 +79,13 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	// Overwrite config.isTransientAttribute to make approved attribute in APPROVAL_TYPE.ATTRIBUTE
 	// transient, otherwise that attribute gets synchronized to the server
 	const _isTransientAttribute = config.isTransientAttribute;
-	config.isTransientAttribute = (DOMNode, attributeName) => 
-		!(isApprovedAttribute(DOMNode, attributeName)) && (!_isTransientAttribute(DOMNode, attributeName));
-
-
+	config.isTransientAttribute = (DOMNode, attributeName) => {
+		if (_isTransientAttribute(DOMNode, attributeName)){
+			// If config says transient, then it means transient - regardless of how much someone is trying to approve it
+			return true;
+		}
+		return !isApprovedAttribute(DOMNode, attributeName); // Otherwise it is transient if not approved
+	}
 
 	/**
 	 * Approves a node to make it persist on the server. Also, overriding innerHTML of the node to
