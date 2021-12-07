@@ -51,32 +51,41 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	/**
 	 * Checks whether a DOMNode is allowed to be persisted (i.e. non-transient).
 	 */
-	const isApprovedNode = DOMNode => !elementsProtected || !!DOMNode.__approved;
+	const isApprovedNode = DOMNode => !elementsProtected
+		// The [contenteditable] part below is required to allow elements inside to be synced
+		// at all in protected mode if the [contenteditable] element itself is approved - as 
+		// not all sources of changes in those children can be manually approved.
+		// An example is insertions/changes made purely by the browser itself.
+		|| isInsideApprovedContentEditable(DOMNode)
+		|| !!DOMNode.__approved; // Directly approved
+	const isInsideApprovedContentEditable = DOMNode => {
+	    let editable = DOMNode.closest('[contenteditable]');
+	    return editable && !!editable.__approved;
+	}
 
 	/**
-	 * Checks whether an attribute is allowed to be peristed (i.e. non-transient).
+	 * Checks whether an attribute is allowed to be persisted (i.e. non-transient).
 	 */
 	const isApprovedAttribute = (DOMNode, attributeName) => !attributesProtected
+		|| isInsideApprovedContentEditable(DOMNode)
 		|| (DOMNode.__approvedAttributes && DOMNode.__approvedAttributes.has(attributeName));
 
 	// Overwrite config.isTransientElement, so nodes with the `__approved` property are transient. We
 	// also pass on the call to the original isTransientElement function defined in the client config.
 	const _isTransientElement = config.isTransientElement;
 	config.isTransientElement = DOMNode => _isTransientElement(DOMNode)
-		// The [contenteditable] part below is a hack. There's no way to allow only certain sources
-		// to write in a contenteditable field, so we have to allow everything to make it possible to
-		// use contenteditable fields at all in protected mode.
-		|| !(isApprovedNode(DOMNode) || DOMNode.closest('[contenteditable]'));
+		|| !isApprovedNode(DOMNode);
 
 	// Overwrite config.isTransientAttribute to make approved attribute in APPROVAL_TYPE.ATTRIBUTE
 	// transient, otherwise that attribute gets synchronized to the server
 	const _isTransientAttribute = config.isTransientAttribute;
-	config.isTransientAttribute = (DOMNode, attributeName) =>
-		!(isApprovedAttribute(DOMNode, attributeName) && !_isTransientAttribute(DOMNode,
-			attributeName));
+	config.isTransientAttribute = (DOMNode, attributeName) => 
+		!(isApprovedAttribute(DOMNode, attributeName)) && (!_isTransientAttribute(DOMNode, attributeName));
+
+
 
 	/**
-	 * Approves a node to make it perist on the server. Also, overriding innerHTML of the node to
+	 * Approves a node to make it persist on the server. Also, overriding innerHTML of the node to
 	 * approve all descendents when set through innerHTML.
 	 * 
 	 * @param {Node} node An object eventually having a property approved set to true.
