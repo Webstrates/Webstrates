@@ -181,7 +181,9 @@ function fromHTML(elem, filter) {
 					if (attr[i].name === 'style') {
 						props.style = elem.style.cssText || attr[i].value;
 					} else if ('string' === typeof attr[i].value) {
-						if (elem.namespaceURI === 'http://www.w3.org/2000/svg') {
+						//Not sure why you would ever force attribtues on svg elements to be lowercase, they are case sensitive?
+						if (false && elem.namespaceURI === 'http://www.w3.org/2000/svg') {
+							console.assert(false, "We should never lowercase any attributes in svg namespace!");
 							props[attr[i].name.toLowerCase()] = attr[i].value;
 						} else {
 							props[attr[i].name] = attr[i].value;
