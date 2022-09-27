@@ -609,20 +609,46 @@ function applyOp(op, rootElement) {
 	}
 }
 
-coreOpApplier.listenForOpsAndApplyOn = (rootElement) => {
+let savedRootElement = null;
+
+function applyOpFromOpsEvent(ops) {
+	// We disable the mutation observers before applying the operations. Otherwise, applying the
+	// operations would cause new mutations to be created, which in turn would cause the
+	// creation of new operations, leading to a livelock for all clients.
+	coreMutation.pause();
+
+	ops.forEach((op) => {
+		applyOp(op, savedRootElement);
+	});
+
+	// And re-enable MuationObservers.
+	coreMutation.resume();
+}
+
+let bufferedOps = [];
+
+coreOpApplier.listenForOps = () => {
 	coreEvents.addEventListener('receivedOps', (ops) => {
-		// We disable the mutation observers before applying the operations. Otherwise, applying the
-		// operations would cause new mutations to be created, which in turn would cause the
-		// creation of new operations, leading to a livelock for all clients.
-		coreMutation.pause();
-
-		ops.forEach((op) => {
-			applyOp(op, rootElement);
-		});
-
-		// And re-enable MuationObservers.
-		coreMutation.resume();
+		if(savedRootElement != null) {
+			//We already have the root element, apply ops
+			applyOpFromOpsEvent(ops);
+		} else {
+			//We are missing the root element, document is still loading, buffer the ops
+			bufferedOps.push(ops);
+		}
 	}, coreEvents.PRIORITY.IMMEDIATE);
+};
+
+coreOpApplier.setRootElement = (rootElement) => {
+	//Save the newly acquired root element
+	savedRootElement = rootElement;
+
+	//Playback buffered ops, if any
+	bufferedOps.forEach((ops)=>{
+		applyOpFromOpsEvent(ops);
+	});
+
+	bufferedOps = [];
 };
 
 module.exports = coreOpApplier;

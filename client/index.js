@@ -30,7 +30,12 @@ if (request.staticMode) {
 }
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
+		
+		//Start listening for ops, will get applied when setRootElement has been called
+		coreOpApplier.listenForOps();
+
 		corePopulator.populate(coreDOM.externalDocument, doc).then(() => {
+
 			// Emits mutations from changes on the coreDOM.externalDocument.
 			coreMutation.emitMutationsFrom(coreDOM.externalDocument);
 
@@ -39,7 +44,7 @@ else {
 
 			// Apply changes on <html>, not coreDOM.externalDocument.
 			const targetElement = coreDOM.externalDocument.childNodes[0];
-			coreOpApplier.listenForOpsAndApplyOn(targetElement);
+			coreOpApplier.setRootElement(targetElement);
 		});
 	});
 }
