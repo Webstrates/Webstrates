@@ -30,7 +30,18 @@ if (request.staticMode) {
 }
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
+
+		function debugOps(ops) {
+			console.log("Received ops before coreOpApplier is started:", ops);
+		}
+
+		coreEvents.addEventListener("receivedOps", debugOps);
+
+		console.log("Subscribed to webstrate:", request.webstrateId);
+
 		corePopulator.populate(coreDOM.externalDocument, doc).then(() => {
+			console.log("Document populated!");
+
 			// Emits mutations from changes on the coreDOM.externalDocument.
 			coreMutation.emitMutationsFrom(coreDOM.externalDocument);
 
@@ -40,6 +51,8 @@ else {
 			// Apply changes on <html>, not coreDOM.externalDocument.
 			const targetElement = coreDOM.externalDocument.childNodes[0];
 			coreOpApplier.listenForOpsAndApplyOn(targetElement);
+
+			coreEvents.removeEventListener("receivedOps", debugOps);
 		});
 	});
 }

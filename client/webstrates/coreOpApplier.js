@@ -610,6 +610,7 @@ function applyOp(op, rootElement) {
 }
 
 coreOpApplier.listenForOpsAndApplyOn = (rootElement) => {
+	console.log("Adding listenForOpsAndApplyOn listener to coreEvents");
 	coreEvents.addEventListener('receivedOps', (ops) => {
 		// We disable the mutation observers before applying the operations. Otherwise, applying the
 		// operations would cause new mutations to be created, which in turn would cause the
