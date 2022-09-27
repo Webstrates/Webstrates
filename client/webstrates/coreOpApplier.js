@@ -628,25 +628,22 @@ function applyOpFromOpsEvent(ops) {
 let bufferedOps = [];
 
 coreOpApplier.listenForOps = () => {
-	console.log("Adding listener for receivedOps from coreEvents...");
 	coreEvents.addEventListener('receivedOps', (ops) => {
 		if(savedRootElement != null) {
+			//We already have the root element, apply ops
 			applyOpFromOpsEvent(ops);
 		} else {
-			console.log("Got event before rootElement was ready, buffering");
+			//We are missing the root element, document is still loading, buffer the ops
 			bufferedOps.push(ops);
 		}
 	}, coreEvents.PRIORITY.IMMEDIATE);
 };
 
 coreOpApplier.setRootElement = (rootElement) => {
+	//Save the newly acquired root element
 	savedRootElement = rootElement;
 
-	//Playback buffered ops
-	if(bufferedOps.length > 0) {
-		console.log("Applying buffered ops:", bufferedOps);
-	}
-	
+	//Playback buffered ops, if any
 	bufferedOps.forEach((ops)=>{
 		applyOpFromOpsEvent(ops);
 	});
