@@ -30,20 +30,11 @@ if (request.staticMode) {
 }
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
-
-		let opsBuffer = [];
-
-		function opsBufferCallback(ops) {
-			console.log("Received ops before coreOpApplier is started:", ops);
-			opsBuffer.push(ops);
-		}
-
-		coreEvents.addEventListener("receivedOps", opsBufferCallback);
-
-		console.log("Subscribed to webstrate:", request.webstrateId);
+		
+		//Start listening for ops, will get applied when setRootElement has been called
+		coreOpApplier.listenForOps();
 
 		corePopulator.populate(coreDOM.externalDocument, doc).then(() => {
-			console.log("Document populated!");
 
 			// Emits mutations from changes on the coreDOM.externalDocument.
 			coreMutation.emitMutationsFrom(coreDOM.externalDocument);
@@ -53,14 +44,7 @@ else {
 
 			// Apply changes on <html>, not coreDOM.externalDocument.
 			const targetElement = coreDOM.externalDocument.childNodes[0];
-			coreOpApplier.listenForOpsAndApplyOn(targetElement);
-			
-			coreEvents.removeEventListener("receivedOps", opsBufferCallback);
-
-			console.log("Pushing ops from before listener started");
-			opsBuffer.forEach((ops)=>{
-				coreEvents.triggerEvent('receivedOps', ops);
-			});
+			coreOpApplier.setRootElement(targetElement);
 		});
 	});
 }
