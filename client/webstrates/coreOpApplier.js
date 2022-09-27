@@ -609,21 +609,49 @@ function applyOp(op, rootElement) {
 	}
 }
 
-coreOpApplier.listenForOpsAndApplyOn = (rootElement) => {
-	console.log("Adding listenForOpsAndApplyOn listener to coreEvents");
+let savedRootElement = null;
+
+function applyOpFromOpsEvent(ops) {
+	// We disable the mutation observers before applying the operations. Otherwise, applying the
+	// operations would cause new mutations to be created, which in turn would cause the
+	// creation of new operations, leading to a livelock for all clients.
+	coreMutation.pause();
+
+	ops.forEach((op) => {
+		applyOp(op, savedRootElement);
+	});
+
+	// And re-enable MuationObservers.
+	coreMutation.resume();
+}
+
+let bufferedOps = [];
+
+coreOpApplier.listenForOps = () => {
+	console.log("Adding listener for receivedOps from coreEvents...");
 	coreEvents.addEventListener('receivedOps', (ops) => {
-		// We disable the mutation observers before applying the operations. Otherwise, applying the
-		// operations would cause new mutations to be created, which in turn would cause the
-		// creation of new operations, leading to a livelock for all clients.
-		coreMutation.pause();
-
-		ops.forEach((op) => {
-			applyOp(op, rootElement);
-		});
-
-		// And re-enable MuationObservers.
-		coreMutation.resume();
+		if(savedRootElement != null) {
+			applyOpFromOpsEvent(ops);
+		} else {
+			console.log("Got event before rootElement was ready, buffering");
+			bufferedOps.push(ops);
+		}
 	}, coreEvents.PRIORITY.IMMEDIATE);
+};
+
+coreOpApplier.setRootElement = (rootElement) => {
+	savedRootElement = rootElement;
+
+	//Playback buffered ops
+	if(bufferedOps.length > 0) {
+		console.log("Applying buffered ops:", bufferedOps);
+	}
+	
+	bufferedOps.forEach((ops)=>{
+		applyOpFromOpsEvent(ops);
+	});
+
+	bufferedOps = [];
 };
 
 module.exports = coreOpApplier;
