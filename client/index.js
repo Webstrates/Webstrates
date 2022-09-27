@@ -31,11 +31,14 @@ if (request.staticMode) {
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
 
-		function debugOps(ops) {
+		let opsBuffer = [];
+
+		function opsBufferCallback(ops) {
 			console.log("Received ops before coreOpApplier is started:", ops);
+			opsBuffer.push(ops);
 		}
 
-		coreEvents.addEventListener("receivedOps", debugOps);
+		coreEvents.addEventListener("receivedOps", opsBufferCallback);
 
 		console.log("Subscribed to webstrate:", request.webstrateId);
 
@@ -51,8 +54,13 @@ else {
 			// Apply changes on <html>, not coreDOM.externalDocument.
 			const targetElement = coreDOM.externalDocument.childNodes[0];
 			coreOpApplier.listenForOpsAndApplyOn(targetElement);
+			
+			coreEvents.removeEventListener("receivedOps", opsBufferCallback);
 
-			coreEvents.removeEventListener("receivedOps", debugOps);
+			console.log("Pushing ops from before listener started");
+			opsBuffer.forEach((ops)=>{
+				coreEvents.triggerEvent('receivedOps', ops);
+			});
 		});
 	});
 }
