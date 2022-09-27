@@ -1,17 +1,21 @@
+'use strict';
+
 module.exports = {
 	env: {
 		browser: true,
 		commonjs: true,
 		es6: true,
-		node: true,
+		node: true
 	},
 	extends: 'eslint:recommended',
 	parserOptions: {
-		sourceType: 'module',
+		ecmaVersion: 2017
 	},
 	globals: {
-		"debug": true,
-		"config": true
+		"config": true,
+		"serverConfig": true,
+		"WORKER_ID": true,
+		"APP_PATH": true
 	},
 	rules: {
 		'max-len': ['warn', { code: 100, tabWidth: 2 }],
@@ -34,6 +38,10 @@ module.exports = {
 		quotes: ['error', 'single'],
 		// Always give an error with missing semicolons.
 		semi: ['error', 'always'],
+		// Only warn when escaping unnecessary characters in a regex (default is error).
+		'no-useless-escape': ['warn'],
+		'no-irregular-whitespace': ['warn', { "skipRegExps": true }],
+		// Only warn hen unreachable code exists (default is error).
 		'no-unreachable': ['warn'],
 		'no-unused-vars': ['warn', {
 			// Do not check arguments at all, e.g. so function(accept, reject) { ... } is okay even if

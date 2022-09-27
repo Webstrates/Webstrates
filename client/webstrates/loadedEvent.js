@@ -6,6 +6,10 @@ const loadedEventModule = {};
 
 let loadedTriggered = false;
 
+Object.defineProperty(globalObject.publicObject, 'loaded', {
+	get: () => loadedTriggered
+});
+
 // List of events that has to be resolved before the loaded event gets triggered.
 let delayLoadedUntilPromises = [];
 
@@ -19,7 +23,6 @@ loadedEventModule.delayUntil = (...args) => {
 	var [eventName, ...eventNames] = args;
 	if (!eventName) return;
 
-	debug.log('Delay loaded event until', eventName, 'has been triggered');
 	delayLoadedUntilPromises.push(new Promise((accept) => {
 		// Low priority, because want need to ensure that this gets triggered after the webstrateId
 		// has been set on the wet publicObject (which we do below at medium priority).
@@ -32,11 +35,8 @@ loadedEventModule.delayUntil = (...args) => {
 // Initially delay the loaded event until the document has been populated.
 loadedEventModule.delayUntil('populated');
 
-// Create loaded event -- event to be triggered when the webstrate has finished.
-globalObject.createEvent('loaded');
-
-// Also create an internal event.
-coreEvents.createEvent('loadedTriggered', {
+// Create loaded event: The event to be triggered when the webstrate has finished.
+globalObject.createEvent('loaded', {
 	// If anybody adds a 'loaded' event listener after it has already been triggered, we run the
 	// callback immediately.
 	addListener: callback => {
@@ -47,10 +47,23 @@ coreEvents.createEvent('loadedTriggered', {
 	}
 });
 
+// Also create an internal event.
+coreEvents.createEvent('loadedTriggered', {
+	// Same goes for the internal 'loadedTriggered' event.
+	addListener: callback => {
+		if (loadedTriggered) {
+			setImmediate(callback, globalObject.publicObject.webstrateId,
+				globalObject.publicObject.clientId, globalObject.publicObject.user);
+		}
+	}
+});
+
 // Wait for all events to have been triggered, before firing the loaded event.
 coreEvents.addEventListener('allModulesLoaded', () => {
+
 	Promise.all(delayLoadedUntilPromises).then(() => {
 		loadedTriggered = true;
+
 		globalObject.triggerEvent('loaded', globalObject.publicObject.webstrateId,
 			// These last two arguments depend on the existance of the clientManager and userObject
 			// modules, respectively, which aren't a part of the core. It may be bad style to have them

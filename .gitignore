@@ -1,7 +1,9 @@
 .DS_Store
 node_modules
 npm-debug.log
+package-lock.json
 config.json
 uploads
+static/client.html
 static/webstrates.js
 static/webstrates.js.map

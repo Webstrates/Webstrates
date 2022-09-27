@@ -1,9 +1,13 @@
 {
+	"listeningAddress": "0.0.0.0",
+	"listeningPort": 7007,
 	"db": "mongodb://127.0.0.1:27017/webstrate",
+	"niceWebstrateIds": false,
+	"maxAge": "1d",
+	"maxAssetSize": 100,
 	"auth": {
 		"cookie": {
 			"secret": "This is a secret",
-			"cookieName": "session",
 			"duration": 31536000000
 		},
 		"permissionTimeout": 300,
@@ -16,10 +20,5 @@
 	"tagging": {
 		"autotagInterval": 3600,
 		"tagPrefix": "Session of "
-	},
-	"basicAuth": {
-		"realm": "webstrate",
-		"username": "web",
-		"password": "strate"
 	}
 }

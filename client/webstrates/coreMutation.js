@@ -4,7 +4,6 @@ const coreUtils = require('./coreUtils');
 
 const coreMutation = {};
 
-//coreEvents.createEvent('premutation');
 coreEvents.createEvent('mutation');
 
 const observerOptions = {

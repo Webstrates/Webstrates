@@ -1,15 +1,21 @@
 'use strict';
 const coreEvents = require('./coreEvents');
+const coreDOM = require('./coreDOM');
+const coreOpCreator = require('./coreOpCreator');
 const coreUtils = require('./coreUtils');
 const loadedEvent = require('./loadedEvent');
 
 const nodeObjectsModule = {};
-nodeObjectsModule.nodes = new Map();
+
+nodeObjectsModule.getEventObject = (node) => node && node.__eventObject;
+nodeObjectsModule.setEventObject = (node, eventObject) => node.__eventObject = eventObject;
 
 coreEvents.createEvent('webstrateObjectsAdded');
 coreEvents.createEvent('webstrateObjectAdded');
 
-// Delay the loaded event, until the 'clientsReceied' event has been triggered.
+coreEvents.createEvent('webstrateObjectAddedId');
+
+// Delay the loaded event, until the 'clientsReceived' event has been triggered.
 loadedEvent.delayUntil('webstrateObjectsAdded');
 
 /**
@@ -19,12 +25,19 @@ loadedEvent.delayUntil('webstrateObjectsAdded');
  * @private
  */
 function attachWebstrateObjectToNode(node, triggerEvent) {
-	const webstrateObjectExists = !!node.webstrate;
+	const eventObjectExists = nodeObjectsModule.getEventObject(node);
 
-	// If object doesn't exist, we create it.
-	if (!webstrateObjectExists) {
+	// If an event object doesn't exist, we recreate the webstrate object itself to avoid confusion.
+	// This can happen if an element has been removed from the DOM, then re-added. In this case, all
+	// event listeners will have been removed, so it might cause confusion when the same webstrate
+	// object persists when all event listeners are gone.
+	// By doing this, we also prevent other modules from trying to redefine read-only properties on
+	// a webstrate object that has been "recycled".
+	if (!eventObjectExists) {
 		node.webstrate = {};
 	}
+
+	let addedWidToNode = false;
 
 	// If this webstrate object is being added before the element has been node to the DOM (or if the
 	// node is transient), it won't have a __wid, so we won't create an id property.
@@ -42,11 +55,21 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 			set: () => { throw new TypeError('Cannot redefine property: id'); },
 			enumerable: true
 		});
+
+		addedWidToNode = true;
 	}
 
-	// If the object existed when we started, the below stuff will already have been defined, so we
-	// can terminate.
-	if (webstrateObjectExists) {
+	// Only continue if the event object doesn't exist. We can't just check for the existence of
+	// the webstrate object here, because an element that has been deleted and then reinserted
+	// may still have a webstrate object, but won't have an event object, as the event object gets
+	// deleted whenever an element gets removed from the DOM.
+	if (eventObjectExists) {
+
+		// If we added id to the webstrate object, and are supposed to triggerEvents
+		// Tell everyone that webstrate.id and thus wid is ready now.
+		if(triggerEvent && addedWidToNode) {
+			coreEvents.triggerEvent('webstrateObjectAddedId', node, eventObjectExists);
+		}
 		return;
 	}
 
@@ -70,7 +93,6 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 			addEventListenerListeners[eventName](eventListener);
 		}
 	};
-
 	node.webstrate.off = (eventName, eventListener) => {
 		if (!eventExists(eventName)) {
 			throw new Error(`Event ${eventName} doesn't exist.`);
@@ -119,7 +141,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 		}
 	};
 
-	nodeObjectsModule.nodes.set(node, eventObject);
+	nodeObjectsModule.setEventObject(node, eventObject);
 
 	if (triggerEvent) {
 		coreEvents.triggerEvent('webstrateObjectAdded', node, eventObject);
@@ -128,45 +150,66 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 
 coreEvents.addEventListener('populated', targetElement => {
 	coreUtils.recursiveForEach(targetElement, childNode => {
+		// We ensure that all elements in the ShareDB document have wids. If an element has been added
+		// with e.g. Webstrates file system, it will be in the document, but not have a wid yet.
+		coreOpCreator.addWidToElement(childNode);
 		// The second argument is whether to trigger the webstrateObjectAdded event. We do not want to
 		// trigger these when we add the webstrate object initially as it may cause confusion when an
 		// webstrateObjectsAdded event is triggered with the node in the nodes array, while a
 		// webstrateObjectAdded event also is triggered for the same node.
 		attachWebstrateObjectToNode(childNode, false);
-	});
+	}, coreEvents.PRIORITY.IMMEDIATE);
 
-	// All nodes get a Webstrate object attached after they enter the DOM. It may, however, be
+	// All nodes get a webstrate object attached after they enter the DOM. It may, however, be
 	// useful to access the Webstrate object before the element has been added to the DOM.
 	// Therefore, we add Webstrate objects to all nodes created with document.createElement and
 	// document.createElementNS immediately here.
 	// We don't do this until after the document has been populated, because we just above attach
 	// webstrate objects on the entire DOM.
-	document.__createElementNS = document.createElementNS;
-	document.createElementNS = function(namespaceURI, qualifiedName) {
-		var element = document.__createElementNS(namespaceURI, qualifiedName);
+	coreDOM.overrideDocument('createElementNS', coreDOM.CONTEXT.BOTH, (createElementNS, namespaceURI,
+		qualifiedName, options = {}, ...unused) => {
+		const element = createElementNS(namespaceURI, qualifiedName, options, ...unused);
 		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
+		return element;
+	});
+
+	coreDOM.overrideDocument('createElement', coreDOM.CONTEXT.BOTH, (createElement, tagName,
+		options = {}, ...unused) => {
+		const element = createElement(tagName, options, ...unused);
+		attachWebstrateObjectToNode(element, true);
+		return element;
+	});
+
+	coreDOM.overrideDocument('importNode', coreDOM.CONTEXT.BOTH, (importNode, externalNode, deep,
+		...unused) => {
+		const element = importNode(externalNode, deep, ...unused);
+		coreUtils.recursiveForEach(element, childNode => {
+			attachWebstrateObjectToNode(childNode, true);
+		});
+		return element;
+	});
+
+	const cloneNode = Element.prototype.cloneNode;
+	Element.prototype.cloneNode = function(deep, ...unused) {
+		const element = cloneNode.call(this, deep, ...unused);
+		coreUtils.recursiveForEach(element, childNode => {
+			attachWebstrateObjectToNode(childNode, true);
+		});
 		return element;
 	};
 
-	document.__createElement = document.createElement;
-	document.createElement = function(tagName, options) {
-		var element = document.__createElement(tagName, options);
-		attachWebstrateObjectToNode(element, true); // true to trigger webstrateObjectAdded event.
-		return element;
-	};
-
-	coreEvents.triggerEvent('webstrateObjectsAdded', nodeObjectsModule.nodes);
+	coreEvents.triggerEvent('webstrateObjectsAdded', targetElement);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
-coreEvents.addEventListener('DOMNodeInserted', (node) => {
+coreEvents.addEventListener('DOMNodeInserted', node => {
 	coreUtils.recursiveForEach(node, childNode => {
-		// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
+		// The second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 		attachWebstrateObjectToNode(childNode, true);
 	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
-coreEvents.addEventListener('DOMTextNodeInsertion', (node) => {
-	// Thse second argument is whether to trigger the webstrateObjectAdded event. We do want that.
+coreEvents.addEventListener('DOMTextNodeInsertion', node => {
+	// The second argument is whether to trigger the webstrateObjectAdded event. We do want that.
 	attachWebstrateObjectToNode(node, true);
 }, coreEvents.PRIORITY.IMMEDIATE);
 

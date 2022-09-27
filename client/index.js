@@ -1,5 +1,6 @@
 'use strict';
 const coreEvents = require('./webstrates/coreEvents');
+const coreDOM = require('./webstrates/coreDOM');
 const coreDatabase = require('./webstrates/coreDatabase');
 const coreMutation = require('./webstrates/coreMutation');
 const coreOpApplier = require('./webstrates/coreOpApplier');
@@ -14,7 +15,7 @@ coreEvents.createEvent('allModulesLoaded');
 const request = coreUtils.getLocationObject();
 
 const protocol = location.protocol === 'http:' ? 'ws:' : 'wss:';
-coreWebsocket.setup(`${protocol}//${location.host}/ws/${location.search}`);
+coreWebsocket.setup(`${protocol}//${location.host}/${request.webstrateId}/${location.search}`);
 
 // Load optional modules.
 config.modules.forEach(module => require('./webstrates/' + module));
@@ -23,27 +24,22 @@ config.modules.forEach(module => require('./webstrates/' + module));
 coreEvents.triggerEvent('allModulesLoaded');
 
 if (request.staticMode) {
-	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then((doc) => {
-		corePopulator.populate(document, doc);
+	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then(doc => {
+		corePopulator.populate(coreDOM.externalDocument, doc);
 	});
 }
 else {
-	coreDatabase.subscribe(request.webstrateId).then((doc) => {
-		corePopulator.populate(document, doc).then(() => {
-			// Emits mutations from changes on the document.
-			coreMutation.emitMutationsFrom(document);
+	coreDatabase.subscribe(request.webstrateId).then(doc => {
+		corePopulator.populate(coreDOM.externalDocument, doc).then(() => {
+			// Emits mutations from changes on the coreDOM.externalDocument.
+			coreMutation.emitMutationsFrom(coreDOM.externalDocument);
 
 			// Emits ops from the mutations emitted by coreMutation.
 			coreOpCreator.emitOpsFromMutations();
 
-			// Apply changes on <html>, not document.
-			const targetElement = document.childNodes[0];
+			// Apply changes on <html>, not coreDOM.externalDocument.
+			const targetElement = coreDOM.externalDocument.childNodes[0];
 			coreOpApplier.listenForOpsAndApplyOn(targetElement);
-
-			// Create any missing wids in the document.
-			coreOpCreator.ensureExistenceOfWids(targetElement);
 		});
 	});
 }
-
-// TODO: Delete Webstrate handler

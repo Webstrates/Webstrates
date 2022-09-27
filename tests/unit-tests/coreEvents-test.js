@@ -1,13 +1,11 @@
+// Instruction to ESLint that 'describe' and 'it' actually has been defined.
+/* global describe it */
 'use strict';
 var assert = require('chai').assert;
 
-global.config = require('../config');
-global.config.VERBOSE_MODE = false;
-global.debug = require('../debug');
+const coreEvents = require('../../client/webstrates/coreEvents');
 
-const coreEvents = require('../webstrates/coreEvents');
-
-describe('Event management', function() {
+describe('Event Management', function() {
 
 	it('should be able to create event', function() {
 		coreEvents.createEvent('testEvent1');
@@ -48,7 +46,7 @@ describe('Event management', function() {
 	});
 });
 
-describe('Event triggering', function() {
+describe('Event Triggering', function() {
 
 	coreEvents.createEvent('testEvent3');
 
@@ -66,7 +64,7 @@ describe('Event triggering', function() {
 
 });
 
-describe('Listener priority', function() {
+describe('Listener Priority', function() {
 
 	it('should not throw error on valid priority', function() {
 
@@ -151,16 +149,16 @@ describe('Listener priority', function() {
 			}, coreEvents.PRIORITY.HIGH);
 		}));
 
-		result.push("beforeTrigger");
+		result.push('beforeTrigger');
 		coreEvents.triggerEvent('testEvent4');
-		result.push("afterTrigger");
+		result.push('afterTrigger');
 
 		Promise.all(promises).then(function() {
 			try {
 				assert.deepEqual(result, [
-					"beforeTrigger",
+					'beforeTrigger',
 					coreEvents.PRIORITY.IMMEDIATE,
-					"afterTrigger",
+					'afterTrigger',
 					coreEvents.PRIORITY.HIGH,
 					coreEvents.PRIORITY.HIGH,
 					coreEvents.PRIORITY.MEDIUM,

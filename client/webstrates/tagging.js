@@ -116,17 +116,27 @@ Promise.all([docPromise, tagsPromise]).then(([_doc, tags]) => {
 
 /**
  * Tag a document with a label at a specific version.
- * @param  {string} label    Tag label.
- * @param  {integer} version Version.
+ * @param  {string} label      Tag label.
+ * @param  {integer} version   (optional) Version.
+ * @param  {Function} callback (optional) Callback to be called when done.
  * @public
  */
-globalObject.publicObject.tag = (label, version) => {
+globalObject.publicObject.tag = (label, version, callback) => {
 	if (!label && !version) {
 		return currentTag;
 	}
 
 	if (/^\d/.test(label)) {
 		throw new Error('Tag name should not begin with a number');
+	}
+
+	if (label.includes('.')) {
+		throw new Error('Tag name should not contain periods');
+	}
+
+	if (typeof version === 'function') {
+		callback = version;
+		version = undefined;
 	}
 
 	if (!version) {
@@ -144,7 +154,7 @@ globalObject.publicObject.tag = (label, version) => {
 		d: doc.id,
 		v: version,
 		l: label
-	});
+	}, callback);
 };
 
 /**

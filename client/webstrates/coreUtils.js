@@ -12,7 +12,7 @@ coreUtilsModule.getLocationObject = () => {
 		return locationObject;
 	}
 
-	const pathRegex = /^\/([A-Z0-9\._-]+)\/(?:([A-Z0-9_-]+)\/)?/i.exec(window.location.pathname);
+	const pathRegex = /^\/([A-Z0-9._-]+)\/(?:([A-Z0-9_-]+)\/)?/i.exec(window.location.pathname);
 	const [ , webstrateId, tagOrVersion] = pathRegex;
 
 	const parameters = {};
@@ -41,6 +41,32 @@ coreUtilsModule.getLocationObject = () => {
 	};
 
 	return locationObject;
+};
+
+/**
+ * Creates a throttled version of a function, i.e. one that only runs at most once every N
+ * milliseconds.
+ * @param  {Function} fn         Source function.
+ * @param  {Number}   limit      Execution delay in milliseconds.
+ * @return {Function}            Throttled source function.
+ * @public
+ */
+coreUtilsModule.throttleFn = (fn, limit) => {
+	let timeout, lastCall = 0;
+	return function(...args) {
+		let now = Date.now();
+		let delay = lastCall + limit - now;
+		if (delay <= 0) {
+			fn(...args);
+			lastCall = now;
+		} else {
+			clearTimeout(timeout);
+			timeout = setTimeout(() => {
+				fn(...args);
+				lastCall = now;
+			}, delay);
+		}
+	};
 };
 
 /**
@@ -132,59 +158,48 @@ coreUtilsModule.recursiveForEach = function(node, callback, parent = null) {
  * is specified, the element is inserted before the referenceNode.
  * @param {DOMNode} parentElement Parent element.
  * @param {DOMNode} childElement  Child element.
+ * @param {DOMNode} referenceNode Node to insert before.
  * @public
  */
-coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement,
-	referenceNode) => {
-	// Remove all children, so we can later insert them. This way, we can prevent script execution.
-	const childElementsChildren = [];
-	while (childElement.firstChild) {
-		childElementsChildren.push(childElement.removeChild(childElement.firstChild));
+coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement, referenceNode) =>
+{
+	// We just insert text nodes right away, we're only interested in doing fancy stuff with elements
+	// that may have scripts as children.
+	if (!(childElement instanceof HTMLElement)) {
+		return parentElement.insertBefore(childElement, referenceNode || null);
 	}
 
 	// To prevent scripts from being executed when inserted, we use a little hack. Before inserting
 	// the script, we replace the actual script with dummy content, causing that to be executed
 	// instead of the actual script. If it's an inline script, we insert a script with dummy content
-	// ("// Execution prevention"), and then replace the innerHTML afterwards. If the script is from
-	// an external resource, set the src attribute "about:blank", and then set it to the actual src.
-	// This way, only "about:blank" will be loaded.
+	// ('// Execution prevention'), and then replace the innerHTML afterwards.
 	// To prevent issues with any other attributes (e.g. crossorigin and integrity), we also remove
 	// all those attributes and insert them later.
-	if (childElement instanceof HTMLScriptElement) {
-		// Save all attributes and innerHTML.
+	const scriptMap = new Map();
+	const scripts = (childElement instanceof HTMLScriptElement) ? [ childElement ]
+		: [ ...childElement.querySelectorAll('script') ];
+
+	scripts.forEach(script => {
 		const attrs = [];
-		Array.from(childElement.attributes).forEach(function(attr) {
+		Array.from(script.attributes).forEach(attr => {
 			attrs.push([ attr.nodeName, attr.nodeValue ]);
-			childElement.removeAttribute(attr.nodeName);
+			script.removeAttribute(attr.nodeName);
 		});
+		const text = script.innerHTML;
+		script.innerHTML = '// Execution prevention';
+		scriptMap.set(script, [ attrs, text ]);
+	});
 
-		const innerHTML = childElement.innerHTML;
-		childElement.innerHTML = '// Execution prevention';
+	parentElement.insertBefore(childElement, referenceNode || null);
 
-		// Now insert a bare script (dummy content and empty src).
-		parentElement.insertBefore(childElement, referenceNode || null);
-
-		// And re-add attributes and real content.
-		attrs.forEach(function(attr) {
+	scripts.forEach(script => {
+		const [ attrs, text ] = scriptMap.get(script);
+		attrs.forEach(attr => {
 			const [nodeName, nodeValue] = attr;
-			childElement.setAttribute(nodeName, nodeValue);
+			script.setAttribute(nodeName, nodeValue);
 		});
-		childElement.innerHTML = innerHTML;
-	} else {
-		// If parentElement.content exists, parentElement contains a documentFragment, and we should
-		// be adding the content to this documentFragment instead. This happens when parentElement is
-		// a <template>.
-		if (parentElement.content &&
-			parentElement.content.nodeType === document.DOCUMENT_FRAGMENT_NODE) {
-			parentElement = parentElement.content;
-		}
-		parentElement.insertBefore(childElement, referenceNode || null);
-	}
-
-	let childElemensChild;
-	while ((childElemensChild = childElementsChildren.shift())) {
-		coreUtilsModule.appendChildWithoutScriptExecution(childElement, childElemensChild);
-	}
+		script.innerHTML = text;
+	});
 };
 
 /**
@@ -194,13 +209,21 @@ coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement
  * @public
  */
 coreUtilsModule.executeScripts = (scripts, callback) => {
-	var script = scripts.shift();
+	const script = scripts.shift();
 	if (!script) {
 		return callback();
 	}
 
-	var executeImmediately = !script.src;
-	var newScript = document.createElementNS(script.namespaceURI, 'script');
+	// Scripts in templates shouldn't get executed. If we didn't do this, we could also run into
+	// issues a little later in the function when we'd attempt to reinsert the element into its
+	// parent if the script is a direct child of the template, as such children don't actually have
+	// parents.
+	if (coreUtilsModule.elementIsTemplateDescendant(script)) {
+		return coreUtilsModule.executeScripts(scripts, callback);
+	}
+
+	const executeImmediately = !script.src;
+	const newScript = document.createElementNS(script.namespaceURI, 'script');
 	if (!executeImmediately) {
 		newScript.onload = newScript.onerror = function() {
 			coreUtilsModule.executeScripts(scripts, callback);
@@ -208,8 +231,8 @@ coreUtilsModule.executeScripts = (scripts, callback) => {
 	}
 
 	// Copy over all attribtues.
-	for (var i = 0; i < script.attributes.length; i++) {
-		var attr = script.attributes[i];
+	for (let i = 0; i < script.attributes.length; i++) {
+		const attr = script.attributes[i];
 		newScript.setAttribute(attr.nodeName, attr.nodeValue);
 	}
 
@@ -229,6 +252,19 @@ coreUtilsModule.executeScripts = (scripts, callback) => {
 		coreUtilsModule.executeScripts(scripts, callback);
 	}
 };
+
+
+/**
+ * Check whether a DOM Node is a descendant of a template tag (or actually a documentFragment).
+ * One might assume this could be done with `element.closest("template")`, but that won't be the
+ * case, because a documentFragment technically isn't a parent (and also doesn't have any parent),
+ * so there will be no tree to search upwards through after we reach the documentFragment.
+ * @param  {DOMNode} DOMNode DOM Node to check.
+ * @return {boolean}         True if the DOM Node is a descendant of a template.
+ * @private
+ */
+coreUtilsModule.elementIsTemplateDescendant = element =>
+	document.documentElement.ownerDocument !== element.ownerDocument;
 
 /**
  * Check if the current page has been transcluded (i.e. is an iframe)
@@ -257,10 +293,12 @@ coreUtilsModule.sameParentDomain = () => {
  * @public
  */
 coreUtilsModule.sanitizeString = (string) => {
-	// See https://www.w3.org/TR/html5/syntax.html#syntax-tag-name and
-	// https://www.w3.org/TR/html5/syntax.html#syntax-attribute-name
-	var NAME_START_CHAR_REGEX = /\:|[A-Z]|\_|[a-z]/;
-	var NAME_CHAR_REGEX = /\-|\.|[0-9]/;
+	// See https://www.w3.org/TR/html5/syntax.html#tag-name and
+	// https://www.w3.org/TR/html5/syntax.html#elements-attributes
+	// These regex test does not fully adhere to either, but is more stringent to avoid serialization
+	// issues.
+	var NAME_START_CHAR_REGEX = /:|[A-Z]|_|[a-z]/;
+	var NAME_CHAR_REGEX = /-|\.|[0-9]/;
 
 	return string.split('').map(function(char, index) {
 		if (NAME_START_CHAR_REGEX.test(char) || (index > 0 && NAME_CHAR_REGEX.test(char))) {
@@ -274,15 +312,33 @@ coreUtilsModule.sanitizeString = (string) => {
  * Replaces ampersands (&) and double-quotes (") with their respective HTML entities.
  * @param  {string} value Unescaped string.
  * @return {string}       Escaped string.
+ * @public
  */
-coreUtilsModule.escape = value =>  value && value.replace(/&/g, '&amp;').replace(/\"/g, '&quot;');
+coreUtilsModule.escape = value => value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 /**
  * Replaces &amp; and &quot; with their respective characters (& and ").
  * @param  {string} value Escaped string.
  * @return {string}       Unescaped string.
+ * @public
  */
 coreUtilsModule.unescape = value => value && value.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+
+/**
+ * Replaces "." with &dot;.
+ * @param  {string} value Unescaped string.
+ * @return {string}       Escaped string.
+ * @public
+ */
+coreUtilsModule.escapeDots = value => value && value.replace(/\./g, '&dot;');
+
+/**
+ * Replaces &dot; with ".".
+ * @param  {string} value Escaped string.
+ * @return {string}       Unescaped string.
+ * @public
+ */
+coreUtilsModule.unescapeDots = value => value && value.replace(/&dot;/g, '.');
 
 const widMap = new Map();
 /**
@@ -301,8 +357,19 @@ coreUtilsModule.setWidOnElement = (node, wid) => {
 	});
 };
 
-coreUtilsModule.getElementByWid = (wid) => {
-	return widMap.get(wid);
-};
+/**
+ * Remove element from wid map. Bye, bye, memory leak!
+ * @param  {string} wid wid.
+ * @public
+ */
+coreUtilsModule.removeWidFromElement = wid => widMap.delete(wid);
+
+/**
+ * Get element by wid.
+ * @param  {string} wid wid.
+ * @return {DOMNode}     DOM Element with given wid.
+ * @public
+ */
+coreUtilsModule.getElementByWid = wid => widMap.get(wid);
 
 module.exports = coreUtilsModule;

@@ -49,7 +49,7 @@ websocket.onjsonmessage = payload => {
 
 	const senderId = payload.s;
 	const message = payload.m;
-	const eventObject = nodeObjects.nodes.get(node);
+	const eventObject = nodeObjects.getEventObject(node);
 
 	// Trigger event in userland.
 	const triggerTarget = node ? eventObject : globalObject;
@@ -76,7 +76,6 @@ function signal(wid, message, recipients) {
 }
 
 function subscribe(wid) {
-	debug.log('Subscribe on', wid);
 	const msgObj = {
 		wa: 'subscribe',
 		d: webstrateId,
@@ -89,7 +88,6 @@ function subscribe(wid) {
 function unsubscribe(wid) {
 	subscriptions[wid] = (subscriptions[wid] || 0) - 1;
 	if (subscriptions[wid] < 1) {
-		debug.log('Unsubscribe on', wid);
 		const msgObj = {
 			wa: 'unsubscribe',
 			d: webstrateId,
@@ -148,11 +146,16 @@ function setupSignal(node, publicObject, eventObject) {
 	});
 }
 
-setupSignal(document.body, globalObject.publicObject, globalObject);
+coreEvents.addEventListener('populated', targetElement => {
+	setupSignal(targetElement, globalObject.publicObject, globalObject);
+});
 
 // Add signal events to all webstrate objects (with a wid) after the document has been populated.
-coreEvents.addEventListener('webstrateObjectsAdded', (nodes) => {
-	nodes.forEach((eventObject, node) => setupSignal(node, node.webstrate, eventObject));
+coreEvents.addEventListener('webstrateObjectsAdded', (nodeTree) => {
+	coreUtils.recursiveForEach(nodeTree, (node) => {
+		const eventObject = nodeObjects.getEventObject(node);
+		setupSignal(node, node.webstrate, eventObject);
+	});
 }, coreEvents.PRIORITY.IMMEDIATE);
 
 // Add signal events to all webstrate objects (with wid) after they're added continually.

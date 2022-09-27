@@ -15,30 +15,32 @@ corePopulator.populate = function(rootElement, doc) {
 	}
 
 	const webstrateId = doc.id;
+	const staticMode = coreUtils.getLocationObject().staticMode;
 	// If the document doesn't exist (no type) or is empty (no data), we should recreate it, unless
 	// we're in static mode. We should never modify the document from static mode.
-	if ((!doc.type || doc.data.length === 0) && !coreUtils.getLocationObject().staticMode) {
+	if ((!doc.type || doc.data.length === 0) && !staticMode) {
 		if (!doc.type) {
 			console.log(`Creating new sharedb document: "${webstrateId}".`);
 			doc.create('json0');
 		} else {
-			console.log(`Document: "${webstrateId}" exists, but was empty. Recreating basic document.`);
+			console.warn(`Document: "${webstrateId}" exists, but was empty. Recreating basic document.`);
 		}
 
 		const op = [{ 'p': [], 'oi': [
-			'html', {},
-			[ 'head', {},
-				[ 'title', {}, webstrateId ] ],
-				[ 'body', {} ]
+			'html', {}, '\n',
+			[ 'head', {}, '\n',
+				[ 'title', {}, webstrateId ], '\n'], '\n',
+			[ 'body', {}, '\n' ]
 		]}];
 		doc.submitOp(op);
 	}
 
-		// All documents are persisted as JsonML, so we only know how to work with JSON documents.
-	if (doc.type.name !== 'json0') {
+	// All documents are persisted as JsonML, so we only know how to work with JSON documents.
+	if ((!staticMode && doc.type.name !== 'json0')
+		|| (staticMode && doc.type !== 'http://sharejs.org/types/JSONv0')) {
+		console.error(staticMode, doc.type);
 		throw `Unsupported document type: ${doc.type.name}`;
 	}
-
 
 	// In order to execute scripts synchronously, we insert them all without execution, and then
 	// execute them in order afterwards.

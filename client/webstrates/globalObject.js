@@ -1,4 +1,5 @@
 'use strict';
+const coreConfig = require('./coreConfig');
 const coreDatabase = require('./coreDatabase');
 const corePopulator = require('./corePopulator');
 const coreUtils = require('./coreUtils');
@@ -7,6 +8,21 @@ const globalObjectModule = {};
 
 // Public webstrate object
 const publicObject = {};
+
+// Expose our internal, proxied window and document objects.
+Object.defineProperty(publicObject, 'window', {
+	get: () => window,
+	set: () => { throw new Error('Internal window object should not be modified'); },
+	// If enumerable is 'true', Puppeteer tests fail as `window.webstrate` is suddenly undefined
+	// due to the circular reference.
+	enumerable: false
+});
+
+Object.defineProperty(publicObject, 'document', {
+	get: () => document,
+	set: () => { throw new Error('Internal document object should not be modified'); },
+	enumerable: true
+});
 
 Object.defineProperty(publicObject, 'webstrateId', {
 	get: () => coreUtils.getLocationObject().webstrateId,
@@ -26,6 +42,8 @@ Object.defineProperty(publicObject, 'isStatic', {
 	set: () => { throw new Error('isStatic cannot be modified.'); },
 	enumerable: true
 });
+
+Object.defineProperty(publicObject, 'config', { value: coreConfig });
 
 globalObjectModule.publicObject = publicObject;
 
@@ -98,16 +116,28 @@ publicObject.off = (eventName, eventListener) => {
  * Labels cannot begin with a digit whereas versions consist only of digits, so distinguishing
  * is easy.
  * @param  {string} tagOrVersion Tag label or version number.
+ * @param  {Function} callback Callback.
  */
 publicObject.restore = (tagOrVersion, callback) => {
 	if (publicObject.isStatic) {
-		console.log('fetch');
 		coreDatabase.fetch(publicObject.webstrateId, tagOrVersion).then(doc => {
 			corePopulator.populate(document, doc);
+			callback();
 		});
 	} else {
-		coreDatabase.restore(publicObject.webstrateId, tagOrVersion);
+		coreDatabase.restore(publicObject.webstrateId, tagOrVersion, callback);
 	}
+};
+
+/**
+ * Get a range of ops from the document.
+ * @param  {Number}   fromVersion Version to start the op range from (inclusive).
+ * @param  {Number}   toVersion   Version to end the op range at (exclusive).
+ * @param  {Function} callback    Callback.
+ * @return {Array}                (async) Array of ops in the range.
+ */
+publicObject.getOps = (fromVersion, toVersion, callback) => {
+	coreDatabase.getOps(publicObject.webstrateId, fromVersion, toVersion, callback);
 };
 
 window.webstrate = publicObject;

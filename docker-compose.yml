@@ -1,0 +1,15 @@
+version: '3'
+services:
+
+  mongodb:
+    container_name: mongodb
+    image: mongo
+
+  webstrates:
+    container_name: webstrates
+    build: .
+    volumes:
+      - ./uploads:/app/uploads
+      - ./config.json:/app/config.json
+    ports:
+      - 7007:7007

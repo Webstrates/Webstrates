@@ -1,18 +1,19 @@
 'use strict';
-const coreEvents = require('./coreEvents');
-const coreUtils = require('./coreUtils');
-const corePathTree = require('./corePathTree');
-const coreMutation = require('./coreMutation');
-const coreJsonML = require('./coreJsonML');
-
 /*
-Webstrates ApplyOp (webstrates.applyop.js)
+Webstrates ApplyOp (coreOpApplier.js)
 
 This module exposes the applyOp(op, rootElement) function on the Webstrates scope. This function
 applies a subset of json0 OT operations (see https://github.com/ottypes/json0) to a DOM element.
 The operations handled are list insertion and deletion (li and ld), as well as string insertion and
 deletion (si and sd). These operations are generated on another client using the CreateOp module.
 */
+const coreEvents = require('./coreEvents');
+const coreUtils = require('./coreUtils');
+const corePathTree = require('./corePathTree');
+const coreMutation = require('./coreMutation');
+const coreJsonML = require('./coreJsonML');
+const coreDOM = require('./coreDOM');
+
 const coreOpApplier = {};
 
 // The 'idempotent' option allows these events to be created even if they already
@@ -43,8 +44,11 @@ function getNamespace(element) {
 		return undefined;
 	}
 
-	var namespace = element.getAttribute('xmlns');
-	return namespace ? namespace : getNamespace(element.parent);
+	if (element.closest('foreignObject') && !(element instanceof SVGForeignObjectElement)) {
+		return document.body.namespaceURI;
+	}
+
+	return element.getAttribute('xmlns') ? element.getAttribute('xmlns') : element.namespaceURI;
 }
 
 /**
@@ -55,26 +59,31 @@ function getNamespace(element) {
  * @param {string} value          Attribute value.
  * @private
  */
-function setAttribute(rootElement, path, attributeName, newValue) {
+function setAttribute(rootElement, path, cleanAttributeName, newValue) {
 	const [childElement] = corePathTree.elementAtPath(rootElement, path);
 
-	if (config.isTransientAttribute(childElement, attributeName)) {
-		return;
-	}
-
-	newValue = coreUtils.unescape(newValue);
+	// This has been commented out as it makes non-transient attributes appear transient in protected
+	// mode, and we don't really seem to need it. If an op comes in, it can't really be transient
+	// after all.
+	//if (config.isTransientAttribute(childElement, cleanAttributeName)) {
+	//	return;
+	//}
 
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
-	if (attributeName === '__wid') {
+	if (cleanAttributeName === '__wid') {
 		coreUtils.setWidOnElement(childElement, newValue);
 		return;
 	}
+
+	// MongoDB doesn't support periods (.) inkeys, so we store them as &dot; instead.
+	const attributeName = coreUtils.unescapeDots(cleanAttributeName);
+	newValue = coreUtils.unescape(newValue);
 
 	const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
 	if (isSvgPath) childElement.__d = newValue;
 
 	const oldValue = childElement.getAttribute(attributeName);
-	childElement.setAttribute(attributeName, newValue);
+	childElement.setAttribute(attributeName, newValue, coreDOM.elementOptions);
 
 	// Last argument is false for not local, i.e happened on another client.
 	coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, oldValue, newValue,
@@ -146,6 +155,43 @@ function insertNode(rootElement, path, value) {
 function deleteNode(rootElement, path) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
+
+	// This part is a bit of a hack, because contenteditable is a weird beast to play with.
+	// Consider a contenteditable field with the text HELLO in it. Say user A puts a cursor before
+	// the letter O: HELL|O. User B then makes a linebreak after the H. Now, ELLO gets removed,
+	// setting user A's cursor after the H|, and then the ELLO part gets reinserted in a DIV element
+	// below. Now the cursor is after H: H|, and not before the O as before: ELL|O.
+	// To fix this issue, when something gets deleted, we try to find the next close text node, see
+	// if its contents matches what we just removed, and if so, we set our cursor there, because it's
+	// likely that this deletion was caused by the scenario just described.
+	const fakeRange = getSelectionRange(childElement);
+	let nextTextNode;
+	// A text node directly after us.
+	if (childElement.nextSibling && childElement.nextSibling.nodeType === document.TEXT_NODE) {
+		nextTextNode = childElement.nextSibling;
+	// A text node in an element right after us.
+	} else if (childElement.nextElementSibling && childElement.nextElementSibling.firstChild
+		&& childElement.nextElementSibling.firstChild.nodeType === document.TEXT_NODE) {
+		nextTextNode = childElement.nextElementSibling.firstChild;
+	// A text node right after our parent (if we're in a DIV for instance).
+	} else if (parentElement.nextSibling
+		&& parentElement.nextSibling.nodeType === document.TEXT_NODE) {
+		nextTextNode = parentElement.nextSibling;
+	// A text node in a DIV right after our parent (if we're in a DIV for instance).
+	} else if (parentElement.nextElementSibling && parentElement.nextElementSibling.firstChild
+		&& parentElement.nextElementSibling.firstChild.nodeType === document.TEXT_NODE) {
+		nextTextNode = parentElement.nextElementSibling.firstChild;
+	}
+
+	if (fakeRange && childElement.data && nextTextNode && nextTextNode.data === childElement.data) {
+		if (fakeRange.startContainer === childElement) {
+			fakeRange.startContainer = nextTextNode;
+		}
+		if (fakeRange.endContainer === childElement) {
+			fakeRange.endContainer = nextTextNode;
+		}
+		setSelectionRange(nextTextNode, fakeRange);
+	}
 
 	// Update PathTree to reflect the deletion.
 	// TODO: Use PathTree.remove() instead.
@@ -296,7 +342,7 @@ function findOffsetElement(element, offset) {
  */
 function getSelectionRange(textNode) {
 	// If there are no selections, return.
-	if (window.getSelection().rangeCount === 0) {
+	if (!window.getSelection() || window.getSelection().rangeCount === 0) {
 		return;
 	}
 
@@ -408,7 +454,7 @@ function insertInText(rootElement, path, charIndex, value) {
 						fakeRange.startOffset += value.length;
 					}
 				}
-				// Update selection
+				// Update selection.
 				setSelectionRange(parentElement, fakeRange);
 			}
 
@@ -481,9 +527,9 @@ function deleteInText(rootElement, path, charIndex, value) {
 					if (fakeRange.startContainer === parentElement && fakeRange.startOffset >= charIndex) {
 						fakeRange.startOffset -= value.length;
 					}
-					// Update selection
-					setSelectionRange(parentElement, fakeRange);
 				}
+				// Update selection.
+				setSelectionRange(parentElement, fakeRange);
 			}
 
 			coreEvents.triggerEvent('DOMTextNodeDeletion', childElement, parentElement, charIndex, value);
