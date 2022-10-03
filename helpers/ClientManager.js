@@ -51,7 +51,10 @@ if (pubsub) {
 
 		switch (message.action) {
 			case 'clientJoin':
-				addUserClient(message.socketId, message.userId, message.userClient);
+				//Only add non anonymous user clients
+				if (message.userId !== 'anonymous:') {
+					addUserClient(message.socketId, message.userId, message.userClient);
+				}
 				module.exports.addClientToWebstrate(message.socketId, message.userId, message.webstrateId);
 				break;
 			case 'clientPart':
@@ -102,7 +105,10 @@ module.exports.addClient = function(ws, req, user) {
 		userAgent: req.headers['user-agent']
 	};
 
-	addUserClient(socketId, user.userId, userClient);
+	//Only add non anonymous user clients
+	if (user.userId !== 'anonymous:') {
+		addUserClient(socketId, user.userId, userClient);
+	}
 
 	clients[socketId] = {
 		socket: ws,
