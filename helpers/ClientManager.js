@@ -52,7 +52,7 @@ if (pubsub) {
 		switch (message.action) {
 			case 'clientJoin':
 				//Only add non anonymous user clients
-				if (userId !== 'anonymous:') {
+				if (message.userId !== 'anonymous:') {
 					addUserClient(message.socketId, message.userId, message.userClient);
 				}
 				module.exports.addClientToWebstrate(message.socketId, message.userId, message.webstrateId);
@@ -106,7 +106,7 @@ module.exports.addClient = function(ws, req, user) {
 	};
 
 	//Only add non anonymous user clients
-	if (userId !== 'anonymous:') {
+	if (user.userId !== 'anonymous:') {
 		addUserClient(socketId, user.userId, userClient);
 	}
 
