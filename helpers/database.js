@@ -14,7 +14,7 @@ MongoClient.connect(global.config.db, { useUnifiedTopology: true }, function(err
 	db.sessionLog = _db.collection('sessionLog');
 	db.webstrates = _db.collection('webstrates');
 
-	db.ops = _db.collection('ops');
+	db.ops = _db.collection('o_webstrates');
 
 	db.tags = _db.collection('tags');
 	db.tags.createIndex({ webstrateId: 1, label: 1 }, { unique: true });
