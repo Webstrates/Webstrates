@@ -41,7 +41,7 @@ const cleanUp = async () => {
 		rl.question('Delete all dangling ops [y/N]? ', async (answer) => {
 			if (answer.toLowerCase() === 'yes' || answer.toLowerCase() === 'y') {
 				for(let webstrateId of webstratesWithOpsThatDoNotExist) {
-					await db.ops2.deleteMany({"d": webstrateId});
+					await db.ops.deleteMany({"d": webstrateId});
 				}
 
 				console.log("Dangling ops delted!");
