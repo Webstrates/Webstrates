@@ -61,7 +61,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	const isInsideApprovedContentEditable = DOMNode => {
 	    let editable = DOMNode.closest('[contenteditable]');
 	    return editable && !!editable.__approved;
-	}
+	};
 
 	/**
 	 * Checks whether an attribute is allowed to be persisted (i.e. non-transient).
@@ -85,7 +85,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 			return true;
 		}
 		return !isApprovedAttribute(DOMNode, attributeName); // Otherwise it is transient if not approved
-	}
+	};
 
 	/**
 	 * Approves a node to make it persist on the server. Also, overriding innerHTML of the node to
@@ -127,8 +127,6 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 							});
 						}
 					});
-
-					return returnValue;
 				},
 				get: () => innerHTMLDescriptor.get.call(node),
 				configurable: true
@@ -274,7 +272,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 						// The approved attributes need to be lower-case in order to be approved
 						// properly in the isTransientAttribute check.
 						if (this.__approved) approveElementAttribute(this, propertyName.toLowerCase());
-						return descriptor.set.call(this, value);
+						descriptor.set.call(this, value);
 					},
 					get: descriptor.get
 				});
@@ -411,7 +409,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 				configurable: descriptor.configurable,
 				enumerable: descriptor.enumerable,
 				set: function (value) {
-					return descriptor.set.call(this, value);
+					descriptor.set.call(this, value);
 				},
 				get: function () {
 					const element = this;
