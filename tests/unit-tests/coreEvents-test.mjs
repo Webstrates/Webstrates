@@ -1,9 +1,8 @@
 // Instruction to ESLint that 'describe' and 'it' actually has been defined.
 /* global describe it */
 'use strict';
-var assert = require('chai').assert;
-
-const coreEvents = require('../../client/webstrates/coreEvents');
+import {assert} from 'chai';
+import coreEvents from '../../client/webstrates/coreEvents.js';
 
 describe('Event Management', function() {
 
@@ -175,3 +174,4 @@ describe('Listener Priority', function() {
 	});
 
 });
+
