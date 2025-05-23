@@ -1,9 +1,9 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
-const puppeteer = require('puppeteer');
-const assert = require('chai').assert;
-const config = require('../config.js');
-const util = require('../util.js');
+import puppeteer from 'puppeteer';
+import { assert } from 'chai';
+import config from '../config.js';
+import util from '../util.js';
 
 describe('Messages', function() {
 	this.timeout(10000);
@@ -23,15 +23,14 @@ describe('Messages', function() {
 		browserA = await puppeteer.launch();
 		browserB = await puppeteer.launch();
 
-		[ pageA, pageB, pageC ] = await Promise.all([
-			browserA.newPage(),
-			browserA.newPage(),
-			browserB.newPage()
-		]);
-
+		pageA = await browserA.newPage();
 		if (util.credentialsProvided) {
-			await util.logInToGithub(pageA);
+			console.log("Logging in...");
+			await util.logInToAuth(pageA);
+			console.log("Logged in...");
 		}
+		pageB = await browserA.newPage();
+		pageC = await browserB.newPage();
 
 		await Promise.all([
 			pageA.goto(urlA, { waitUntil: 'networkidle2' }),

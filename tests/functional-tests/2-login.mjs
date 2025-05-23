@@ -1,11 +1,11 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
-const puppeteer = require('puppeteer');
-const assert = require('chai').assert;
-const config = require('../config.js');
-const util = require('../util.js');
+import puppeteer from 'puppeteer';
+import { assert } from 'chai';
+import config from '../config.js';
+import util from '../util.js';
 
-describe('GitHub Login', function() {
+describe('Authentication and Login', function() {
 	this.timeout(100000);
 
 	let browser, pageA, pageB;
@@ -36,20 +36,24 @@ describe('GitHub Login', function() {
 		assert.property(userObject,    'permissions');
 	});
 
-	it('/auth/github redirects to github.com/login?...', async function () {
+	let authTargetPrefix = {
+	    github: "https://github.com/login?",
+	    au: "https://login.projects.cavi.au.dk"
+	}
+	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`, async function () {
 		if (!util.credentialsProvided) return this.skip();
 
-		await pageA.goto(config.server_address + 'auth/github', { waitUntil: 'networkidle2' });
+		await pageA.goto(config.server_address + 'auth/'+config.authType, { waitUntil: 'networkidle2' });
 		const url = pageA.url();
-		assert.match(url, /^https:\/\/github.com\/login?/);
+		assert.isTrue(url.startsWith(authTargetPrefix[config.authType]), "Was the auth correctly set up in config.json?");
 	});
 
-	it('should log in to GitHub', async function() {
+	it('should log in via auth', async function() {
 		if (!util.credentialsProvided) return this.skip();
 
-		await util.logInToGithub(pageA);
+		let result = await util.logInToAuth(pageA);
 		const url = await pageA.url();
-		assert.notEqual(url, 'https://github.com/session', 'Login failed (invalid credentials?)');
+		assert.isTrue(result, 'Login failed (invalid credentials?)');
 	});
 
 	it('should redirect to Webstrates frontpage', async function() {
@@ -82,7 +86,8 @@ describe('GitHub Login', function() {
 			return;
 		}
 
-		assert.containsAllKeys(userObject, ['avatarUrl', 'cookies', 'displayName', 'permissions',
+		// avatarUrl is optional
+		assert.containsAllKeys(userObject, ['cookies', 'displayName', 'permissions',
 			'provider', 'userId', 'userUrl', 'username']);
 	});
 
@@ -90,9 +95,9 @@ describe('GitHub Login', function() {
 		if (!util.credentialsProvided) return this.skip();
 
 
-		assert.propertyVal(userObject, 'userId',   `${config.username}:github`);
-		assert.propertyVal(userObject, 'username', config.username);
-		assert.propertyVal(userObject, 'provider', 'github');
+		assert.equal(userObject.userId, userObject.username+":"+config.authType);
+		assert.isTrue(userObject.username!="anonymous", "User cannot be called anonymous");
+		assert.propertyVal(userObject, 'provider', config.authType);
 	});
 
 	it('should also log in on other pages/tabs', async function() {

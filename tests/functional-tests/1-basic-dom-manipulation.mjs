@@ -1,9 +1,10 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
-const puppeteer = require('puppeteer');
-const assert = require('chai').assert;
-const config = require('../config.js');
-const util = require('../util.js');
+
+import puppeteer from 'puppeteer';
+import { assert } from 'chai';
+import config from '../config.js';
+import util from '../util.js';
 
 describe('Basic DOM Manipulation', function() {
 	this.timeout(10000);
@@ -16,11 +17,11 @@ describe('Basic DOM Manipulation', function() {
 		browser = await puppeteer.launch();
 
 		pageA = await browser.newPage();
-		//pageA.on('console', (...args) => console.log(...args));
+		//pageA.on('console', (msg) => console.log("A: "+msg.text()));
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		pageB = await browser.newPage();
-		//pageB.on('console', (...args) => console.log(...args));
+		//pageB.on('console', (msg) => console.log("B: "+msg.text()));
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 	});
 
@@ -46,7 +47,7 @@ describe('Basic DOM Manipulation', function() {
 		});
 
 		const bodyContainsHelloWorld = await util.waitForFunction(pageA,
-			() => document.body.innerHTML === 'Hello, world!');
+			() => {return document.body.innerHTML === 'Hello, world!';});
 		assert.isTrue(bodyContainsHelloWorld);
 	});
 

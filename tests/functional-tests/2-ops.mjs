@@ -1,9 +1,9 @@
 // Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
 /* global describe before after it */
-const puppeteer = require('puppeteer');
-const assert = require('chai').assert;
-const config = require('../config.js');
-const util = require('../util.js');
+import puppeteer from 'puppeteer';
+import { assert } from 'chai';
+import config from '../config.js';
+import util from '../util.js';
 
 describe('Ops', function() {
 	this.timeout(10000);
@@ -15,6 +15,7 @@ describe('Ops', function() {
 	before(async () => {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
+		page.on('console', (msg) => console.log("Page: "+msg.text()));
 		await page.goto(url, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () =>
 			window.webstrate && window.webstrate.loaded, 2);
@@ -22,15 +23,12 @@ describe('Ops', function() {
 
 	after(async () => {
 		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-
-
 		await browser.close();
 	});
 
 	let ops;
 	it('only create op should be in webstrate.getOps()', async () => {
 		util.showLogs(page);
-
 		ops = await page.evaluate(() => new Promise((accept, reject) => {
 			window.webstrate.getOps(undefined, undefined, (err, ops) => {
 				if (err) return reject(err);

@@ -1,9 +1,9 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
-const puppeteer = require('puppeteer');
-const assert = require('chai').assert;
-const config = require('../config.js');
-const util = require('../util.js');
+import puppeteer from 'puppeteer';
+import { assert } from 'chai';
+import config from '../config.js';
+import util from '../util.js';
 
 describe('Webstrate Object', function() {
 	this.timeout(10000);

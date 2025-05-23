@@ -47,15 +47,15 @@ util.credentialsProvided = config.username && config.password;
  * @return {bool}              True if predicate became truthy false otherwise.
  * @public
  */
-util.waitForFunction = async function(page, fn, timeout = 1, ...args) {
+util.waitForFunction = async function(page, fn, timeout = 2, ...args) {
 	if (typeof timeout !== 'number') {
 		throw new Error(`Invalid timeout: ${timeout}, expected number.`);
 	}
 	try {
-		await page.waitForFunction(fn, { timeout: timeout * 1000 }, ...args);
+		await page.waitForFunction(fn, { timeout: timeout * 1000, polling: 100 }, ...args);
 	} catch (e) {
 		// Using (.*) wildcard to be compatible with error messages from older versions of Puppeteer.
-		if (e.message.match(/^waiting (.*)failed: timeout \d+ms exceeded$/)) {
+		if (e.message.match(/^(w|W)aiting (.*)failed: (timeout )?\d+ms exceeded$/)) {
 			return false;
 		}
 		throw e;
@@ -121,6 +121,62 @@ util.logInToGithub = async function(page) {
 
 	return true;
 };
+
+util.logInToAU = async function(page) {
+	console.log("Using AU auth...");
+	if (!util.credentialsProvided) {
+		throw new Error('No au login credentials provided. Update `config.js` to run GitHub ' +
+			'tests.');
+	}
+
+	await page.goto(config.server_address + 'auth/'+config.authType, { waitUntil: 'networkidle0' });
+	let title = await page.title();
+	if (title !== 'Select an authentication source') {
+		throw new Error(`Incorrect login page title: "${title}"`);
+	}
+
+	// Click on auth type and wait for load
+	await page.waitForSelector('.ldap-au input', {visible: true, timeout: 1000});
+	console.log("Selecting AU auth type...");
+	await page.click('.ldap-au input');
+
+	// Fill in data 
+	await page.waitForSelector('input#username', {visible: true, timeout: 3000});
+	title = await page.title();
+	if (title !== 'Enter your username and password') {
+		throw new Error(`Incorrect login page title: "${title}"`);
+	}
+	console.log("Typing in user details...");
+	await page.type('input#username', config.username);
+	await page.type('input#password', config.password);
+	navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2' });
+	await page.click("button#submit_button");
+	await navigationPromise;
+
+	url = await page.url();
+	console.log("Redirecting to..." + url);
+	// If we get sent back to the GitHub login page, throw whatever error GitHub produced.
+	if (!url.startsWith(config.server_address)) {
+		const flashMsg = await page.evaluate(() =>
+			document.body.innerText);
+		throw new Error(flashMsg);
+	}
+
+	return true;
+};
+
+util.logInToAuth = async function(page){
+    switch (config.authType){
+	case "github": 
+	    return await util.logInToGithub(page);
+	    break;
+	case "au":
+	    return await util.logInToAU(page);
+	    break;
+	default:
+	    throw new Error("Unsupported auth type");
+    }
+}
 
 util.sleep = async function(seconds) {
 	return new Promise(resolve => setTimeout(resolve, seconds * 1000));

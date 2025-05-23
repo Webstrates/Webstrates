@@ -1,10 +1,11 @@
 global.APP_PATH = __dirname + '/../';
 
 module.exports = {
-	server_address: 'http://web:strate@localhost:7007/',
 	server: require('../helpers/ConfigHelper.js').getConfig(),
 
-	// Github credentials
+	// Auth credentials
+	authType: 'au', // One of 'github', 'au', ...
+	server_address: 'http://localhost:7007/',
 	username: '',
 	password: ''
 };
