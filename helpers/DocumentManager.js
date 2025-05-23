@@ -69,7 +69,6 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 			return module.exports.tagDocument(webstrateId, 1, snapshot.label, (err, res) =>
 				next && next(err, webstrateId));
 		}
-
 		return next && next(err, webstrateId);
 	});
 };
@@ -240,13 +239,11 @@ module.exports.restoreDocument = function({ webstrateId, version, tag }, source,
  * @public
  */
 module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0) {
-	db.webstrates.deleteOne({ _id: webstrateId }, function(err, res) {
-		if (err) return next && next(err);
-
+	db.webstrates.deleteOne({ _id: webstrateId }).then(res=>{
 		// When creating a webstrate and then quickly deleting it aftewards, the document may not
 		// have made its way into the database when we try to delete it. If this happens, we wait
 		// a little and then try again a couple of times.
-		if (res.result.n === 0) {
+		if (res.deletedCount === 0) {
 			if (attempts > 5) {
 				return next && next(new Error('No webstrate to delete'));
 			} else {
@@ -256,7 +253,6 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
 			}
 		}
 
-
 		clientManager.sendToClients(webstrateId, {
 			wa: 'delete',
 			d: webstrateId
@@ -265,6 +261,8 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
 		db.tags.deleteMany({ webstrateId });
 		db.ops.deleteMany({ d: webstrateId });
 		next && next();
+	}).catch(err=>{
+		return next && next(err);
 	});
 };
 
@@ -275,21 +273,23 @@ module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0
  * @return {int}                  (async) Document version.
  */
 module.exports.getDocumentVersion = function(webstrateId, next) {
-	db.webstrates.findOne({ _id: webstrateId }, { _v: 1}, function(err, doc) {
-		if (err) return next && next(err);
+	db.webstrates.findOne({ _id: webstrateId }, { _v: 1}).then(doc=>{
 		try {
 			return next && next(null, Number(doc._v));
 		} catch(e) {
 			console.log("Error in getDocumentVersion:", e, doc);
 			return next && next(err);
 		}
+	}).catch(err=>{
+		return next && next(err);
 	});
 };
 
 module.exports.getVersionFromTag = function(webstrateId, tag, next) {
-	db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }, function(err, doc) {
-		if (err) return next && next(err);
+	db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }).then(doc=>{
 		return next && next(null, Number(doc.v));
+	}).catch(err=>{
+		return next && next(err);
 	});
 };
 
@@ -304,6 +304,7 @@ module.exports.getVersionFromTag = function(webstrateId, tag, next) {
 module.exports.getOps = function({ webstrateId, initialVersion, version }, next) {
 	// If no version is defined, all operations will be retrieved.
 	ShareDbWrapper.getOps(webstrateId, initialVersion, version, (err, ops) => {
+
 		if (err) return next && next(err);
 		if (!db.sessionLog) return next && next(null, ops);
 
@@ -320,12 +321,15 @@ module.exports.getOps = function({ webstrateId, initialVersion, version }, next)
 
 		db.sessionLog.find({
 			'sessionId': { $in: Array.from(sessionsInOps) }
-		}).toArray((err, sessions) => {
-			if (err) return next && next(err);
+		}).toArray().then(sessions => {
 
-			ops.forEach(op => op.session = sessions.find(session => op.src === session.sessionId));
+			ops.forEach(op =>{
+				op.session = sessions.find(session => op.src === session.sessionId);
+			});
 
 			next && next(null, ops);
+		}).catch(err=>{
+			return next && next(err);
 		});
 	});
 };
@@ -339,13 +343,15 @@ module.exports.getOps = function({ webstrateId, initialVersion, version }, next)
  */
 module.exports.getTag = function(webstrateId, version, next) {
 	if (version === undefined || version === 'head') {
-		return db.tags.find({ webstrateId }, { data: 0, type: 0 }).sort({ v: -1 }).limit(1).toArray(
-			function(err, tags) {
-				if (err) return next && next(err);
-				return next && next(null, tags[0]);
-			});
+		db.tags.find({ webstrateId }, { data: 0, type: 0 }).sort({ v: -1 }).limit(1).toArray().then(tags=>{
+			return next && next(null, tags[0]);
+		}).catch(err=>{
+			return next && next(err);
+		});
 	}
-	db.tags.findOne({ webstrateId, v: version }, { data: 0, type: 0 }, next);
+	db.tags.findOne({ webstrateId, v: version }, { data: 0, type: 0 }).then((tag)=>next(null,tag)).catch(err=>{
+		return next && next(err);
+	});
 };
 
 /**
@@ -356,12 +362,14 @@ module.exports.getTag = function(webstrateId, version, next) {
  */
 module.exports.getTags = function(webstrateId, next) {
 	db.tags.find({ webstrateId }, { webstrateId: 0, data: 0, type: 0 })
-		.sort({ v: 1 }).toArray((err, tags) => {
-			if (!err) tags.forEach(tag => {
+		.sort({ v: 1 }).toArray().then(tags => {
+			tags.forEach(tag => {
 				tag.timestamp = tag._id.getTimestamp();
 				delete tag._id;
 			});
-			next(err, tags);
+			next(null, tags);
+		}).catch(err=>{
+		    next && next(err);
 		});
 };
 
@@ -377,8 +385,8 @@ module.exports.tagDocument = function(webstrateId, version, label, next) {
 	if (!label || label.includes('.')) {
 		return next && next(new Error('Tag names should not contain periods.'));
 	}
-
 	module.exports.getDocument({ webstrateId, version }, function(err, snapshot) {
+
 		if (err) return next && next(err);
 		// We let clients know that the document has been tagged before it has happened, because this
 		// shouldn't fail.
@@ -394,22 +402,22 @@ module.exports.tagDocument = function(webstrateId, version, label, next) {
 		// All labels and versions have to be unique, so this is how we enforce that. First, try to
 		// set the label for a specific version. Due to our collection's uniqueness constraint, this
 		// will fail if the label already exists.
-		db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true },
-			function(err) {
-				if (!err) {
+		db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true }).then(()=>{
+			// Now we can't just update the label, because a label for the version may also exist.
+			// Therefore, we delete anything with the label or version, and then insert it again.
+			db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]}).then(()=>{
+    				// And now reinsert.
+				db.tags.insertOne({ webstrateId, v: version, label, data, type }).then(()=>{
 					return next && next(null, version, label);
-				}
-				// Now we can't just update the label, because a label for the version may also exist.
-				// Therefore, we delete anything with the label or version, and then insert it again.
-				db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]}, function(err) {
-					if (err) return next && next(err);
-					// And now reinsert.
-					db.tags.insertOne({ webstrateId, v: version, label, data, type }, function(err) {
-						if (err) return next && next(err);
-						return next && next(null, version, label);
-					});
-				});
+				}).catch(err=>{
+					return next && next(err);
+				});;
+			}).catch(err=>{
+				return next && next(err);
 			});
+		}).catch(err=>{
+		    return next && next(err);
+		});
 	});
 };
 
@@ -429,9 +437,9 @@ module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 	else {
 		query.label = tag;
 	}
-	db.tags.deleteOne(query, function(err, res) {
+	db.tags.deleteOne(query).then(res=>{
 		// Only inform clients of a tag deletion if the tag existed.
-		if (res.result.n === 1) {
+		if (res.deletedCount === 1) {
 			clientManager.sendToClients(webstrateId, {
 				wa: 'untag',
 				d: webstrateId,
@@ -440,6 +448,8 @@ module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 			});
 		}
 		next && next();
+	}).catch(err=>{
+	    next && next(err);
 	});
 };
 
@@ -502,11 +512,11 @@ function transformDocumentToVersion({ webstrateId, snapshot, version }, next) {
  * @private
  */
 function getTagBeforeVersion(webstrateId, version, next) {
-	db.tags.find({ webstrateId, v: { $lte: version } }).sort({ v : -1 }).limit(1).toArray(
-		function(err, tags) {
-			if (err) return next && next(err);
-			return next && next(null, tags[0]);
-		});
+	db.tags.find({ webstrateId, v: { $lte: version } }).sort({ v : -1 }).limit(1).toArray().then(tags=>{
+	    return next && next(null, tags[0]);
+	}).catch(err=>{
+	    return next && next(err);
+	});
 }
 
 /**
@@ -518,10 +528,11 @@ function getTagBeforeVersion(webstrateId, version, next) {
  * @private
  */
 function getDocumentFromTag(webstrateId, label, next) {
-	db.tags.findOne({ webstrateId, label }, function(err, snapshot) {
-		if (err) return next && next(err);
+	db.tags.findOne({ webstrateId, label }).then(snapshot=>{
 		if (!snapshot) return next && next(new Error(`Requested tag ${label} does not exist.`));
 		snapshot.tag = label;
 		next && next(null, snapshot);
-	});
+	}).catch(err=>{
+		return next && next(err);
+	});;
 }

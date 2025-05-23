@@ -4,7 +4,7 @@ const fs = require('graceful-fs');
 const util = require('util');
 const multer = require('multer');
 const db = require(APP_PATH + '/helpers/database.js');
-const md5File = require('md5-file/promise');
+const md5File = require('md5-file');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
@@ -222,8 +222,7 @@ const deleteAssetFromFileSystem = (fileName) => {
  */
 module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }, next) {
 	var query = { webstrateId: fromWebstrateId, v: { $lte: version } };
-	db.assets.find(query).toArray(function(err, assets) {
-		if (err) return next && next(err);
+	db.assets.find(query).toArray().then(assets=>{
 		assets = filterNewestAssets(assets);
 
 		// If there are no assets, we can terminate.
@@ -242,7 +241,11 @@ module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }
 			asset._originalId = asset._originalId || asset._id;
 			delete asset._id;
 		});
-		db.assets.insertMany(assets, next);
+		db.assets.insertMany(assets).then(()=>{next()}).catch(err=>{
+			return next && next(err);
+		});
+	}).catch(err=>{
+		return next && next(err);
 	});
 };
 
@@ -295,8 +298,8 @@ module.exports.restoreAssets = function({ webstrateId, version, tag, newVersion 
  * @return {[type]}               [description]
  */
 module.exports.deleteAssets = function(webstrateId, next) {
-	db.assets.find({ webstrateId }, { fileName: 1 }).toArray(function(err, assets) {
-		if (err) return next && next(err);
+	let r = db.assets.find({ webstrateId }, { fileName: 1 });
+	r.toArray().then(assets=>{
 		// Transform array of objects into primitive array.
 		assets.forEach(function(asset, index) {
 			assets[index] = asset.fileName;
@@ -306,7 +309,7 @@ module.exports.deleteAssets = function(webstrateId, next) {
 		db.assets.distinct('fileName', {
 			fileName: { $in: assets },
 			webstrateId: { $ne: webstrateId }
-		}, function(err, assetsBeingUsed) {
+		}).then(assetsBeingUsed=> {
 			// Don't delete assets being used by other webstrates.
 			var assetsToBeDeleted = assets.filter(asset =>  !assetsBeingUsed.includes(asset));
 
@@ -315,23 +318,28 @@ module.exports.deleteAssets = function(webstrateId, next) {
 			assetsToBeDeleted.forEach(function(asset) {
 				promises.push(searchableAssets.deleteSearchable(asset._id));
 				promises.push(new Promise(function(resolve, reject) {
-					fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`, function(err) {
+					fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
+						resolve();
+					}).catch(err=>{
 						// We print out errors, but we don't stop execution. If a file fails to delete, we
 						// probably still want to get rid of the remaining files.
-						if (err) {
-							console.error(err);
-						}
-						resolve();
+						console.error(err);
 					});
 				}));
 			});
 
 			// Once every file has been deleted from the file system, we delete them from the database.
 			Promise.all(promises).then(function() {
-				db.assets.deleteMany({ webstrateId }, next);
+				db.assets.deleteMany({ webstrateId }).then(()=>{next()}).catch(err=>{
+					return next && next(err);
+				});
 			});
+		}).catch(err => {
+		    return next && next(err);
 		});
-	});
+	}).catch(err=>{
+		return next && next(err);
+	});;
 };
 
 /**

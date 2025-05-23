@@ -125,7 +125,9 @@ function sendMessage(userId, messageId, message, senderId) {
  * @public
  */
 module.exports.getMessages = function(userId, callback) {
-	db.messages.find({ userId }, { _id: 0 }).toArray(callback);
+	db.messages.find({ userId }, { _id: 0 }).toArray().then((result)=>{callback(null,result)}).catch(err=>{
+	    callback(err);
+	});
 };
 
 /**

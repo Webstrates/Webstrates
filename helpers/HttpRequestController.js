@@ -342,7 +342,6 @@ module.exports.requestHandler = async function(req, res) {
 			if (!defaultPermissions.includes('w')) {
 				return res.status(403).send('Write permissions are required to create a new document.');
 			}
-
 			return copyWebstrate(req, res, snapshot);
 		}
 
@@ -364,6 +363,7 @@ module.exports.requestHandler = async function(req, res) {
 		}
 
 		if ('delete' in req.query) {
+			console.log("Got delete");
 			// If a user is required to be logged in (through loggedInToCreateWebstrates) to create a
 			// webstrate, we also require them to be logged in to delete a webstrate.
 			if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
@@ -578,10 +578,13 @@ async function copyWebstrate(req, res, snapshot) {
 				console.error(err);
 				return res.status(409).send(String(err));
 			}
-			delete req.query.copy;
+			
+			// Clone the query into a writeable object to remove ?copy to avoid infinite loops
+			let newQuery = Object.assign({}, req.query);
+			delete newQuery.copy;
 			return res.redirect(url.format({
 				pathname:`/${webstrateId}/`,
-				query: req.query
+				query: newQuery
 			}));
 		});
 	});

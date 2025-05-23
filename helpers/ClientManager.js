@@ -264,19 +264,18 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 
 	// If no userId is defined, the user isn't logged in and therefore can't have cookies attached,
 	// so let's not waste time looking for them.
-	if (!userId) {
+	if (userId === 'anonymous:') {
 		module.exports.sendToClient(socketId, helloMsgObj);
 	} else {
 		// Get user's cookies.
 		var promises = [];
 		promises.push(new Promise(function(accept, reject) {
 			db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { '$exists': false } } ] })
-				.toArray(function(err, cookies) {
-					if (err) {
-						reject(err);
-						return console.error(err);
-					}
+				.toArray().then(cookies=>{
 					accept(cookies);
+				}).catch(err=>{
+					reject(err);
+					return console.error(err);
 				});
 		}));
 

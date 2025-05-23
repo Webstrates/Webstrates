@@ -55,6 +55,33 @@ if (typeof config.threads !== 'undefined') {
 var app = express();
 expressWs(app);
 
+
+const middleware = [];
+
+middleware.push(require('./middleware/dosProtectionMiddleware.js'));
+middleware.push(require('./middleware/keepAliveMiddleware.js'));
+if (config.godApi) {
+	middleware.push(require('./middleware/godApiMiddleware.js'));
+}
+middleware.push(require('./middleware/userHistory.js'));
+middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
+middleware.push(require('./middleware/shareDbMiddleware.js'));
+
+/**
+ * Execute a type of middleware
+ * @param  {string}     type        Type of middleware (onconnect, onmessage, onclose).
+ * @param  {array}      args        Array of arguments to be passed to middleware.
+ * @params {middleware} middleware  All middleware objects passed in as arguments.
+ */
+function runMiddleware(type, args, middleware, ...middlewares) {
+	if (!middleware) return;
+	if (!middleware[type]) return runMiddleware(type, args, ...middlewares);
+
+	middleware[type](...args, () => runMiddleware(type, args, ...middlewares));
+}
+
+
+
 app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('static', { maxAge: config.maxAge }));
 
@@ -79,6 +106,22 @@ if (config.basicAuth) {
 if (config.auth) {
 	const { secret, duration } = config.auth.cookie;
 	app.use(sessions({ secret, duration, cookieName: 'session' }));
+
+	// Work around passport >0.5.3 open issue needing session.regenerate which is not provided by client-sessions
+	// https://github.com/jaredhanson/passport/issues/904
+	app.use(function(request, response, next) {
+		if (request.session && !request.session.regenerate) {
+			request.session.regenerate = (cb) => {
+				cb()
+			}
+		}
+		if (request.session && !request.session.save) {
+			request.session.save = (cb) => {
+				cb()
+			}
+		}
+		next()
+	})
 
 	passport.serializeUser(sessionManager.serializeUser);
 	passport.deserializeUser(sessionManager.deserializeUser);
@@ -130,48 +173,6 @@ if (config.auth) {
 app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i,
 	httpRequestController.trailingSlashAppendHandler);
 
-// This middleware gets triggered on both regular HTTP request and websocket connections.
-app.use(function(req, res, next) {
-	sessionMiddleware(req, res, next);
-});
-
-app.get('/', httpRequestController.rootRequestHandler);
-app.get('/new', httpRequestController.newWebstrateGetRequestHandler);
-app.post('/new', httpRequestController.extractQuery,
-	httpRequestController.newWebstratePostRequestHandler);
-
-// Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
-// Handles mostly all requests.
-app.get(/^\/([A-Z0-9._-]+)\/(?:([A-Z0-9%_-]+)\/)?(?:([A-Z0-9%.()\[\]{}_-]+\.[A-Z0-9_-]+)(?:\/(.*))?)?$/i,
-	httpRequestController.extractQuery,
-	httpRequestController.requestHandler);
-
-// We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
-// of a document.
-app.post(/^\/([A-Z0-9._-]+)\/$/i,
-	httpRequestController.extractQuery,
-	function(req, res) {
-		if ('token' in req.body) {
-			return permissionManager.generateAccessToken(req, res);
-		}
-
-		if (req.headers['content-type'].startsWith('multipart/form-data;')) {
-			return assetManager.assetUploadHandler(req, res);
-		}
-
-		return res.status(422).send('Parameter missing from request. No \'token\' or files found.');
-	}
-);
-
-// Catch all for get.
-app.get(function(req, res) {
-	res.send('Invalid request URL.');
-});
-
-// Catch all for post.
-app.post(function(req, res) {
-	res.send('You can only post assets to URLs of the form /<webstrateId>/.');
-});
 
 /**
 	Middleware for extracting user data from cookies used for Express HTTP requests only.
@@ -179,8 +180,7 @@ app.post(function(req, res) {
 const sessionMiddleware = function(req, res, next) {
 	let webstrateId;
 
-	const match = req.url.match(/^\/([A-Z0-9._-]+)\//i);
-	if (match) [, webstrateId] = match;
+	if (req.params.any?.length>2) webstrateId = req.params.any[1];
 
 	req.remoteAddress = req.remoteAddress || (req.headers && (req.headers['X-Forwarded-For'] ||
 		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
@@ -207,31 +207,13 @@ const sessionMiddleware = function(req, res, next) {
 	next();
 };
 
-const middleware = [];
 
-middleware.push(require('./middleware/dosProtectionMiddleware.js'));
-middleware.push(require('./middleware/keepAliveMiddleware.js'));
-if (config.godApi) {
-	middleware.push(require('./middleware/godApiMiddleware.js'));
-}
-middleware.push(require('./middleware/userHistory.js'));
-middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
-middleware.push(require('./middleware/shareDbMiddleware.js'));
+// This middleware gets triggered on both regular HTTP request and websocket connections.
+app.use("*any", function(req, res, next) {
+	sessionMiddleware(req, res, next);
+});
 
-/**
- * Execute a type of middleware
- * @param  {string}     type        Type of middleware (onconnect, onmessage, onclose).
- * @param  {array}      args        Array of arguments to be passed to middleware.
- * @params {middleware} middleware  All middleware objects passed in as arguments.
- */
-function runMiddleware(type, args, middleware, ...middlewares) {
-	if (!middleware) return;
-	if (!middleware[type]) return runMiddleware(type, args, ...middlewares);
-
-	middleware[type](...args, () => runMiddleware(type, args, ...middlewares));
-}
-
-app.ws('*', (ws, req) => {
+app.ws('/:webstrateId', (ws, req) => {
 	const socketId = clientManager.addClient(ws, req, req.user);
 	req.socketId = socketId;
 
@@ -266,8 +248,48 @@ app.ws('*', (ws, req) => {
 		}
 		runMiddleware('onmessage', [ws, req, data], ...middleware);
 	});
-
 	runMiddleware('onconnect', [ws, req], ...middleware);
+});
+
+
+
+app.get('/', httpRequestController.rootRequestHandler);
+app.get('/new', httpRequestController.newWebstrateGetRequestHandler);
+app.post('/new', httpRequestController.extractQuery,
+	httpRequestController.newWebstratePostRequestHandler);
+
+// Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
+// Handles mostly all requests.
+app.get('/:webstrateId/:tagOrVersion', httpRequestController.extractQuery, httpRequestController.requestHandler);
+app.get('/:webstrateId', httpRequestController.extractQuery, httpRequestController.requestHandler);
+
+// We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
+// of a document.
+app.post('/:webstrateId',
+	httpRequestController.extractQuery,
+	function(req, res) {
+		if ('token' in req.body) {
+			return permissionManager.generateAccessToken(req, res);
+		}
+
+		if (req.headers['content-type'].startsWith('multipart/form-data;')) {
+			return assetManager.assetUploadHandler(req, res);
+		}
+
+		return res.status(422).send('Parameter missing from request. No \'token\' or files found.');
+	}
+);
+
+
+
+// Catch all for get.
+app.get("*any",function(req, res) {
+	res.send('Invalid request URL.');
+});
+
+// Catch all for post.
+app.post('*any',function(req, res) {
+	res.send('You can only post assets to URLs of the form /<webstrateId>/.');
 });
 
 app.use((err, req, res, next) => {

@@ -15,7 +15,7 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const COLLECTION_NAME = 'webstrates';
 
 const share = sharedb({
-	db: sharedbMongo(global.config.db,{mongoOptions: {useUnifiedTopology: true}}),
+	db: sharedbMongo(global.config.db,{mongoOptions: {}}),
 	pubsub: global.config.pubsub && sharedbRedisPubSub({
 		client: redis.createClient(global.config.pubsub),
 		observer: redis.createClient(global.config.pubsub)
@@ -44,6 +44,7 @@ share.use(['connect'], (req, next) => {
 
 	next();
 });
+
 
 /**
  * Check if the update changes the permissions of the document.
@@ -110,11 +111,14 @@ share.use(['afterWrite'], (req, next) => {
 	next();
 });
 
-share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete'],
+share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete', 'handshake'],
 	async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).
 		if (!req.agent.user) return next();
+		if (req.data?.a === "hs") {
+		    return next();
+		}
 
 		const socketId = req.agent.socketId;
 		let user = req.agent.user;
