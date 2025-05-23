@@ -1,4 +1,6 @@
 'use strict';
+require('setimmediate');
+
 const coreEventsModule = {};
 
 // Map from event names to a set of the actual listeners: string -> set of listeners.
@@ -60,7 +62,7 @@ coreEventsModule.createEvent = (eventName, options = {}) => {
 	}
 };
 
-coreEventsModule.eventExists = (eventName) => eventListeners.hasOwnProperty(eventName);
+coreEventsModule.eventExists = (eventName) => Object.prototype.hasOwnProperty.call(eventListeners,eventName);
 
 coreEventsModule.addEventListener = (eventName, eventListener,
 	priority = coreEventsModule.PRIORITY.LOW, options) => {

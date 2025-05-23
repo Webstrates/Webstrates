@@ -55,7 +55,7 @@ const addEventListenerListeners = {};
 const removeEventListenerListeners = {};
 
 function eventExists(eventName) {
-	return eventListeners.hasOwnProperty(eventName);
+	return Object.prototype.hasOwnProperty.call(eventListeners,eventName);
 }
 
 globalObjectModule.createEvent = (eventName, options = {}) => {

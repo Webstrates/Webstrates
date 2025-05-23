@@ -81,7 +81,7 @@ function attachWebstrateObjectToNode(node, triggerEvent) {
 	const removeEventListenerListeners = {};
 
 	function eventExists(eventName) {
-		return eventListeners.hasOwnProperty(eventName);
+		return Object.prototype.hasOwnProperty.call(eventListeners,eventName);
 	}
 
 	node.webstrate.on = (eventName, eventListener) => {
