@@ -1,6 +1,6 @@
 'use strict';
 
-const argv = require('optimist').argv;
+const argv = require('minimist')(process.argv.slice(2));
 const bodyParser = require('body-parser');
 const cluster = require('cluster');
 const express = require('express');
