@@ -110,7 +110,6 @@ function getRandomNumberFromList() {
 
 const generateRandomNumber = (min, max) => Math.round(min + (max - min) * Math.random());
 
-const documentExists = util.promisify(documentManager.documentExists);
 /**
  * Generate a random webstrateId of the form <adjective>-<animal>-<number>. If letter is defined,
  * we'll attempt to find an animal beginning with that letter.
@@ -130,6 +129,6 @@ module.exports.generate = async letter => {
 		const adjective = getRandomAdjective();
 		const animal = getRandomAnimal(letter);
 		webstrateId = `${adjective}-${animal}-${number}`;
-	} while (await documentExists(webstrateId));
+	} while (await documentManager.documentExists(webstrateId));
 	return webstrateId;
 };

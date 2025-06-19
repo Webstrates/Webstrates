@@ -722,7 +722,7 @@ function streamToString(stream, callback) {
 module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 	// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
 	// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
-
+	
 	if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
 		let err = 'Must be logged in to create a webstrate.';
 		if (Array.isArray(config.loggedInToCreateWebstrates)) {
@@ -733,7 +733,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		return res.status(409).send(err);
 	}
 
-	if ('prototypeFile' in req.query) {
+		if ('prototypeFile' in req.query) {
 		const action = req.query.id ? `/new?id=${req.query.id}` : '/new';
 		return res.send(`
 			<form method="post" action="${action}" enctype="multipart/form-data">
@@ -743,10 +743,10 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		`);
 	}
 
-	if ('prototypeUrl' in req.query) {
-		return request({url: req.query.prototypeUrl, encoding: 'binary' },
+		if ('prototypeUrl' in req.query) {
+				return request({url: req.query.prototypeUrl, encoding: 'binary' },
 			function(err, response, body) {
-				if (!err && response.statusCode !== 200) {
+								if (!err && response.statusCode !== 200) {
 					err = new Error('Invalid request. Received: ' +
 					response.statusCode + ' ' + response.statusMessage);
 				}
@@ -784,8 +784,8 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 					|| (response.headers['content-disposition']
 						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i))) {
 					const jsonml = htmlToJsonML(body);
-					return new Promise(async (resolve, reject)=>{
-						const webstrateId = req.query.id || await generateWebstrateId(req);
+										return new Promise(async (resolve, reject)=>{
+												const webstrateId = req.query.id || await generateWebstrateId(req);
 						return documentManager.createNewDocument({
 							webstrateId: webstrateId,
 							snapshot: {
@@ -830,13 +830,13 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
 		req.user.provider);
 
-	// If the user has no default write permissions, they're not allowed to create documents.
+			// If the user has no default write permissions, they're not allowed to create documents.
 	if (!defaultPermissions.includes('w')) {
 		return res.status(403).send('Write permissions are required to create a new document');
 	}
 
-	const webstrateId = await generateWebstrateId(req);
-	res.redirect(url.format({
+		const webstrateId = await generateWebstrateId(req);
+		res.redirect(url.format({
 		pathname: `/${webstrateId}/`,
 		query: req.query
 	}));

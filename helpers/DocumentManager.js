@@ -33,10 +33,10 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 
 	// The snapshot is an optional parameter, so if it's not set, let's fetch it from the database
 	// and call createNewdocument again with it.
-	if (!snapshot) {
+		if (!snapshot) {
 		return module.exports.getDocument({ webstrateId: prototypeId, version, tag },
 			function(err, snapshot) {
-				if (err) return next && next(err);
+								if (err) return next && next(err);
 				module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot },
 					next);
 			});
@@ -51,8 +51,8 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	}
 
 	// Let ShareDB handle the creation of the document.
-	ShareDbWrapper.submit(webstrateId, { v: 0, create: snapshot }, (err) => {
-		if (err) {
+		ShareDbWrapper.submit(webstrateId, { v: 0, create: snapshot }, (err) => {
+				if (err) {
 			if (err.message == 'Document was created remotely') {
 				err = new Error('Webstrate already exists.');
 			}
@@ -131,11 +131,8 @@ module.exports.getDocument = function({ webstrateId, version, tag }, next) {
  * @return {bool}                 Whether docuemnt exists.
  * @public
  */
-module.exports.documentExists = function(webstrateId, next) {
-	db.webstrates.findOne({ _id: webstrateId }, { _id: 1 }, function(err, doc) {
-		if (err) return next(err);
-		return next(null, !!doc);
-	});
+module.exports.documentExists = async function(webstrateId) {
+	return await db.webstrates.findOne({ _id: webstrateId }, { _id: 1 });
 };
 
 /**
