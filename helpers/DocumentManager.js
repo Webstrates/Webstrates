@@ -24,22 +24,16 @@ const ShareDbWrapper = require(APP_PATH + '/helpers/ShareDBWrapper.js');
  * @public
  */
 module.exports.createNewDocument = async function({ webstrateId, prototypeId, version, tag,
-	snapshot }, next) {
+	snapshot }) {
 	// If we're not prototyping (or creating from a snapshot), we can just return a new id. We don't
 	// have to build anything.
-	if (!prototypeId && !snapshot) {
-		return next && next(null, webstrateId);
-	}
+	if (!prototypeId && !snapshot) return webstrateId;
 
 	// The snapshot is an optional parameter, so if it's not set, let's fetch it from the database
 	// and call createNewdocument again with it.
-		if (!snapshot) {
-		return module.exports.getDocument({ webstrateId: prototypeId, version, tag },
-			function(err, snapshot) {
-								if (err) return next && next(err);
-				module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot },
-					next);
-			});
+	if (!snapshot) {
+		snapshot = await util.promisify(module.exports.getDocument)({ webstrateId: prototypeId, version, tag });
+		return await module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot });
 	}
 
 	// If the document already exists and is empty, we just delete it, so unused documents won't take
@@ -51,26 +45,19 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	}
 
 	// Let ShareDB handle the creation of the document.
-		ShareDbWrapper.submit(webstrateId, { v: 0, create: snapshot }, (err) => {
-				if (err) {
-			if (err.message == 'Document was created remotely') {
-				err = new Error('Webstrate already exists.');
-			}
-			else if (err.message === 'Missing create type') {
-				err = new Error('Prototype webstrate doesn\'t exist.');
-			}
+	try {
+		await ShareDbWrapper.submit(webstrateId, { v: 0, create: snapshot });
+	} catch (err){
+		if (err.message == 'Document was created remotely') throw new Error('Webstrate already exists.');
+		if (err.message === 'Missing create type') throw new Error('Prototype webstrate doesn\'t exist.');
+		throw err;
+	}
 
-			return next && next(err, webstrateId);
-		}
+	// Add current tag if it exists. All other tags are left behind, because the new document
+	// starts from version 1.
+	if (snapshot.label) await util.promisify(module.exports.tagDocument)(webstrateId, 1, snapshot.label);
 
-		// Add current tag if it exists. All other tags are left behind, because the new document
-		// starts from version 1.
-		if (snapshot.label) {
-			return module.exports.tagDocument(webstrateId, 1, snapshot.label, (err, res) =>
-				next && next(err, webstrateId));
-		}
-		return next && next(err, webstrateId);
-	});
+	return webstrateId;
 };
 
 /**

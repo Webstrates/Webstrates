@@ -559,34 +559,33 @@ async function copyWebstrate(req, res, snapshot) {
 	// Remove all admin permissions from the snapshot.
 	snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
 
-	documentManager.createNewDocument({ webstrateId, snapshot }, function(err, webstrateId) {
+	try {
+		await documentManager.createNewDocument({ webstrateId, snapshot });
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
+	
+	// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
+	// will always be set, even if no version is specified, or the user is accessing the webstrate
+	// through a tag.
+	assetManager.copyAssets({
+		fromWebstrateId: req.webstrateId,
+		toWebstrateId: webstrateId,
+		version: snapshot.v
+	}, function(err) {
 		if (err) {
 			console.error(err);
 			return res.status(409).send(String(err));
 		}
-
-
-		// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
-		// will always be set, even if no version is specified, or the user is accessing the webstrate
-		// through a tag.
-		assetManager.copyAssets({
-			fromWebstrateId: req.webstrateId,
-			toWebstrateId: webstrateId,
-			version: snapshot.v
-		}, function(err) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-			
-			// Clone the query into a writeable object to remove ?copy to avoid infinite loops
-			let newQuery = Object.assign({}, req.query);
-			delete newQuery.copy;
-			return res.redirect(url.format({
-				pathname:`/${webstrateId}/`,
-				query: newQuery
-			}));
-		});
+		
+		// Clone the query into a writeable object to remove ?copy to avoid infinite loops
+		let newQuery = Object.assign({}, req.query);
+		delete newQuery.copy;
+		return res.redirect(url.format({
+			pathname:`/${webstrateId}/`,
+			query: newQuery
+		}));
 	});
 }
 
@@ -743,7 +742,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		`);
 	}
 
-		if ('prototypeUrl' in req.query) {
+	if ('prototypeUrl' in req.query) {
 				return request({url: req.query.prototypeUrl, encoding: 'binary' },
 			function(err, response, body) {
 								if (!err && response.statusCode !== 200) {
@@ -784,26 +783,27 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 					|| (response.headers['content-disposition']
 						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i))) {
 					const jsonml = htmlToJsonML(body);
-										return new Promise(async (resolve, reject)=>{
-												const webstrateId = req.query.id || await generateWebstrateId(req);
-						return documentManager.createNewDocument({
-							webstrateId: webstrateId,
-							snapshot: {
-								type: 'http://sharejs.org/types/JSONv0',
-								data: jsonml
-							}
-						}, function(err, webstrateId) {
-							if (err) {
-								console.error(err);
-								return res.status(409).send(String(err));
-							}
-							delete req.query.prototypeUrl;
-							delete req.query.id;
-							return res.redirect(url.format({
-								pathname:`/${webstrateId}/`,
-								query: req.query
-							}));
-						});
+					return new Promise(async (resolve, reject) => {
+						const webstrateId = req.query.id || await generateWebstrateId(req);
+						try {
+							documentManager.createNewDocument({
+								webstrateId: webstrateId,
+								snapshot: {
+									type: 'http://sharejs.org/types/JSONv0',
+									data: jsonml
+								}
+							});
+						} catch (err){
+							console.error(err);
+							return res.status(409).send(String(err));
+						}
+
+						delete req.query.prototypeUrl;
+						delete req.query.id;
+						return res.redirect(url.format({
+							pathname: `/${webstrateId}/`,
+							query: req.query
+						}));
 					});
 				}
 
@@ -959,18 +959,15 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 												'rw', snapshot);
 									}
 								}
-								documentManager.createNewDocument({
-									webstrateId, snapshot
-								}, function(err, _webstrateId) {
-									if (err) {
-										console.error(err);
-										return reject(err);
-									}
-									createdWebstrate = true;
-								});
+								try {
+									await documentManager.createNewDocument({webstrateId, snapshot});
+								} catch (err){
+									console.error(err);
+									return reject(err);
+								}
+								createdWebstrate = true;
 							});
-						}
-						else {
+						} else {
 							crypto.pseudoRandomBytes(16, (err, raw) => {
 								const fileName =  raw.toString('hex');
 								const filePath = assetManager.UPLOAD_DEST + fileName;

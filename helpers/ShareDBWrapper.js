@@ -247,8 +247,13 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		return next('Forbidden, write permissions required');
 	});
 
-module.exports.submit = (webstrateId, op, next) => {
-	share.submit(agent, COLLECTION_NAME, webstrateId, op, null, next);
+module.exports.submit = async (webstrateId, op) => {
+	await new Promise((resolve, reject) => {
+		share.submit(agent, COLLECTION_NAME, webstrateId, op, null, (err) => {
+			if (err) return reject(err);
+			resolve();
+		});
+	});
 };
 
 module.exports.getOps = (webstrateId, versionFrom, versionTo, next) => {
