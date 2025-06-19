@@ -62,7 +62,8 @@ coreEventsModule.createEvent = (eventName, options = {}) => {
 	}
 };
 
-coreEventsModule.eventExists = (eventName) => Object.prototype.hasOwnProperty.call(eventListeners,eventName);
+coreEventsModule.eventExists = (eventName) => 
+	Object.prototype.hasOwnProperty.call(eventListeners,eventName);
 
 coreEventsModule.addEventListener = (eventName, eventListener,
 	priority = coreEventsModule.PRIORITY.LOW, options) => {

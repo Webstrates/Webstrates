@@ -76,7 +76,8 @@ if (!coreUtils.getLocationObject().staticMode) {
 	// Map from event names to actual listeners: string -> function.
 	const removeEventListenerListeners = {};
 
-	userObjectModule.eventExists = (eventName) => Object.prototype.hasOwnProperty.call(eventListeners,eventName);
+	userObjectModule.eventExists = (eventName) => 
+		Object.prototype.hasOwnProperty.call(eventListeners,eventName);
 
 	userObjectModule.createEvent = (eventName, options = {}) => {
 		if (userObjectModule.eventExists(eventName) && !options.idempotent) {

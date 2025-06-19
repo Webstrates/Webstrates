@@ -78,7 +78,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 				return permissions;
 
 			} catch (err) {
-				console.warn('Couldn\'t parse document permission - malformed.');
+				console.warn('Couldn\'t parse document permission - malformed.', err);
 			}
 		}
 		return [];

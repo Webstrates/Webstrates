@@ -81,10 +81,13 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	const _isTransientAttribute = config.isTransientAttribute;
 	config.isTransientAttribute = (DOMNode, attributeName) => {
 		if (_isTransientAttribute(DOMNode, attributeName)){
-			// If config says transient, then it means transient - regardless of how much someone is trying to approve it
+			// If config says transient, then it means transient 
+			// - regardless of how much someone is trying to approve it
 			return true;
 		}
-		return !isApprovedAttribute(DOMNode, attributeName); // Otherwise it is transient if not approved
+
+		// Otherwise it is transient if not approved
+		return !isApprovedAttribute(DOMNode, attributeName); 
 	};
 
 	/**
@@ -112,7 +115,7 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 			Object.defineProperty(node, 'innerHTML', {
 				set: value => {
-					const returnValue = innerHTMLDescriptor.set.call(node, value);
+					innerHTMLDescriptor.set.call(node, value);
 
 					// Approve all children and their attributes.
 					// Combine approveNode and approveElementAttribute to avoid performing the
