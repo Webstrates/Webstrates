@@ -8,7 +8,6 @@ const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
 const multer = require('multer');
 const os = require('os');
-const request = require('request');
 const shortId = require('shortid');
 const tmp = require('tmp');
 const url = require('url');
@@ -742,75 +741,82 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		`);
 	}
 
-	if ('prototypeUrl' in req.query) {
-				return request({url: req.query.prototypeUrl, encoding: 'binary' },
-			function(err, response, body) {
-								if (!err && response.statusCode !== 200) {
-					err = new Error('Invalid request. Received: ' +
-					response.statusCode + ' ' + response.statusMessage);
-				}
-				if (err) {
-					console.error(err);
-					return res.status(409).send(String(err));
-				}
-				if (response.headers['content-type'] === 'application/zip'
-					|| response.headers['content-type'] === 'application/x-zip-compressed'
-					|| (response.headers['content-disposition']
-						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.zip$/i))) {
-					return tmp.file((err, filePath, fd, cleanUpCallback) => {
-						return fs.writeFile(filePath, body, 'binary', async err => {
-							if (err) {
-								console.error(err);
-							}
-							const webstrateId = req.query.id || await generateWebstrateId(req);
-							try {
-								await createWebstrateFromZipFile(filePath, webstrateId, req);
-								res.redirect(`/${webstrateId}/`);
-							} catch (err) {
-								console.error(err);
-								res.status(409).send(String(err));
-							}
-							// Tell the tmp package to delete the temporary file it created.
-							cleanUpCallback();
-						});
-					});
-				}
+    if ('prototypeUrl' in req.query) {
+        try {
+			// Fetch remote data
+            const response = await fetch(req.query.prototypeUrl);
+            if (!response.ok) {
+                throw new Error('Invalid request. Received: ' + response.status + ' ' + response.statusText);
+            }
+            const contentType = response.headers.get('content-type');
+            const contentDisposition = response.headers.get('content-disposition');
 
-				// `startsWith` and not a direct match, because the content-type often (always?) is followed
-				// by a charset declaration, which we don't care about.
-				if ((response.headers['content-type']
-					&& response.headers['content-type'].startsWith('text/html'))
-					|| (response.headers['content-disposition']
-						&& response.headers['content-disposition'].match(/(filename=\*?)(.*)\.html?$/i))) {
-					const jsonml = htmlToJsonML(body);
-					return new Promise(async (resolve, reject) => {
-						const webstrateId = req.query.id || await generateWebstrateId(req);
-						try {
-							documentManager.createNewDocument({
-								webstrateId: webstrateId,
-								snapshot: {
-									type: 'http://sharejs.org/types/JSONv0',
-									data: jsonml
-								}
-							});
-						} catch (err){
-							console.error(err);
-							return res.status(409).send(String(err));
-						}
+            // Handle zip files
+            if (contentType === 'application/zip' ||
+                contentType === 'application/x-zip-compressed' ||
+                (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.zip$/i))) {
 
-						delete req.query.prototypeUrl;
-						delete req.query.id;
-						return res.redirect(url.format({
-							pathname: `/${webstrateId}/`,
-							query: req.query
-						}));
-					});
-				}
+                const arrayBuffer = await response.arrayBuffer();
+                const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Node.js Buffer
 
-				res.status(405).send('Can only prototype from text/html or application/zip sources. ' +
-				'Received file with content-type: ' + response.headers['content-type']);
-			});
-	}
+                return tmp.file((err, filePath, fd, cleanUpCallback) => {
+                    if (err) {
+                        console.error(err);
+                        return res.status(409).send(String(err));
+                    }
+                    return fs.writeFile(filePath, buffer, async err => {
+                        if (err) {
+                            console.error(err);
+                        }
+                        const webstrateId = req.query.id || await generateWebstrateId(req);
+                        try {
+                            await createWebstrateFromZipFile(filePath, webstrateId, req);
+                            res.redirect(`/${webstrateId}/`);
+                        } catch (err) {
+                            console.error(err);
+                            res.status(409).send(String(err));
+                        }
+                        // Tell the tmp package to delete the temporary file it created.
+                        cleanUpCallback();
+                    });
+                });
+            }
+
+            // Handle HTML files
+            if ((contentType && contentType.startsWith('text/html')) ||
+                (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.html?$/i))) {
+                const body = await response.text();
+                const jsonml = htmlToJsonML(body);
+                const webstrateId = req.query.id || await generateWebstrateId(req);
+                try {
+                    await documentManager.createNewDocument({
+                        webstrateId: webstrateId,
+                        snapshot: {
+                            type: 'http://sharejs.org/types/JSONv0',
+                            data: jsonml
+                        }
+                    });
+                } catch (err) {
+                    console.error(err);
+                    return res.status(409).send(String(err));
+                }
+
+                delete req.query.prototypeUrl;
+                delete req.query.id;
+                return res.redirect(url.format({
+                    pathname: `/${webstrateId}/`,
+                    query: req.query
+                }));
+            }
+
+            res.status(405).send('Can only prototype from text/html or application/zip sources. ' +
+                'Received file with content-type: ' + contentType);
+
+        } catch (err) {
+            console.error(err);
+            return res.status(409).send(String(err));
+        }
+    }
 
 	if (req.query.prototype) {
 		var path = `/${req.query.prototype}/`;
