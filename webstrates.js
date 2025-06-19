@@ -268,7 +268,7 @@ app.get('/:webstrateId', httpRequestController.extractQuery, httpRequestControll
 app.post('/:webstrateId',
 	httpRequestController.extractQuery,
 	function(req, res) {
-		if ('token' in req.body) {
+		if (req.body && 'token' in req.body) {
 			return permissionManager.generateAccessToken(req, res);
 		}
 

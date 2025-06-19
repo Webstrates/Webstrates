@@ -26,8 +26,8 @@ const upload = multer({
  * @public
  */
 module.exports.assetUploadHandler = async function(req, res) {
-	upload(req, res, async function(err) {
-		if (err) {
+		upload(req, res, async function(err) {
+				if (err) {
 			console.error(err);
 			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
 				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` } : err);
@@ -37,7 +37,7 @@ module.exports.assetUploadHandler = async function(req, res) {
 			return res.status(422).json({ error: 'Parameter missing from request.' });
 		}
 
-		const source = `${req.user.userId} (${req.remoteAddress})`;
+				const source = `${req.user.userId} (${req.remoteAddress})`;
 
 		// Adding hashes to each file by initially generating an array of promises that'll trigger with
 		// the hash value when each hash has been generated.
@@ -74,16 +74,14 @@ module.exports.assetUploadHandler = async function(req, res) {
 				}
 			}
 		}
-
-		module.exports.addAssets(req.webstrateId, req.files, searchables, source,
-			(err, assetRecords) => {
-				if (err) {
-					console.error(err);
-					return res.status(409).json({ error: String(err) });
-				}
-
-				res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
-			});
+		
+		try {
+			let assetRecords = await module.exports.addAssets(req.webstrateId, req.files, searchables, source);
+			res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
+		} catch (err){
+			console.error(err);
+			return res.status(409).json({ error: String(err) });
+		}
 	});
 };
 
@@ -374,44 +372,38 @@ function filterNewestAssets(assets) {
  * @param {Function} next        Callback.
  * @public
  */
-module.exports.addAsset = function(webstrateId, asset, searchable, source, next) {
-	return documentManager.sendNoOp(webstrateId, 'assetAdded', source, function() {
-		return documentManager.getDocumentVersion(webstrateId, function(err, version) {
-			db.assets.insertOne({
-				webstrateId,
-				v: version,
-				// asset.filename is the name of the file on our system, originalname is what the file was
-				// called on the uploading client's system.
-				fileName: asset.filename,
-				originalFileName: asset.originalname,
-				fileSize: asset.size,
-				mimeType: asset.mimetype,
-				fileHash: asset.fileHash
-			}, async function(err, result) {
-				if (err) return next && next(err);
-
-				if (searchable && asset.mimetype === 'text/csv') {
-					const assetId = result.ops[0]._id;
-					await searchableAssets.makeSearchable(assetId,
-						module.exports.UPLOAD_DEST + asset.filename);
-				}
-
-				asset = {
-					v: version,
-					fileName: asset.originalname,
-					fileSize: asset.size,
-					mimeType: asset.mimetype,
-					identifier: asset.filename,
-					fileHash: asset.fileHash
-				};
-
-				// Inform all clients of the newly added asset.
-				clientManager.announceNewAsset(webstrateId, asset, true);
-
-				return next && next(null, asset);
-			});
-		});
+module.exports.addAsset = async function(webstrateId, asset, searchable, source, next) {
+	let version = await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', source);
+	let result = await db.assets.insertOne({
+		webstrateId,
+		v: version,
+		// asset.filename is the name of the file on our system, originalname is what the file was
+		// called on the uploading client's system.
+		fileName: asset.filename,
+		originalFileName: asset.originalname,
+		fileSize: asset.size,
+		mimeType: asset.mimetype,
+		fileHash: asset.fileHash
 	});
+
+	if (searchable && asset.mimetype === 'text/csv') {
+		const assetId = result.ops[0]._id;
+		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
+	}
+
+	asset = {
+		v: version,
+		fileName: asset.originalname,
+		fileSize: asset.size,
+		mimeType: asset.mimetype,
+		identifier: asset.filename,
+		fileHash: asset.fileHash
+	};
+
+	// Inform all clients of the newly added asset.
+	clientManager.announceNewAsset(webstrateId, asset, true);
+
+	return asset;
 };
 
 /**
@@ -424,23 +416,11 @@ module.exports.addAsset = function(webstrateId, asset, searchable, source, next)
  * @param {Function} next        Callback.
  * @public
  */
-module.exports.addAssets = function(webstrateId, assets, searchables, source, next) {
-	var assetPromises = [];
-	assets.forEach(function(asset) {
-		assetPromises.push(new Promise(function(accept, reject) {
-			const searchable = searchables.includes(asset.originalname);
-			module.exports.addAsset(webstrateId, asset, searchable, source, function(err, assetRecord) {
-				if (err) return reject(err);
-				accept(assetRecord);
-			});
-		}));
-	});
-
-	Promise.all(assetPromises).then(function(assetRecords) {
-		next(null, assetRecords.length === 1 ? assetRecords[0] : assetRecords);
-	}).catch(function(err) {
-		next(err);
-	});
+module.exports.addAssets = async function(webstrateId, assets, searchables, source) {
+	return await Promise.all(assets.map(asset=>{
+		let shouldBeSearchable = searchables.includes(asset.originalname);
+		return module.exports.addAsset(webstrateId, asset, shouldBeSearchable, source);
+	}));
 };
 
 /**
