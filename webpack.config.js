@@ -2,7 +2,6 @@ const fs = require('fs');
 const path = require('path');
 const execSync = require('child_process').execSync;
 const webpack = require('webpack');
-const wrapperPlugin = require('wrapper-webpack-plugin');
 const ESLintPlugin = require('eslint-webpack-plugin'); 
 const configHelper = require('./helpers/ConfigHelper.js');
 const TerserPlugin = require('terser-webpack-plugin');
@@ -31,6 +30,11 @@ const cleanServerConfig = {
         nodeVersion: process.version
 };
 
+// Read header and footer content used to wrap the client
+const wrapperHeaderContent = fs.readFileSync(path.resolve(__dirname, './client/wrapper-header.js'), 'utf-8');
+const wrapperFooterContent = fs.readFileSync(path.resolve(__dirname, './client/wrapper-footer.js'), 'utf-8');
+
+
 const config = {
         entry: './client/index.js',
         output: {
@@ -52,10 +56,9 @@ const config = {
                 // Our own config and debug module
                 new webpack.ProvidePlugin({ config: path.resolve(__dirname, 'client/config') }),
                 new webpack.DefinePlugin({ serverConfig: JSON.stringify(cleanServerConfig) }),
-                new wrapperPlugin({
-                        header: filename => fs.readFileSync('./client/wrapper-header.js', 'utf-8'),
-                        footer: filename => fs.readFileSync('./client/wrapper-footer.js', 'utf-8'),
-                }),
+                // Header and footer
+                new webpack.BannerPlugin({banner: wrapperHeaderContent,raw:true,entryOnly:true}),                
+                new webpack.BannerPlugin({banner: wrapperFooterContent,raw:true,entryOnly:true,footer:true}),
                 {
                         // Add a hash of webstrates.js to the HTML that's being served to the client in order to
                         // invalidate webstrates.js when it gets updated.
@@ -70,7 +73,11 @@ const config = {
                         }
                 },
                 new ESLintPlugin({ extensions: ['js'] })  
-        ]
+        ], performance: {
+                // Set a recommended size limit to maky sure we don't grow too much
+                maxAssetSize: 1024 * 1024, // 1 MiB
+                maxEntrypointSize: 1024 * 1024,
+        }
 };
 
 // In production

@@ -74,7 +74,6 @@
     "tmp": "0.2.3",
     "url": "0.11.4",
     "webpack": "5.99.9",
-    "wrapper-webpack-plugin": "2.2.2",
     "yauzl": "3.2.0"
   },
   "devDependencies": {
