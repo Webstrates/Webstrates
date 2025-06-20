@@ -276,7 +276,7 @@ module.exports.deleteAssets = async function(webstrateId) {
 	});
 
 	// Don't delete assets being used by other webstrates.
-	let assetsBeingUsed = db.assets.distinct('fileName', {
+	let assetsBeingUsed = await db.assets.distinct('fileName', {
 		fileName: { $in: assets },
 		webstrateId: { $ne: webstrateId }
 	});
