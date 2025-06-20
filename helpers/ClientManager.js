@@ -269,15 +269,13 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 	} else {
 		// Get user's cookies.
 		var promises = [];
-		promises.push(new Promise(function(accept, reject) {
-			db.cookies.find({ userId, $or: [ { webstrateId }, { webstrateId: { '$exists': false } } ] })
-				.toArray().then(cookies=>{
-					accept(cookies);
-				}).catch(err=>{
-					reject(err);
-					return console.error(err);
-				});
-		}));
+		promises.push(db.cookies.find({
+			userId, 
+			$or: [ 
+				{ webstrateId }, 
+				{ webstrateId: { '$exists': false }}
+			]
+		}).toArray());
 
 		// Get user's messages.
 		promises.push(new Promise(function(accept, reject) {
@@ -579,7 +577,7 @@ module.exports.announceNewAsset = function(webstrateId, asset, local) {
  *                             forth between instances.
  * @public
  */
-module.exports.updateCookie = function(userId, webstrateId, key, value, local) {
+module.exports.updateCookie = async function(userId, webstrateId, key, value, local) {
 	var updateObj = {
 		wa: 'cookieUpdate',
 		update: { key, value }
@@ -594,34 +592,28 @@ module.exports.updateCookie = function(userId, webstrateId, key, value, local) {
 
 	if (local) {
 		var webstrateIdQuery = webstrateId || { '$exists': false };
-		db.cookies.updateOne({ userId, webstrateId: webstrateIdQuery, cookies: { key } },
-			{ $set: { 'cookies.$.value': value } }, function(err, res) {
-				if (err) return console.error(err);
-				// If our update didn't update anything, we have to add it first. Maybe this could be done
-				// in one query, but as this point, I've given up trying to get clever with MongoDB.
-				if (res.result.nModified === 0) {
-					db.cookies.updateOne({ userId, webstrateId: webstrateIdQuery },
-						// We still have to upsert, because even though the particular cookie key from above
-						// doesn't exist, the document may still exist.
-						{ $push: { cookies: { key, value } } }, { upsert: true }, function(err, res) {
-							if (err) return console.error(err);
-							if (pubsub) {
-								pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-									action: 'cookieUpdate', userId, update: { key, value }, webstrateId, WORKER_ID
-								}));
-							}
-						});
-				}
-				else {
-				// Actually, I've stopped trying to be clever altogether. Yes, this is the same as
-				// above.
-					if (pubsub) {
-						pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-							action: 'cookieUpdate', userId, update: { key, value }, webstrateId, WORKER_ID
-						}));
-					}
-				}
-			});
+		let res = await db.cookies.updateOne(
+			{ userId, webstrateId: webstrateIdQuery, cookies: { key } },
+			{ $set: { 'cookies.$.value': value } }
+		);
+			
+		// If our update didn't update anything, we have to add it first. Maybe this could be done
+		// in one query, but as this point, I've given up trying to get clever with MongoDB.
+		if (res.modifiedCount === 0) {
+			// We still have to upsert, because even though the particular cookie key from above
+			// doesn't exist, the document may still exist.
+			await db.cookies.updateOne(
+				{ userId, webstrateId: webstrateIdQuery },
+				{ $push: { cookies: { key, value } } }, 
+				{ upsert: true }
+			);
+		}
+
+		if (pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: 'cookieUpdate', userId, update: { key, value }, webstrateId, WORKER_ID
+			}));
+		}
 	}
 };
 

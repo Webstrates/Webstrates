@@ -44,8 +44,8 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		case 'cookieUpdate': {
 			if (data.update && user.userId !== 'anonymous:') {
-				clientManager.updateCookie(user.userId, webstrateId, data.update.key, data.update.value,
-					true);
+				await clientManager.updateCookie(user.userId, webstrateId, 
+					data.update.key, data.update.value,	true);
 			}
 			return;
 		}
