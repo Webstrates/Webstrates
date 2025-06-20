@@ -35,13 +35,13 @@
     }
   ],
   "dependencies": {
-    "@babel/core": "7.27.1",
+    "@babel/core": "7.27.4",
     "@babel/plugin-transform-template-literals": "^7.27.1",
     "@babel/preset-env": "7.27.2",
     "archiver": "7.0.1",
     "babel-loader": "10.0.0",
     "body-parser": "2.2.0",
-    "bson": "6.10.3",
+    "bson": "6.10.4",
     "client-sessions": "0.8.0",
     "console-stamp": "3.1.2",
     "csvtojson": "2.0.10",
@@ -58,14 +58,14 @@
     "md5-file": "^5.0.0",
     "mime-types": "3.0.1",
     "minimist": "1.2.8",
-    "mongodb": "6.16.x",
+    "mongodb": "6.17.0",
     "multer": "2.0.1",
     "os": "0.1.2",
     "passport": "0.7.0",
     "passport-github": "1.1.0",
     "passport-google-oauth2": "0.2.0",
     "passport-oauth2-profilemap": "0.0.1",
-    "redis": "5.1.0",
+    "redis": "5.5.6",
     "setimmediate": "^1.0.5",
     "sharedb": "5.2.2",
     "sharedb-mongo": "5.0.0",
@@ -81,8 +81,8 @@
     "chai": "5.2.0",
     "eslint": "^9.27.0",
     "eslint-webpack-plugin": "^5.0.1",
-    "mocha": "11.4.0",
-    "puppeteer": "24.9.0",
+    "mocha": "11.7.0",
+    "puppeteer": "24.10.2",
     "webpack-cli": "^6.0.1"
   }
 }
