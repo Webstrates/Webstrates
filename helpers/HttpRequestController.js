@@ -9,6 +9,7 @@ const mime = require('mime-types');
 const multer = require('multer');
 const os = require('os');
 const shortId = require('shortid');
+const util = require('util');
 const tmp = require('tmp');
 const url = require('url');
 const yauzl = require('yauzl');
@@ -362,7 +363,6 @@ module.exports.requestHandler = async function(req, res) {
 		}
 
 		if ('delete' in req.query) {
-			console.log("Got delete");
 			// If a user is required to be logged in (through loggedInToCreateWebstrates) to create a
 			// webstrate, we also require them to be logged in to delete a webstrate.
 			if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
@@ -448,15 +448,14 @@ function serveTags(req, res) {
  * @param {obj} res Express response object.
  * @private
  */
-function serveAssets(req, res) {
-	let latestOnly = 'latest' in req.query;
-	assetManager.getAssets(req.webstrateId, function(err, assets) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-		res.json(assets);
-	}, latestOnly);
+async function serveAssets(req, res) {
+	try {
+		let latestOnly = 'latest' in req.query;
+		return res.json(await assetManager.getAssets(req.webstrateId, latestOnly));
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 function serveJsonMLWebstrate(req, res, snapshot) {
@@ -491,13 +490,9 @@ function serveRawWebstrate(req, res, snapshot) {
  * @param {snapshot} snapshot Document snapshot.
  * @private
  */
-function serveCompressedWebstrate(req, res, snapshot) {
-	assetManager.getCurrentAssets(req.webstrateId, function(err, assets) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-
+async function serveCompressedWebstrate(req, res, snapshot) {
+	try {
+		let assets = assetManager.getCurrentAssets(req.webstrateId);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		const archive = archiver(format, { store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
@@ -527,7 +522,10 @@ function serveCompressedWebstrate(req, res, snapshot) {
 		const filename = req.query.filename || `${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
 		res.attachment(filename);
 		archive.pipe(res);
-	});
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 function serveTokenList(req, res) {
@@ -542,42 +540,33 @@ function serveTokenList(req, res) {
  * @private
  */
 async function copyWebstrate(req, res, snapshot) {
-	let webstrateId = req.query.copy || await generateWebstrateId(req);
-
-	// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
-	// otherwise just delete all permissions on the new document.
-	if (!req.user.permissions.includes('w')) {
-		if (req.user.username === 'anonymous' && req.user.provider === '') {
-			snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
-		} else {
-			snapshot = await permissionManager.addPermissionsToSnapshot(req.user.username,
-				req.user.provider, 'rw', snapshot);
-		}
-	}
-
-	// Remove all admin permissions from the snapshot.
-	snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
-
 	try {
-		await documentManager.createNewDocument({ webstrateId, snapshot });
-	} catch (err){
-		console.error(err);
-		return res.status(409).send(String(err));
-	}
-	
-	// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
-	// will always be set, even if no version is specified, or the user is accessing the webstrate
-	// through a tag.
-	assetManager.copyAssets({
-		fromWebstrateId: req.webstrateId,
-		toWebstrateId: webstrateId,
-		version: snapshot.v
-	}, function(err) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
+		let webstrateId = req.query.copy || await generateWebstrateId(req);
+
+		// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
+		// otherwise just delete all permissions on the new document.
+		if (!req.user.permissions.includes('w')) {
+			if (req.user.username === 'anonymous' && req.user.provider === '') {
+				snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+			} else {
+				snapshot = await permissionManager.addPermissionsToSnapshot(req.user.username,
+					req.user.provider, 'rw', snapshot);
+			}
 		}
+
+		// Remove all admin permissions from the new snapshot.
+		snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
+		await documentManager.createNewDocument({ webstrateId, snapshot });
 		
+		// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
+		// will always be set, even if no version is specified, or the user is accessing the webstrate
+		// through a tag.
+		await assetManager.copyAssets({
+			fromWebstrateId: req.webstrateId,
+			toWebstrateId: webstrateId,
+			version: snapshot.v
+		});
+
 		// Clone the query into a writeable object to remove ?copy to avoid infinite loops
 		let newQuery = Object.assign({}, req.query);
 		delete newQuery.copy;
@@ -585,7 +574,10 @@ async function copyWebstrate(req, res, snapshot) {
 			pathname:`/${webstrateId}/`,
 			query: newQuery
 		}));
-	});
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 /**
@@ -615,25 +607,24 @@ function restoreWebstrate(req, res, snapshot) {
 	// clientId. We'll just use the userId instead.
 	var source = req.user.userId;
 	return documentManager.restoreDocument({ webstrateId: req.webstrateId, version, tag },
-		source, function(err, newVersion) {
+		source, async function(err, newVersion) {
 			if (err) {
 				console.error(err);
 				return res.status(409).send(String(err));
 			}
 
 			// Also restore assets, so the restored version shows the old assets, not the new ones.
-			assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion },
-				function(err) {
-					if (err) {
-						console.error(err);
-						return res.status(409).send(String(err));
-					}
-					delete req.query.restore;
-					return res.redirect(url.format({
-						pathname:`/${req.webstrateId}/`,
-						query: req.query
-					}));
-				});
+			try {
+				await assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion });
+			} catch (err){
+				console.error(err);
+				return res.status(409).send(String(err));
+			}
+			delete req.query.restore;
+			return res.redirect(url.format({
+				pathname:`/${req.webstrateId}/`,
+				query: req.query
+			}));
 		});
 }
 
@@ -644,22 +635,17 @@ function restoreWebstrate(req, res, snapshot) {
  * @param {obj} res Express response object.
  * @private
  */
-function deleteWebstrate(req, res) {
+async function deleteWebstrate(req, res) {
 	var source = req.user.userId;
-	return assetManager.deleteAssets(req.webstrateId, function(err) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
 
-		documentManager.deleteDocument(req.webstrateId, source, function(err, result) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-			res.redirect('/');
-		});
-	});
+	try {
+		await assetManager.deleteAssets(req.webstrateId);
+		await util.promisify(documentManager.deleteDocument)(req.webstrateId, source);
+		res.redirect('/');
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 /**

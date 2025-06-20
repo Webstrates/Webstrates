@@ -222,13 +222,12 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 					});
 
 					// Send list of assets to clients if any.
-					assetManager.getAssets(webstrateId, function(err, assets) {
-						if (err) console.error(err);
-						if (assets) {
-							clientManager.sendToClient(socketId, {
-								wa: 'assets', d: webstrateId, assets
-							});
-						}
+					assetManager.getAssets(webstrateId).then((assets)=>{
+						clientManager.sendToClient(socketId, {
+							wa: 'assets', d: webstrateId, assets
+						});
+					}).catch(err=>{
+						console.error(err);
 					});
 
 					// No reason to lock up the execution by waiting for the tags and assets to be loaded;

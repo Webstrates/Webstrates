@@ -91,50 +91,40 @@ module.exports.assetUploadHandler = async function(req, res) {
  * @return {object}       (async) First duplicate asset object if any, otherwise null.
  * @private
  */
-const findDuplicateAsset = (asset) =>
-	db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
+const findDuplicateAsset = async (asset) => {
+	return await db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
+}
 
 /**
  * Get list of assets.
- * @param  {string}   webstrateId WebstrateId.
- * @param  {Function} next        Callback.
+ * @param  {string}   	webstrateId WebstrateId.
+ * @param  {bool}   	latestOnly Set to true to filter the list
  * @return {array}                (async) List of assets.
  * @public
  */
-module.exports.getAssets = function(webstrateId, next, latestOnly = false) {
-	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
-		.toArray(function(err, assets) {
-			if (err) return next && next(err);
-			
-			if(latestOnly) {
-				assets = filterNewestAssets(assets);
-			}
-			
-			assets.forEach(function(asset) {
-				asset.identifier = asset.fileName;
-				asset.fileName = asset.originalFileName;
-				delete asset.originalFileName;
-			});
-			return next && next(null, assets);
-		});
+module.exports.getAssets = async function(webstrateId, latestOnly = false) {
+	let assets = await db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
+	if (latestOnly) assets = filterNewestAssets(assets);
+	assets.forEach(function(asset) {
+		asset.identifier = asset.fileName;
+		asset.fileName = asset.originalFileName;
+		delete asset.originalFileName;
+	});
+	return assets;
 };
 
 /**
  * Get assets accessible at the current version.
  * @param  {string}   webstrateId WebstrateId.
- * @param  {Function} next        Callback.
  * @return {array}                (async) List of current assets.
  * @public
  */
-module.exports.getCurrentAssets = function(webstrateId, next) {
-	return db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 })
-		.toArray(function(err, assets) {
-			if (err) return next && next(err);
-			assets = filterNewestAssets(assets);
-			// Filter out deleted assets.
-			assets = assets.filter(asset => !asset.deletedAt);
-			return next(null, assets);
-		});
+module.exports.getCurrentAssets = async function(webstrateId) {
+	let assets = await db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
+	assets = filterNewestAssets(assets);
+	// Filter out deleted assets.
+	assets = assets.filter(asset => !asset.deletedAt);
+	return assets;
 };
 
 /**
@@ -166,20 +156,19 @@ module.exports.getAsset = async function({ webstrateId, assetName, version }) {
  * downloading a webstrate at the version (or later), the asset will also not appear in the archive.
  * @param  {string}   webstrateId      WebstrateId.
  * @param  {string}   assetName        Asset name.
- * @param  {Function} next             Callback.
  * @public
  */
-module.exports.markAssetAsDeleted = (webstrateId, assetName) => new Promise((accept, reject) => {
-	documentManager.getDocumentVersion(webstrateId, (err, version) => {
-		db.assets.findOneAndUpdate({ webstrateId, originalFileName: assetName, },
-			{ $set: { deletedAt: version } },
-			// Sort to ensure that we mark the newest verison of the file as deleted.
-			{ sort: { v: -1 } }, (err, res) => {
-				if (err || res.value === null) return reject(new Error('Update failed'));
-				return accept(res.value);
-			});
-	});
-});
+module.exports.markAssetAsDeleted = async function(webstrateId, assetName){
+	let version = await util.promisify(documentManager.getDocumentVersion)(webstrateId);
+	let res = await db.assets.findOneAndUpdate(
+		{ webstrateId, originalFileName: assetName},
+		{ $set: { deletedAt: version } },
+		// Sort to ensure that we mark the newest verison of the file as deleted.
+		{ sort: { v: -1 } });
+	
+	if (res.value === null) throw new Error('Update failed');
+	return res.value;
+};
 
 /**
  * Delete asset from database. This is useful if, for some reason, an asset no longer exists in
@@ -189,9 +178,9 @@ module.exports.markAssetAsDeleted = (webstrateId, assetName) => new Promise((acc
  *                           name used when uploading the file, but rather the 'identifier'.
  * @public
  */
-module.exports.deleteAssetFromDatabase = (fileName) => {
+module.exports.deleteAssetFromDatabase = async (fileName) => {
 	if (!fileName || fs.existsSync(`${module.exports.UPLOAD_DEST}${fileName}`)) return;
-	return db.assets.deleteOne({ fileName: fileName });
+	return await db.assets.deleteOne({ fileName: fileName });
 };
 
 /**
@@ -200,10 +189,10 @@ module.exports.deleteAssetFromDatabase = (fileName) => {
  * @return {Promise}         Promise resolved when the file has been deleted.
  * @private
  */
-const deleteAssetFromFileSystem = (fileName) => {
+const deleteAssetFromFileSystem = async (fileName) => {
 	if (!fileName || !fs.existsSync(`${module.exports.UPLOAD_DEST}${fileName}`)) return;
 	const unlink = util.promisify(fs.unlink);
-	return unlink(`${module.exports.UPLOAD_DEST}${fileName}`);
+	return await unlink(`${module.exports.UPLOAD_DEST}${fileName}`);
 };
 
 /**
@@ -215,36 +204,30 @@ const deleteAssetFromFileSystem = (fileName) => {
  * @param  {[type]}   options.version         Copy all assets up to this version. When prototyping
  *                                            off version n, we don't want assets from versions
  *                                            newer than n.
- * @param  {Function} next                    Callback.
  * @public
  */
-module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }, next) {
+module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, version}) {
 	var query = { webstrateId: fromWebstrateId, v: { $lte: version } };
-	db.assets.find(query).toArray().then(assets=>{
-		assets = filterNewestAssets(assets);
+	let assets = await db.assets.find(query).toArray();
+	assets = filterNewestAssets(assets);
 
-		// If there are no assets, we can terminate.
-		if (assets.length === 0) return next();
+	// If there are no assets, we can terminate.
+	if (assets.length === 0) return;
 
-		// When prototyping a new document, we always start from version 0, so we are going to reset
-		// all asset versions to version 0 as well. Also, we need to replace the prototype webstrateId
-		// (fromWebstrateId) with target webstrateId (toWebstrateId).
-		assets.forEach(function(asset) {
-			asset.v = 0;
-			asset.webstrateId = toWebstrateId;
-			// Keep a reference to the old asset. If _originalId already exists, it means the asset we're
-			// copying itself is a copy, so we keep a reference to the *real* original. This is needed for
-			// asset CSV searching, as we identify CSV rows by their assetId, and when copying a
-			// webstrate, we don't copy all the CSV rows.
-			asset._originalId = asset._originalId || asset._id;
-			delete asset._id;
-		});
-		db.assets.insertMany(assets).then(()=>{next()}).catch(err=>{
-			return next && next(err);
-		});
-	}).catch(err=>{
-		return next && next(err);
+	// When prototyping a new document, we always start from version 0, so we are going to reset
+	// all asset versions to version 0 as well. Also, we need to replace the prototype webstrateId
+	// (fromWebstrateId) with target webstrateId (toWebstrateId).
+	assets.forEach(function(asset) {
+		asset.v = 0;
+		asset.webstrateId = toWebstrateId;
+		// Keep a reference to the old asset. If _originalId already exists, it means the asset we're
+		// copying itself is a copy, so we keep a reference to the *real* original. This is needed for
+		// asset CSV searching, as we identify CSV rows by their assetId, and when copying a
+		// webstrate, we don't copy all the CSV rows.
+		asset._originalId = asset._originalId || asset._id;
+		delete asset._id;
 	});
+	await db.assets.insertMany(assets);
 };
 
 /**
@@ -257,87 +240,66 @@ module.exports.copyAssets = function({ fromWebstrateId, toWebstrateId, version }
  * @param  {int}      options.version     Version to restore from.
  * @param  {string}   options.tag         Tag to deduce version from if no version is provided.
  * @param  {int}      options.newVersion  Version to bump assets to.
- * @param  {Function} next                Callback.
  * @public
  */
-module.exports.restoreAssets = function({ webstrateId, version, tag, newVersion }, next) {
-	// We need the version, so if it's not defined, we fetch it, and then call ourselves again,
-	// this time with the version paramter set.
-	if (!version) {
-		return documentManager.getVersionFromTag(webstrateId, tag, function(err, version) {
-			if (err) return next && next(err);
-			module.exports.restoreAssets({ webstrateId, version, tag, newVersion }, next);
-		});
-	}
+module.exports.restoreAssets = async function({ webstrateId, version, tag, newVersion }) {
+	// We need the version, so if it's not defined, we fetch it
+	if (!version) version = await util.promisify(documentManager.getVersionFromTag)(webstrateId, tag);
 
 	var query = { webstrateId, v: { $lte: version } };
-	db.assets.find(query).toArray(function(err, assets) {
-		// If there are no assets, we can terminate.
-		if (assets.length === 0) return next();
+	let assets = db.assets.find(query).toArray();
+	
+	// If there are no assets, we can terminate.
+	if (assets.length === 0) return next();
 
-		if (err) return next && next(err);
-		assets = filterNewestAssets(assets);
+	assets = filterNewestAssets(assets);
 		
-		// Bump the version of all copied assets.
-		assets.forEach((asset) => {
-		     asset.v = newVersion;
-		     delete asset._id;
-		});
-		
-		db.assets.insertMany(assets, next);
+	// Bump the version of all copied assets.
+	assets.forEach((asset) => {
+			asset.v = newVersion;
+			delete asset._id;
 	});
+	
+	await db.assets.insertMany(assets, next);
 };
 
 /**
  * Delete all assets from a webstrate. If the webstrate has been prototyped/copied, the assets may
  * not be deleted from the file system.
  * @param  {string}   webstrateId WebstrateId to delete assets from.
- * @param  {Function} next        [description]
- * @return {[type]}               [description]
  */
-module.exports.deleteAssets = function(webstrateId, next) {
-	let r = db.assets.find({ webstrateId }, { fileName: 1 });
-	r.toArray().then(assets=>{
-		// Transform array of objects into primitive array.
-		assets.forEach(function(asset, index) {
-			assets[index] = asset.fileName;
-		});
+module.exports.deleteAssets = async function(webstrateId) {
+	// Transform array of objects into primitive array.
+	let assets = await db.assets.find({ webstrateId }, { fileName: 1 }).toArray();
+	assets.forEach(function(asset, index) {
+		assets[index] = asset.fileName;
+	});
 
-		// Find all files that are being used by other documents.
-		db.assets.distinct('fileName', {
-			fileName: { $in: assets },
-			webstrateId: { $ne: webstrateId }
-		}).then(assetsBeingUsed=> {
-			// Don't delete assets being used by other webstrates.
-			var assetsToBeDeleted = assets.filter(asset =>  !assetsBeingUsed.includes(asset));
+	// Don't delete assets being used by other webstrates.
+	let assetsBeingUsed = db.assets.distinct('fileName', {
+		fileName: { $in: assets },
+		webstrateId: { $ne: webstrateId }
+	});
+	var assetsToBeDeleted = assets.filter(asset =>  !assetsBeingUsed.includes(asset));
 
-			var promises = [];
-			// Run through the files and delete them.
-			assetsToBeDeleted.forEach(function(asset) {
-				promises.push(searchableAssets.deleteSearchable(asset._id));
-				promises.push(new Promise(function(resolve, reject) {
-					fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
-						resolve();
-					}).catch(err=>{
-						// We print out errors, but we don't stop execution. If a file fails to delete, we
-						// probably still want to get rid of the remaining files.
-						console.error(err);
-					});
-				}));
+	var promises = [];
+	// Run through the files and delete them.
+	assetsToBeDeleted.forEach(function(asset) {
+		promises.push(searchableAssets.deleteSearchable(asset._id));
+		promises.push(new Promise(function(resolve, reject) {
+			fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
+				resolve();
+			}).catch(err=>{
+				// We print out errors, but we don't stop execution. If a file fails to delete, we
+				// probably still want to get rid of the remaining files.
+				console.error(err);
 			});
+		}));
+	});
 
-			// Once every file has been deleted from the file system, we delete them from the database.
-			Promise.all(promises).then(function() {
-				db.assets.deleteMany({ webstrateId }).then(()=>{next()}).catch(err=>{
-					return next && next(err);
-				});
-			});
-		}).catch(err => {
-		    return next && next(err);
-		});
-	}).catch(err=>{
-		return next && next(err);
-	});;
+	// Once every file has been deleted from the file system, we delete them from the database.
+	await Promise.all(promises);
+	await db.assets.deleteMany({ webstrateId });
 };
 
 /**
@@ -369,11 +331,11 @@ function filterNewestAssets(assets) {
  * @param {string}   webstrateId WebstrateId.
  * @param {obj}      asset       Asset information.
  * @param {string}   source      Origin of assets (some client identifier)
- * @param {Function} next        Callback.
  * @public
  */
-module.exports.addAsset = async function(webstrateId, asset, searchable, source, next) {
-	let version = await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', source);
+module.exports.addAsset = async function(webstrateId, asset, searchable, source) {
+	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', source)	
+	let version = await util.promisify(documentManager.getDocumentVersion)(webstrateId);
 	let result = await db.assets.insertOne({
 		webstrateId,
 		v: version,
