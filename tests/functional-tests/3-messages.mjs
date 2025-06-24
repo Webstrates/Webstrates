@@ -12,7 +12,7 @@ describe('Messages', function() {
 	const otherWebstrateId = 'test-' + util.randomString();
 	const urlA = config.server_address + webstrateId;
 	const urlB = config.server_address + otherWebstrateId;
-	const userId = config.username + ':github';
+	let userId;
 
 	const messageValue1 = util.randomString();
 	const messageValue2 = util.randomString();
@@ -44,6 +44,8 @@ describe('Messages', function() {
 			util.waitForFunction(pageC, () => window.webstrate && window.webstrate.loaded)
 		]);
 
+		let userObject = await pageA.evaluate(() => window.webstrate.user);
+		userId = userObject.username +":" + config.authType;
 	});
 
 	after(async () => {

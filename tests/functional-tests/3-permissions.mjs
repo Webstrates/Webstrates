@@ -71,10 +71,12 @@ describe('Permissions', function() {
 		if (!util.credentialsProvided) return this.skip();
 
 		const permissions = await pageA.evaluate(() => window.webstrate.permissions);
+		const userObject = await pageA.evaluate(() => window.webstrate.user);
+
 		assert.deepEqual(permissions, [
 			{
-				username: config.username,
-				provider: 'github',
+				username: userObject.username,
+				provider: config.authType,
 				permissions: 'rw'
 			}
 		]);
@@ -166,11 +168,12 @@ describe('Permissions', function() {
 		async function() {
 			if (!util.credentialsProvided) return this.skip();
 
+			const userObject = await pageA.evaluate(() => window.webstrate.user);
 			const permissions = await pageA.evaluate(() => window.webstrate.permissions);
 			assert.deepEqual(permissions, [
 				{
-					username: config.username,
-					provider: 'github',
+					username: userObject.username,
+					provider: config.authType,
 					permissions: 'rw'
 				},
 				{
