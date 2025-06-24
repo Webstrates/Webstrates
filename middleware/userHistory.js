@@ -12,8 +12,6 @@ exports.onmessage = async (ws, req, data, next) => {
 
 	if (data.wa && data.wa === 'userHistory') {
 		const limit = Number(data.options && data.options.limit) || 50;
-		//const result = await db.userHistory.findOne({ userId }, { webstrates: { $slice: 10 } });
-		console.log(data);
 		const result = await db.userHistory.aggregate([
 			{ $match: { userId } },
 			{ $project: { webstrates: { $objectToArray: '$webstrates' } } },
@@ -45,9 +43,11 @@ exports.onmessage = async (ws, req, data, next) => {
 		const $set = {};
 		$set[`webstrates.${webstrateId}`] = now;
 
-		db.userHistory.updateOne({ userId }, { $set }, { upsert: true }, (err, res) => {
-			if (err) console.error(err);
-		});
+		try {
+			await db.userHistory.updateOne({ userId }, { $set }, { upsert: true });
+		} catch (err){
+			console.error(err);
+		};
 	}
 
 	next();
