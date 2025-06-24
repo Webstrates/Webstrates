@@ -735,7 +735,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
                 contentType === 'application/x-zip-compressed' ||
                 (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.zip$/i))) {
 
-                const arrayBuffer = await response.arrayBuffer();
+				const arrayBuffer = await response.arrayBuffer();
                 const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Node.js Buffer
 
                 return tmp.file((err, filePath, fd, cleanUpCallback) => {
@@ -902,6 +902,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 			let htmlDocumentFound = false, createdWebstrate = false;
 			let assets = [];
 			zipFile.on('entry', entry => {
+
 				if (/\/$/.test(entry.fileName)) {
 				// Directory file names end with '/'.
 				// Note that entries for directories themselves are optional.
@@ -970,55 +971,55 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 				}
 			});
 
-			function addAssetsToWebstrateOrDeleteTheAssets() {
-				if (!createdWebstrate) {
-					assets.forEach(asset => {
+			// Link all the assets ont the webstrate once done unpacking, if it had a webstrate in it
+			zipFile.once('end', async ()=>{
+				try {
+					zipFile.close();
+
+					// If no webstrateId exists, either the creation of the webstrate failed or we're waiting
+					// on mongodb. Either way, we give mongodb 500ms to figure it out.
+					for (let attempts = 3; attempts > 0; attempts--){
+						if (createdWebstrate) continue;
+						await new Promise((accept,reject)=>{setTimeout(accept,500)})
+					}
+
+					if (!createdWebstrate) {
+						// We still have no webstrate, give up
+						assets.forEach(asset => {
+							fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
+						});
+						if (htmlDocumentFound) {
+							return reject('index.html found, but unable to create webstrate from it. Aborting.');
+						} else {
+							return reject('No index.html found.');
+						}
+					}
+
+					var source = `${req.user.userId} (${req.remoteAddress})`;
+					// Assets ending in .searchable aren't real assets, but just an indication that
+					// the asset they're referring to should be searchable. E.g. if two assets
+					// data.csv and data.csv.searchable are uploaded, the ladder just serves to let us
+					// know that the former should be made searchable.
+					let searchables = assets.filter(asset =>
+						asset.originalname.endsWith('.searchable'));
+
+					// Remove dummy files from assets list.
+					assets = assets.filter(asset =>
+						!asset.originalname.endsWith('.searchable'));
+
+					// Delete the dummy files from the system.
+					searchables.forEach(asset => {
 						fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
 					});
-					if (htmlDocumentFound) {
-						reject('index.html found, but unable to create webstrate from it. Aborting.');
-					} else {
-						reject('No index.html found.');
-					}
+
+					// Now create a simple list (no objects) of the asset names that should be
+					// searchable. We remember to remove the 11-character long '.searchable' prefix.
+					searchables = searchables.map(asset => asset.originalname.slice(0, -11));
+					await assetManager.addAssets(webstrateId, assets, searchables, source);
+					accept(webstrateId);
+				} catch (err){
+					reject(err);
 				}
-
-				var source = `${req.user.userId} (${req.remoteAddress})`;
-				// Assets ending in .searchable aren't real assets, but just an indication that
-				// the asset they're referring to should be searchable. E.g. if two assets
-				// data.csv and data.csv.searchable are uploaded, the ladder just serves to let us
-				// know that the former should be made searchable.
-				let searchables = assets.filter(asset =>
-					asset.originalname.endsWith('.searchable'));
-
-				// Remove dummy files from assets list.
-				assets = assets.filter(asset =>
-					!asset.originalname.endsWith('.searchable'));
-
-				// Delete the dummy files from the system.
-				searchables.forEach(asset => {
-					fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
-				});
-
-				// Now create a simple list (no objects) of the asset names that should be
-				// searchable. We remember to remove the 11-character long '.searchable' prefix.
-				searchables = searchables.map(asset => asset.originalname.slice(0, -11));
-				assetManager.addAssets(webstrateId, assets, searchables, source,
-					(err, assetRecords) => {
-						accept(webstrateId);
-					});
-			}
-
-			zipFile.once('end', function() {
-				zipFile.close();
-
-				// If the webstrate has been created, we continue to add assets.
-				if (createdWebstrate) {
-					return addAssetsToWebstrateOrDeleteTheAssets();
-				}
-
-				// If no webstrateId exists, either the creation of the webstrate failed or we're waiting
-				// on mongodb. Eiter way, we give mongodb 500ms to figure it out.
-				setTimeout(addAssetsToWebstrateOrDeleteTheAssets, 500);
 			});
 
 			zipFile.readEntry();

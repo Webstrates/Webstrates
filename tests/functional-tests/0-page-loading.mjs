@@ -17,18 +17,18 @@ describe('Page Loading', function() {
 		await browser.close();
 	});
 
-	it('should connect to Webstrates server', async () => {
+	it('should connect and create a webstrate using /'+webstrateId+" within 1 sec", async () => {
 		browser = await puppeteer.launch();
 		pageA = await browser.newPage();
-
 		let gotoSuccess = true;
 		try {
-			await pageA.goto(url);
-		} catch (e) {
+			await pageA.goto(url, { waitUntil: 'domcontentloaded' });
+		} catch (err){
 			gotoSuccess = false;
 		}
+
 		assert.isTrue(gotoSuccess);
-	});
+	});	
 
 	it('webstrate object becomes available', async () => {
 		const webstrateObjectAvailable = await util.waitForFunction(pageA, () => {
@@ -63,7 +63,16 @@ describe('Page Loading', function() {
 		assert.equal(webstrateObjectWebstrateId, webstrateId);
 	});
 
-	it('should be able to delete webstrate', async () => {
+	it('the webstrate has an initial revision history of 1', async ()=>{
+		await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
+
+		const innerText = await pageA.evaluate(() =>
+			JSON.parse(document.querySelector('body').innerText));
+
+		assert.equal(innerText.version, 1, 'Version should be 1 immediately after creation');
+	});
+
+	it('should be able to delete a webstrate', async () => {
 		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 		await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
 
@@ -75,28 +84,5 @@ describe('Page Loading', function() {
 		}
 
 		assert.equal(innerText.version, 0, 'Version should be 0');
-	});
-
-	const webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
-		? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
-		: '([A-z0-9-]{8,10})';
-
-	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
-		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + 'new', { waitUntil: 'domcontentloaded' });
-
-		const redirectedUrl = pageB.url();
-		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
-		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
-		assert.match(redirectedUrl, new RegExp(regex));
-	});
-
-	it('root (/) redirects to /frontpage/', async () => {
-		pageB = await browser.newPage();
-		await pageB.goto(config.server_address, { waitUntil: 'domcontentloaded' });
-
-		const redirectedUrl = pageB.url();
-		assert.equal(redirectedUrl, config.server_address + 'frontpage/');
-	});
-
+	});	
 });

@@ -287,7 +287,7 @@ module.exports.deleteAssets = async function(webstrateId) {
 	assetsToBeDeleted.forEach(function(asset) {
 		promises.push(searchableAssets.deleteSearchable(asset._id));
 		promises.push(new Promise(function(resolve, reject) {
-			fs.unlink(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
+			util.promisify(fs.unlink)(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
 				resolve();
 			}).catch(err=>{
 				// We print out errors, but we don't stop execution. If a file fails to delete, we
