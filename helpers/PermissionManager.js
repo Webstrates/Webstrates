@@ -254,7 +254,7 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 		return permissions;
 	}
 
-	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+	const snapshot = await documentManager.getDocument({ webstrateId });
 	permissions = await module.exports.getUserPermissionsFromSnapshot(username, provider,
 		snapshot);
 
@@ -272,7 +272,7 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
  * @private
  */
 async function getPermissions(webstrateId) {
-	const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+	const snapshot = await documentManager.getDocument({ webstrateId });
 	return await module.exports.getPermissionsFromSnapshot(snapshot, false);
 }
 
@@ -375,7 +375,7 @@ async function getInheritedPermissions(permissionsList, recursionCount) {
 	for (let i = 0, l = permissionsList.length; i < l; ++i) {
 		const webstrateId = permissionsList[i].webstrateId;
 		if (webstrateId) {
-			const snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+			const snapshot = await documentManager.getDocument({ webstrateId });
 			const otherPermissionList = await module.exports.getPermissionsFromSnapshot(snapshot,
 				false, recursionCount);
 
@@ -418,7 +418,7 @@ module.exports.getDefaultPermissions = function(username, provider) {
  */
 module.exports.addPermissions = async function(username, provider, permissions, webstrateId, source,
 	next) {
-	let snapshot = await util.promisify(documentManager.getDocument)({ webstrateId });
+	let snapshot = await documentManager.getDocument({ webstrateId });
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||
 		typeof snapshot.data[1] !== 'object') {

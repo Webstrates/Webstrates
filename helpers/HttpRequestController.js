@@ -177,16 +177,12 @@ module.exports.requestHandler = async function(req, res) {
 		}));
 	}
 
-	return documentManager.getDocument({
-		webstrateId: req.webstrateId,
-		version: req.version,
-		tag: req.tag
-	}, async function(err, snapshot) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-
+	try {
+		let snapshot = await documentManager.getDocument({
+			webstrateId: req.webstrateId,
+			version: req.version,
+			tag: req.tag
+		});
 		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 			req.user.provider, snapshot);
 
@@ -391,8 +387,10 @@ module.exports.requestHandler = async function(req, res) {
 		// We don't need to check for "static" in req.query, because this happens on the client side.
 
 		return serveWebstrate(req, res);
-	});
-
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 };
 
 /**
@@ -412,18 +410,17 @@ function serveVersion(req, res, snapshot) {
  * @param {obj} res Express response object.
  * @private
  */
-function serveOps(req, res) {
-	documentManager.getOps({
-		webstrateId: req.webstrateId,
-		version: Number(req.version || req.query.to) || undefined,
-		initialVersion: Number(req.query.from) || undefined
-	}, function(err, ops) {
-		if (err) {
-			console.error(err);
-			return res.status(409).send(String(err));
-		}
-		res.json(ops);
-	});
+async function serveOps(req, res) {
+	try {
+		res.json(await documentManager.getOps({
+			webstrateId: req.webstrateId,
+			version: Number(req.version || req.query.to) || undefined,
+			initialVersion: Number(req.query.from) || undefined
+		}));
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 /**
@@ -492,7 +489,7 @@ function serveRawWebstrate(req, res, snapshot) {
  */
 async function serveCompressedWebstrate(req, res, snapshot) {
 	try {
-		let assets = assetManager.getCurrentAssets(req.webstrateId);
+		let assets = await assetManager.getCurrentAssets(req.webstrateId);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		const archive = archiver(format, { store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
@@ -587,7 +584,7 @@ async function copyWebstrate(req, res, snapshot) {
  * @param {snapshot} snapshot Document snapshot.
  * @private
  */
-function restoreWebstrate(req, res, snapshot) {
+async function restoreWebstrate(req, res, snapshot) {
 	// There shouldn't be a version or tag in the first part of the URL, i.e.
 	// `/<id>/<version|tag>/?restore` is not allowed.
 	if (req.version || req.tag) {
@@ -606,26 +603,22 @@ function restoreWebstrate(req, res, snapshot) {
 	// usually the websocket clientId, but this is a regular HTTP request, so there is no
 	// clientId. We'll just use the userId instead.
 	var source = req.user.userId;
-	return documentManager.restoreDocument({ webstrateId: req.webstrateId, version, tag },
-		source, async function(err, newVersion) {
-			if (err) {
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
+	try {
+		let newVersion = await documentManager.restoreDocument({ webstrateId: req.webstrateId, version, tag },
+			source);
 
-			// Also restore assets, so the restored version shows the old assets, not the new ones.
-			try {
-				await assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion });
-			} catch (err){
-				console.error(err);
-				return res.status(409).send(String(err));
-			}
-			delete req.query.restore;
-			return res.redirect(url.format({
-				pathname:`/${req.webstrateId}/`,
-				query: req.query
-			}));
-		});
+		// Also restore assets, so the restored version shows the old assets, not the new ones.
+		await assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion });
+
+		delete req.query.restore;
+		return res.redirect(url.format({
+			pathname:`/${req.webstrateId}/`,
+			query: req.query
+		}));
+	} catch (err){
+		console.error(err);
+		return res.status(409).send(String(err));
+	}
 }
 
 /**
@@ -640,7 +633,7 @@ async function deleteWebstrate(req, res) {
 
 	try {
 		await assetManager.deleteAssets(req.webstrateId);
-		await util.promisify(documentManager.deleteDocument)(req.webstrateId, source);
+		await documentManager.deleteDocument(req.webstrateId, source);
 		res.redirect('/');
 	} catch (err){
 		console.error(err);

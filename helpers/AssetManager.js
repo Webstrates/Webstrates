@@ -159,7 +159,7 @@ module.exports.getAsset = async function({ webstrateId, assetName, version }) {
  * @public
  */
 module.exports.markAssetAsDeleted = async function(webstrateId, assetName){
-	let version = await util.promisify(documentManager.getDocumentVersion)(webstrateId);
+	let version = await documentManager.getDocumentVersion(webstrateId);
 	let res = await db.assets.findOneAndUpdate(
 		{ webstrateId, originalFileName: assetName},
 		{ $set: { deletedAt: version } },
@@ -244,13 +244,13 @@ module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, ver
  */
 module.exports.restoreAssets = async function({ webstrateId, version, tag, newVersion }) {
 	// We need the version, so if it's not defined, we fetch it
-	if (!version) version = await util.promisify(documentManager.getVersionFromTag)(webstrateId, tag);
+	if (!version) version = await documentManager.getVersionFromTag(webstrateId, tag);
 
 	var query = { webstrateId, v: { $lte: version } };
 	let assets = db.assets.find(query).toArray();
 	
 	// If there are no assets, we can terminate.
-	if (assets.length === 0) return next();
+	if (assets.length === 0) return;
 
 	assets = filterNewestAssets(assets);
 		
@@ -335,7 +335,7 @@ function filterNewestAssets(assets) {
  */
 module.exports.addAsset = async function(webstrateId, asset, searchable, source) {
 	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', source)	
-	let version = await util.promisify(documentManager.getDocumentVersion)(webstrateId);
+	let version = await documentManager.getDocumentVersion(webstrateId);
 	let result = await db.assets.insertOne({
 		webstrateId,
 		v: version,
@@ -381,6 +381,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 module.exports.addAssets = async function(webstrateId, assets, searchables, source) {
 	return await Promise.all(assets.map(asset=>{
 		let shouldBeSearchable = searchables.includes(asset.originalname);
+		// Intentionally no await here
 		return module.exports.addAsset(webstrateId, asset, shouldBeSearchable, source);
 	}));
 };
@@ -394,20 +395,15 @@ module.exports.addAssets = async function(webstrateId, assets, searchables, sour
  * @return {bool}          (async) Whether the file is permitted to be uploaded or not.
  * @private
  */
-async function fileFilter(req, file, next) {
-	const snapshot = await util.promisify(documentManager.getDocument)({
-		webstrateId: req.webstrateId });
-
-	if (!snapshot.type) {
-		return next(new Error('Document doesn\'t exist.'));
-	}
-
-	const permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
-		req.user.provider, snapshot);
-
-	if (!permissions.includes('w')) {
-		return next(new Error('Insufficient permissions.'));
-	}
-
-	return next(null, true);
+function fileFilter(req, file, next) {
+	util.callbackify(async ()=>{
+		const snapshot = await documentManager.getDocument({webstrateId: req.webstrateId});
+		if (!snapshot.type) throw new Error('Document doesn\'t exist.');
+	
+		const permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
+			req.user.provider, snapshot);
+	
+		if (!permissions.includes('w')) throw new Error('Insufficient permissions.');
+		return true;
+	})(next);
 }

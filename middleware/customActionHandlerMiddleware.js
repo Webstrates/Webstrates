@@ -64,16 +64,13 @@ exports.onmessage = async (ws, req, data, next) => {
 			if (!data.token) break;
 			const version = data.v;
 			const tag = data.l;
-			documentManager.getDocument({ webstrateId, tag, version }, function(err,
-				snapshot) {
-				const responseObj = { wa: 'reply', token: data.token };
-				if (err) {
-					responseObj.error = err.message;
-				} else {
-					responseObj.reply = snapshot;
-				}
-				ws.send(JSON.stringify(responseObj));
-			});
+			const responseObj = { wa: 'reply', token: data.token };
+			try {
+				responseObj.reply = await documentManager.getDocument({ webstrateId, tag, version });
+			} catch (err){
+				responseObj.error = err.message;
+			}
+			ws.send(JSON.stringify(responseObj));
 			break;
 		}
 		// Request a range of ops.
@@ -81,15 +78,13 @@ exports.onmessage = async (ws, req, data, next) => {
 			if (!data.token) break;
 			const initialVersion = data.from;
 			const version = data.to;
-			documentManager.getOps({ webstrateId, initialVersion, version }, function(err, ops) {
-				const responseObj = { wa: 'reply', token: data.token };
-				if (err) {
-					responseObj.error = err.message;
-				} else {
-					responseObj.reply = ops;
-				}
-				ws.send(JSON.stringify(responseObj));
-			});
+			const responseObj = { wa: 'reply', token: data.token };
+			try {
+				responseObj.reply = await documentManager.getOps({ webstrateId, initialVersion, version });
+			} catch (err){
+				responseObj.error = err.message;
+			}
+			ws.send(JSON.stringify(responseObj));
 			break;
 		}
 		// Subscribe to signals.
@@ -161,24 +156,23 @@ exports.onmessage = async (ws, req, data, next) => {
 			// version xor tag.
 			if (!!version ^ !!tag) {
 				const source = `${user.userId} (${req.remoteAddress})`;
-				documentManager.restoreDocument({ webstrateId, tag, version }, source,
-					function(err, newVersion) {
-						if (err) {
-							if (data.token) {
-								ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-									error: err.message
-								}));
-							}
-						} else {
-							// The permissions of the older version of the document may be different than
-							// what they are now, so we should invalidate the cached permissions.
-							permissionManager.invalidateCachedPermissions(webstrateId);
-							permissionManager.expireAllAccessTokens(webstrateId, true);
+				try {
+					let newVersion = await documentManager.restoreDocument({ webstrateId, tag, version }, source);
 
-							ws.send(JSON.stringify({ wa: 'reply', reply: newVersion,
-								token: data.token }));
-						}
-					});
+					// The permissions of the older version of the document may be different than
+					// what they are now, so we should invalidate the cached permissions.
+					permissionManager.invalidateCachedPermissions(webstrateId);
+					permissionManager.expireAllAccessTokens(webstrateId, true);
+
+					ws.send(JSON.stringify({ wa: 'reply', reply: newVersion,
+						token: data.token }));
+				} catch (err){
+					if (data.token) {
+						ws.send(JSON.stringify({ wa: 'reply', token: data.token,
+							error: err.message
+						}));
+					}
+				}
 			} else {
 				console.error('Can\'t restore, need either a tag label or version. Not both.');
 				if (data.token) {
@@ -206,18 +200,17 @@ exports.onmessage = async (ws, req, data, next) => {
 			if (/^\d/.test(tag) || !/^\d+$/.test(version)) {
 				return;
 			}
-			documentManager.tagDocument(webstrateId, version, tag, function(err, res) {
-				if (data.token) {
-					const returnObject = { wa: 'reply', token: data.token };
-					if (err) {
-						console.error(err);
-						returnObject.error = err.message;
-					} else {
-						returnObject.reply = res;
-					}
-					ws.send(JSON.stringify(returnObject));
-				}
-			});
+
+			const returnObject = { wa: 'reply'};
+			try {
+				returnObject.reply = await documentManager.tagDocument(webstrateId, version, tag);
+			} catch (err){
+				returnObject.error = err.message;
+			}
+			if (data.token){
+				returnObject.token = data.token;
+				ws.send(JSON.stringify(returnObject));
+			}
 			break;
 		}
 		// Removing a tag from a document version.

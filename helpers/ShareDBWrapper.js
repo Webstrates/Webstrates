@@ -79,7 +79,7 @@ if (global.config.tagging) {
 				if (tag) return next();
 
 				var label = global.config.tagging.tagPrefix + new Date(timestamp);
-				documentManager.tagDocument(webstrateId, version, label, function(err) {
+				documentManager.tagDocument(webstrateId, version, label).catch(err=>{
 					// We ignore error 11000 (duplicate key), because they're fairly inconsequential.
 					// Prior to MongoDB 4.1.6 (see https://jira.mongodb.org/browse/SERVER-14322), MongoDB
 					// would throw this error when trying to create the same entry multiple times (due to

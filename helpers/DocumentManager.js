@@ -32,16 +32,16 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	// The snapshot is an optional parameter, so if it's not set, let's fetch it from the database
 	// and call createNewdocument again with it.
 	if (!snapshot) {
-		snapshot = await util.promisify(module.exports.getDocument)({ webstrateId: prototypeId, version, tag });
+		snapshot = await module.exports.getDocument({ webstrateId: prototypeId, version, tag });
 		return await module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot });
 	}
 
 	// If the document already exists and is empty, we just delete it, so unused documents won't take
 	// up webstrate names. This would especially be annoying if somebody navigated to /<nice-name>,
 	// then tried to use `webstrate.newPrototypeFromFile` in the same document.
-	const existingSnapshot = await util.promisify(module.exports.getDocument)({ webstrateId });
+	const existingSnapshot = await module.exports.getDocument({ webstrateId });
 	if (isSnapshotEmpty(existingSnapshot.data) && existingSnapshot.v > 0) {
-		await util.promisify(module.exports.deleteDocument)(webstrateId, 'empty-document');
+		await module.exports.deleteDocument(webstrateId, 'empty-document');
 	}
 
 	// Let ShareDB handle the creation of the document.
@@ -91,24 +91,19 @@ function isSnapshotEmpty(snapshot) {
  * @param  {string}   options.webstrateId WebstrateId.
  * @param  {string}   options.version     Desired document version (tag or version is required).
  * @param  {string}   options.tag         Desired document tag. (tag or version is required)
- * @param  {Function} next                Callback.
  * @return {Snapshot}                     (async) Document snapshot.
  * @public
  */
-module.exports.getDocument = function({ webstrateId, version, tag }, next) {
-	if (tag) {
-		return getDocumentFromTag(webstrateId, tag, next);
-	}
+module.exports.getDocument = async function({ webstrateId, version, tag }) {
+	if (tag) return await util.promisify(getDocumentFromTag)(webstrateId, tag);
+
 	if (version === undefined || version === '' || version === 'head') {
-		return ShareDbWrapper.fetch(webstrateId, next);
+		let res = await util.promisify(ShareDbWrapper.fetch)(webstrateId);
+		return res;
 	}
-	if (Number.isNaN(version)) {
-		return next(new Error('Version must be a number or \'head\''));
-	}
-	getTagBeforeVersion(webstrateId, version, function(err, snapshot) {
-		if (err) return next(err);
-		transformDocumentToVersion({ webstrateId, snapshot, version }, next);
-	});
+	if (Number.isNaN(version)) throw new Error('Version must be a number or \'head\'');
+	let snapshot = await util.promisify(getTagBeforeVersion)(webstrateId, version);
+	return await transformDocumentToVersion({ webstrateId, snapshot, version });
 };
 
 /**
@@ -189,133 +184,106 @@ module.exports.submitOps = function(webstrateId, ops, source, next) {
  * @param  {string} options.webstrateId WebstrateId.
  * @param  {string} options.version     Desired document version (tag or version is required).
  * @param  {string} options.tag         Desired document tag. (tag or version is required)
- * @param  {Function} next)             Callback (optional).
  * @public
  */
-module.exports.restoreDocument = function({ webstrateId, version, tag }, source, next) {
-	module.exports.getDocument({ webstrateId, version, tag }, function(err, oldVersion) {
-		if (err) return next && next(err);
-		var tag = oldVersion.label;
-		// Send a no-op so we can see when the document was restored, but also to make sure the
-		// restore command bumps the document version by at least one to avoid asset name conflicts.
-		return module.exports.sendNoOp(webstrateId, 'documentRestore', source, function(err) {
-			module.exports.getDocument({ webstrateId, version: 'head' }, function(err, currentVersion) {
-				if (err) return next && next(err);
-				var ops = jsondiff(currentVersion.data, oldVersion.data);
-				if (ops.length === 0) {
-					return module.exports.tagDocument(webstrateId, currentVersion.v, tag + ' (restored)',
-						next);
-				}
-				module.exports.submitOps(webstrateId, ops, source, function(err) {
-					if (err) return next && next(err);
-					var newVersion = currentVersion.v + ops.length + 1;
-					module.exports.tagDocument(webstrateId, newVersion, tag + ' (restored)', next);
-				});
-			});
-		});
-	});
+module.exports.restoreDocument = async function({ webstrateId, version, tag }, source) {
+	let oldVersion = await module.exports.getDocument({ webstrateId, version, tag });
+	var tag = oldVersion.label;
+
+	// Send a no-op so we can see when the document was restored, but also to make sure the
+	// restore command bumps the document version by at least one to avoid asset name conflicts.
+	await util.promisify(module.exports.sendNoOp)(webstrateId, 'documentRestore', source);
+	
+	let currentVersion = await module.exports.getDocument({ webstrateId, version: 'head' })
+	var ops = jsondiff(currentVersion.data, oldVersion.data);
+	if (ops.length === 0) {
+		return await util.promisify(module.exports.tagDocument)(webstrateId, currentVersion.v, tag + ' (restored)');
+	} else {
+		await util.promisify(module.exports.submitOps)(webstrateId, ops, source);
+		var newVersion = currentVersion.v + ops.length + 1;
+		return await util.promisify(module.exports.tagDocument)(webstrateId, newVersion, tag + ' (restored)');
+	}
 };
 
 /**
  * Delete a document.
  * @param  {string}   webstrateId WebstrateId.
- * @param  {Function} next        Callback (optional).
  * @public
  */
-module.exports.deleteDocument = function(webstrateId, source, next, attempts = 0) {
-	db.webstrates.deleteOne({ _id: webstrateId }).then(res=>{
-		// When creating a webstrate and then quickly deleting it aftewards, the document may not
-		// have made its way into the database when we try to delete it. If this happens, we wait
-		// a little and then try again a couple of times.
-		if (res.deletedCount === 0) {
-			if (attempts > 5) {
-				return next && next(new Error('No webstrate to delete'));
-			} else {
-				return setTimeout(() => {
-					module.exports.deleteDocument(webstrateId, source, next, attempts + 1);
-				}, 100);
-			}
-		}
+module.exports.deleteDocument = async function(webstrateId) {
+	// When creating a webstrate and then quickly deleting it aftewards, the document may not
+	// have made its way into the database when we try to delete it. If this happens, we wait
+	// a little and then try again a couple of times.
+	let attempts = 0;
+	let res;
+	do {
+		attempts++;
+		if (attempts > 1) await new Promise((accept,reject)=>{setTimeout(()=>{accept()},100)});
+		if (attempts > 5) throw new Error('No webstrate to delete');
+		res = await db.webstrates.deleteOne({ _id: webstrateId })
+	} while (res.deletedCount === 0)
 
-		clientManager.sendToClients(webstrateId, {
-			wa: 'delete',
-			d: webstrateId
-		});
-
-		db.tags.deleteMany({ webstrateId });
-		db.ops.deleteMany({ d: webstrateId });
-		next && next();
-	}).catch(err=>{
-		return next && next(err);
+	clientManager.sendToClients(webstrateId, {
+		wa: 'delete',
+		d: webstrateId
 	});
+
+	await db.tags.deleteMany({ webstrateId });
+	await db.ops.deleteMany({ d: webstrateId });
 };
 
 /**
  * Retrieves the current version of the document.
  * @param  {string}   webstrateId WebstrateId.
- * @param  {Function} next        Callback.
  * @return {int}                  (async) Document version.
  */
-module.exports.getDocumentVersion = function(webstrateId, next) {
-	db.webstrates.findOne({ _id: webstrateId }, { _v: 1}).then(doc=>{
-		try {
-			return next && next(null, Number(doc._v));
-		} catch(e) {
-			console.log("Error in getDocumentVersion:", e, doc);
-			return next && next(err);
-		}
-	}).catch(err=>{
-		return next && next(err);
-	});
+module.exports.getDocumentVersion = async function(webstrateId) {
+	let doc = await db.webstrates.findOne({ _id: webstrateId }, { _v: 1});
+	try {
+		return Number(doc._v);
+	} catch (err){
+		console.log("Error in getDocumentVersion:", e, doc, err);
+		throw err;
+	}
 };
 
-module.exports.getVersionFromTag = function(webstrateId, tag, next) {
-	db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 }).then(doc=>{
-		return next && next(null, Number(doc.v));
-	}).catch(err=>{
-		return next && next(err);
-	});
+/**
+ * Retrieves the current version of the document.
+ * @param  {string}   webstrateId WebstrateId.
+ * @param  {string}   tag tag.
+ * @return {int}                  (async) Document version.
+ */
+module.exports.getVersionFromTag = async function(webstrateId, tag, next) {
+	let doc = await db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 });
+	return Number(doc.v);
 };
 
 /**
  * Get operations for a document.
  * @param  {string}   options.webstrateId WebstrateId.
  * @param  {string}   options.version     Document version.
- * @param  {Function} next                Callback (optional).
  * @return {Ops}                          (async) Operations.
  * @public
  */
-module.exports.getOps = function({ webstrateId, initialVersion, version }, next) {
+module.exports.getOps = async function({ webstrateId, initialVersion, version }) {
 	// If no version is defined, all operations will be retrieved.
-	ShareDbWrapper.getOps(webstrateId, initialVersion, version, (err, ops) => {
+	let ops = await util.promisify(ShareDbWrapper.getOps)(webstrateId, initialVersion, version);	
 
-		if (err) return next && next(err);
-		if (!db.sessionLog) return next && next(null, ops);
-
-		// If we have access to a session log, we attach session entries to operations before
-		// returning them.
+	// If we have access to a session log, and it is not disabled, we attach session 
+	// entries to operations before returning them.
+	if (db.sessionLog && !config.disableSessionLog){
 		var sessionsInOps = new Set();
 		ops.forEach(function(op) {
 			sessionsInOps.add(op.src);
 		});
-
-		if (config.disableSessionLog) {
-			return next(null, ops);
-		}
-
-		db.sessionLog.find({
-			'sessionId': { $in: Array.from(sessionsInOps) }
-		}).toArray().then(sessions => {
-
-			ops.forEach(op =>{
-				op.session = sessions.find(session => op.src === session.sessionId);
-			});
-
-			next && next(null, ops);
-		}).catch(err=>{
-			return next && next(err);
+	
+		let sessions = await db.sessionLog.find({'sessionId': { $in: Array.from(sessionsInOps) }}).toArray();
+		ops.forEach(op =>{
+			op.session = sessions.find(session => op.src === session.sessionId);
 		});
-	});
+	}
+
+	return ops;
 };
 
 /**
@@ -362,47 +330,37 @@ module.exports.getTags = function(webstrateId, next) {
  * @param  {string}   webstrateId WebstrateId.
  * @param  {string}   version     Version to apply tag to.
  * @param  {string}   label       Tag label.
- * @param  {Function} next        Callback (optional).
  * @public
  */
-module.exports.tagDocument = function(webstrateId, version, label, next) {
-	if (!label || label.includes('.')) {
-		return next && next(new Error('Tag names should not contain periods.'));
-	}
-	module.exports.getDocument({ webstrateId, version }, function(err, snapshot) {
+module.exports.tagDocument = async function(webstrateId, version, label) {
+	if (!label || label.includes('.')) throw new Error('Tag names should not contain periods.');
 
-		if (err) return next && next(err);
-		// We let clients know that the document has been tagged before it has happened, because this
-		// shouldn't fail.
-		clientManager.sendToClients(webstrateId, {
-			wa: 'tag',
-			d: webstrateId,
-			v: version,
-			l: label
-		});
+	let snapshot = await module.exports.getDocument({ webstrateId, version });
 
-		var data = snapshot.data;
-		var type = snapshot.type;
-		// All labels and versions have to be unique, so this is how we enforce that. First, try to
-		// set the label for a specific version. Due to our collection's uniqueness constraint, this
-		// will fail if the label already exists.
-		db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true }).then(()=>{
-			// Now we can't just update the label, because a label for the version may also exist.
-			// Therefore, we delete anything with the label or version, and then insert it again.
-			db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]}).then(()=>{
-    				// And now reinsert.
-				db.tags.insertOne({ webstrateId, v: version, label, data, type }).then(()=>{
-					return next && next(null, version, label);
-				}).catch(err=>{
-					return next && next(err);
-				});;
-			}).catch(err=>{
-				return next && next(err);
-			});
-		}).catch(err=>{
-		    return next && next(err);
-		});
+	// We let clients know that the document has been tagged before it has happened, because this
+	// shouldn't fail.
+	clientManager.sendToClients(webstrateId, {
+		wa: 'tag',
+		d: webstrateId,
+		v: version,
+		l: label
 	});
+
+	var data = snapshot.data;
+	var type = snapshot.type;
+	// All labels and versions have to be unique, so this is how we enforce that. First, try to
+	// set the label for a specific version. Due to our collection's uniqueness constraint, this
+	// will fail if the label already exists.
+	await db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true });
+
+	// Now we can't just update the label, because a label for the version may also exist.
+	// Therefore, we delete anything with the label or version, and then insert it again.
+	await db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]});
+	
+	// And now reinsert.
+	await db.tags.insertOne({ webstrateId, v: version, label, data, type });
+
+	return version;
 };
 
 /**
@@ -461,27 +419,25 @@ module.exports.addTagToSnapshot = function(snapshot, next) {
  * @param  {string}   options.snapshot    Snapshot to be transformed from (optional).
  *                                        If not specified, we transform from version 0.
  * @param  {string}   options.version     Document version.
- * @param  {Function} next                Callback (optional).
  * @return {Snapshot}                     (async) Document snapshot.
  * @private
  */
-function transformDocumentToVersion({ webstrateId, snapshot, version }, next) {
+async function transformDocumentToVersion({ webstrateId, snapshot, version }) {
 	if (!snapshot) {
 		snapshot = { v: 0, id: webstrateId };
 	}
 
-	module.exports.getOps({ webstrateId, initialVersion: snapshot.v, version }, function(err, ops) {
-		if (err) return next && next(err);
-		// Apply each operation to rebuild the document.
-		ops.forEach(function(op) {
-			ot.apply(snapshot, op);
-		});
-		// If after we've applied all updates, we haven't reached the desired version, the user must
-		// be requesting a version that doesn't exist yet.
-		err = version === snapshot.v ? null :
-			new Error(`Version ${version} requested, but newest version is ${snapshot.v}.`);
-		next && next(err, snapshot);
+	// Apply each operation to rebuild the document.
+	let ops = await module.exports.getOps({ webstrateId, initialVersion: snapshot.v, version });
+	ops.forEach(function(op) {
+		ot.apply(snapshot, op);
 	});
+
+	// If after we've applied all updates, we haven't reached the desired version, the user must
+	// be requesting a version that doesn't exist yet.
+	if (version !== snapshot.v) throw new Error(`Version ${version} requested, but newest version is ${snapshot.v}.`);
+
+	return snapshot;
 }
 
 /**
