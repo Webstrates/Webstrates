@@ -355,7 +355,7 @@ module.exports.requestHandler = async function(req, res) {
 				return res.status(403).send('Admin permissions are required to restore this document.');
 			}
 
-			return restoreWebstrate(req, res, snapshot);
+			return await restoreWebstrate(req, res, snapshot);
 		}
 
 		if ('delete' in req.query) {
