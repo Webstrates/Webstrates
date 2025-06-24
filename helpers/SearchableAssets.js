@@ -21,20 +21,20 @@ const batchInsertJsonToMongo = (filePath, assetId) => new Promise((accept, rejec
 	let batchRows = [];
 	let counter = 0;
 	csv(csvConfig).fromFile(filePath)
-		.on('json', row => {
+		.on('json', async row => {
 			row._assetId = assetId;
 			batchRows.push(row);
 			counter++;
 			// Insert 100,000 entries at a time.
 			if (counter === 10e4) {
-				db.assetsCsv.insertMany(batchRows, { ordered: true });
+				await db.assetsCsv.insertMany(batchRows, { ordered: true });
 				batchRows = [];
 				counter = 0;
 			}
 		})
-		.on('done', err => {
+		.on('done', async err => {
 			// When we've run through all the rows, insert the remainder. This will be less than 100,000.
-			db.assetsCsv.insertMany(batchRows, { ordered: true });
+			await db.assetsCsv.insertMany(batchRows, { ordered: true });
 			if (err) reject(err);
 			else accept();
 		});
@@ -50,7 +50,7 @@ module.exports.makeSearchable = async (assetId, filePath) => {
 	const startTime = Date.now();
 	await batchInsertJsonToMongo(filePath, assetId);
 	console.log('Insertion of', assetId, 'took', (Date.now() - startTime) / 1000 + 's');
-	return db.assets.updateOne({ _id: assetId }, { $set: { searchable: true }});
+	return await db.assets.updateOne({ _id: assetId }, { $set: { searchable: true }});
 };
 
 /**
@@ -60,7 +60,7 @@ module.exports.makeSearchable = async (assetId, filePath) => {
  * @public
  */
 module.exports.deleteSearchable = async assetId =>
-	db.assetsCsv.deleteMany({ _assetId: assetId });
+	await db.assetsCsv.deleteMany({ _assetId: assetId });
 
 
 // Allowed MongoDB operators used in search query.
