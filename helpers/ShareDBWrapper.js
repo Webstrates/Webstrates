@@ -24,12 +24,17 @@ const share = sharedb({
 
 const agent = share.connect();
 
-const insertSessionLog = (log, attempts = 10) => {
-	if (attempts === 0) throw new Error('Unable to insert session log');
-	if (!db.sessionLog) return insertSessionLog(log, attempts - 1);
-	db.sessionLog.insertOne(log, (err, db) => {
-		if (err) return setTimeout(() => insertSessionLog(log, attempts - 1), 50);
-	});
+const insertSessionLog = async (log) => {
+	for (let attempts = 10; attempts > 0; attempts--){
+		try {
+			if (!db.sessionLog) throw new Error("DB not ready yet");
+			await db.sessionLog.insertOne(log);
+			return;
+		} catch (err){
+			await new Promise((accept,reject)=>{setTimeout(accept,50)});
+		}
+	}
+	throw new Error('Unable to insert session log');
 };
 
 share.use(['connect'], (req, next) => {
@@ -132,7 +137,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		}
 
 		if (!config.disableSessionLog && !req.agent.sessionLogged) {
-			insertSessionLog({
+			await insertSessionLog({
 				sessionId: req.agent.clientId,
 				userId: user.userId,
 				connectTime: req.agent.connectTime,
