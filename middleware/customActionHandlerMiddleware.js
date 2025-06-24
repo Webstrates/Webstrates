@@ -27,18 +27,18 @@ exports.onmessage = async (ws, req, data, next) => {
 			const message = data.m;
 			const recipients = data.recipients;
 			const senderId = user.userId === 'anonymous:' ? socketId : user.userId;
-			messagingManager.sendMessage(recipients, message, senderId, true);
+			await messagingManager.sendMessage(recipients, message, senderId, true);
 			return;
 		}
 		case 'deleteMessage': {
 			if (user.userId !== 'anonymous:') {
-				messagingManager.deleteMessage(user.userId, data.messageId, true);
+				await messagingManager.deleteMessage(user.userId, data.messageId, true);
 			}
 			return;
 		}
 		case 'deleteAllMessages': {
 			if (user.userId !== 'anonymous:') {
-				messagingManager.deleteAllMessages(user.userId, true);
+				await messagingManager.deleteAllMessages(user.userId, true);
 			}
 			return;
 		}

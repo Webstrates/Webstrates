@@ -30,7 +30,7 @@ if (pubsub) {
 				module.exports.clientAdded(message.socketId, message.userId);
 				break;
 			case 'message':
-				sendMessage(message.userId, message.messageId, message.message, message.senderId);
+				broadcastToUserEverywhere(message.userId, message.messageId, message.message, message.senderId);
 				break;
 			case 'allMessagesDeleted':
 				module.exports.deleteAllMessages(message.userId);
@@ -73,15 +73,15 @@ module.exports.clientAdded = function(socketId, userId, local) {
  * @param  {bool} local       Whether the request is done locally or remotely.
  * @public
  */
-module.exports.sendMessage = function(recipients, message, senderId, local) {
+module.exports.sendMessage = async function(recipients, message, senderId, local) {
 	if (Array.isArray(recipients)) {
-		recipients.forEach(function(recipient) {
-			module.exports.sendMessage(recipient, message, senderId, local);
-		});
-		return;
+		return await Promise.all(recipients.map(recipient=>{
+			return module.exports.sendMessage(recipient, message, senderId, local); // intentionally no await here
+		}));
 	}
-	const recipient = recipients;
 
+	// Only single recipients from here on:
+	const recipient = recipients;
 	const userId = typeof recipient === 'string' && recipient.includes(':') ? recipient
 		: socketUserMap.get(recipient);
 
@@ -90,10 +90,9 @@ module.exports.sendMessage = function(recipients, message, senderId, local) {
 		return;
 	}
 
+	// Send it
 	const messageId = shortId.generate();
-
-	sendMessage(userId, messageId, message, senderId, local);
-
+	broadcastToUserEverywhere(userId, messageId, message, senderId, local);
 	if (local) {
 		saveMessage(userId, messageId, message, senderId);
 		if (pubsub) {
@@ -108,7 +107,7 @@ module.exports.sendMessage = function(recipients, message, senderId, local) {
  * Send message to client.
  * @private
  */
-function sendMessage(userId, messageId, message, senderId) {
+function broadcastToUserEverywhere(userId, messageId, message, senderId) {
 	clientManager.broadcastToUserClients(userId, {
 		wa: 'message',
 		messageId,
@@ -120,14 +119,11 @@ function sendMessage(userId, messageId, message, senderId) {
 /**
  * Get all user messages.
  * @param  {string}   userId   UserId.
- * @param  {Function} callback Callback.
  * @return {list}              (async) List of messages.
  * @public
  */
-module.exports.getMessages = function(userId, callback) {
-	db.messages.find({ userId }, { _id: 0 }).toArray().then((result)=>{callback(null,result)}).catch(err=>{
-	    callback(err);
-	});
+module.exports.getMessages = async function(userId) {
+	return await db.messages.find({ userId }, { _id: 0 }).toArray();
 };
 
 /**
@@ -136,16 +132,15 @@ module.exports.getMessages = function(userId, callback) {
  * @param  {string} messageId MessageId.
  * @public
  */
-module.exports.deleteMessage = function(userId, messageId, local) {
+module.exports.deleteMessage = async function(userId, messageId, local) {
 	if (!userId || !messageId) return;
 
 	clientManager.broadcastToUserClients(userId, {
 		wa: 'messageDeleted', messageId
 	});
 
-
 	if (local) {
-		db.messages.deleteOne({ userId, messageId });
+		await db.messages.deleteOne({ userId, messageId });
 		if (pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 				action: 'messageDeleted', userId, messageId, WORKER_ID: WORKER_ID
@@ -160,7 +155,7 @@ module.exports.deleteMessage = function(userId, messageId, local) {
  * @param  {string} userId UserId.
  * @public
  */
-module.exports.deleteAllMessages = function(userId, local) {
+module.exports.deleteAllMessages = async function(userId, local) {
 	if (!userId) return;
 
 	clientManager.broadcastToUserClients(userId, {
@@ -168,7 +163,7 @@ module.exports.deleteAllMessages = function(userId, local) {
 	});
 
 	if (local) {
-		db.messages.deleteMany({ userId });
+		await db.messages.deleteMany({ userId });
 		if (pubsub) {
 			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
 				action: 'allMessageDeleted', userId, WORKER_ID: WORKER_ID
@@ -185,14 +180,12 @@ module.exports.deleteAllMessages = function(userId, local) {
  * @param  {string} senderId  SenderId.
  * @private
  */
-function saveMessage(userId, messageId, message, senderId) {
-	db.messages.insertOne({
+async function saveMessage(userId, messageId, message, senderId) {
+	await db.messages.insertOne({
 		userId,
 		messageId,
 		message,
 		senderId,
 		createdAt: new Date()
-	}, function(err, res) {
-		if (err) console.error(err);
 	});
 }

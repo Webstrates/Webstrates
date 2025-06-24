@@ -278,15 +278,7 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 		}).toArray());
 
 		// Get user's messages.
-		promises.push(new Promise(function(accept, reject) {
-			messagingManager.getMessages(userId, function(err, messages) {
-				if (err) {
-					reject(err);
-					return console.error(err);
-				}
-				accept(messages);
-			});
-		}));
+		promises.push(messagingManager.getMessages(userId)); // intentionally no await here
 
 		// Attach user's cookies and messages to the hello message object.
 		Promise.all(promises).then(function([cookies, messages]) {
