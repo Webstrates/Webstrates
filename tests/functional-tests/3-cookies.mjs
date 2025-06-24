@@ -218,7 +218,7 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await util.logInToGithub(pageC);
+		await util.logInToAuth(pageC);
 		await pageC.goto(urlA, { waitUntil: 'networkidle2' });
 
 		const hereCookies = await pageC.evaluate(() => window.webstrate.user.cookies.here.get());
