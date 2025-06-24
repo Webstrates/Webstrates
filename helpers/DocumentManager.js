@@ -197,11 +197,11 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 	let currentVersion = await module.exports.getDocument({ webstrateId, version: 'head' })
 	var ops = jsondiff(currentVersion.data, oldVersion.data);
 	if (ops.length === 0) {
-		return await util.promisify(module.exports.tagDocument)(webstrateId, currentVersion.v, tag + ' (restored)');
+		return await module.exports.tagDocument(webstrateId, currentVersion.v, tag + ' (restored at '+new Date()+')');
 	} else {
 		await util.promisify(module.exports.submitOps)(webstrateId, ops, source);
 		var newVersion = currentVersion.v + ops.length + 1;
-		return await util.promisify(module.exports.tagDocument)(webstrateId, newVersion, tag + ' (restored)');
+		return await module.exports.tagDocument(webstrateId, newVersion, tag + ' (restored at '+new Date()+')');
 	}
 };
 
@@ -334,7 +334,6 @@ module.exports.getTags = function(webstrateId, next) {
  */
 module.exports.tagDocument = async function(webstrateId, version, label) {
 	if (!label || label.includes('.')) throw new Error('Tag names should not contain periods.');
-
 	let snapshot = await module.exports.getDocument({ webstrateId, version });
 
 	// We let clients know that the document has been tagged before it has happened, because this
