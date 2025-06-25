@@ -14,8 +14,6 @@ describe('Permissions', function() {
 	let browserA, browserB, pageA, pageB, pageC;
 
 	before(async () => {
-		if (!util.credentialsProvided) return;
-
 		browserA = await puppeteer.launch();
 		browserB = await puppeteer.launch();
 
@@ -39,7 +37,7 @@ describe('Permissions', function() {
 
 	after(async () => {
 		if (!util.credentialsProvided) {
-			util.warn('Skipping all permission tests as no GitHub credentials were provided.');
+			util.warn('Skipping most permission tests as no GitHub credentials were provided.');
 			return;
 		}
 
@@ -65,6 +63,70 @@ describe('Permissions', function() {
 				])
 			);
 		});
+	});
+
+	it('anonymous should have access when data-auth is invalid', async function() {
+		// Set data-auth to something invalid  
+		await pageA.evaluate(() => {  
+			document.documentElement.setAttribute('data-auth', 'this-is-not-json');  
+		});  
+		
+		// Not-logged-in can access the webstrate  
+		const resC = await pageC.goto(url, { waitUntil: 'networkidle2' });  
+		assert.equal(resC.status(), 200);  
+		
+		const testString = util.randomString();  
+		await pageC.evaluate((s) => document.body.innerText = s, testString);  
+		const propagated = await util.waitForFunction(pageA, (s) =>  
+			document.body.innerText === s, 2, testString);  
+		assert.isTrue(propagated);  		
+	});	
+
+	it('logged in users should have access when data-auth is invalid', async function() {
+		// ...continues from last testcase
+		if (!util.credentialsProvided) return this.skip();
+		
+		// logged-in can access the webstrate  
+		const resB = await pageB.goto(url, { waitUntil: 'networkidle2' });  
+		assert.equal(resB.status(), 200);  
+		
+		const testString = util.randomString();  
+		await pageB.evaluate((s) => document.body.innerText = s, testString);  
+		const propagated = await util.waitForFunction(pageA, (s) =>  
+			document.body.innerText === s, 2, testString);  
+		assert.isTrue(propagated);  		
+	});	
+
+	it('permission changes made via data-auth on A should propagate and match data-auth on client B', async function() {
+		// Ensure both clients are on the correct page and loaded.  
+		await pageA.goto(url, { waitUntil: 'networkidle2' });  
+		await pageB.goto(url, { waitUntil: 'networkidle2' });  
+		
+		// Set permissions directly via data-auth attribute on pageA  
+		const newPermissions = [  
+			{  
+				username: 'anonymous',  
+				provider: '',  
+				permissions: 'rw'  
+			},  
+			{  
+				username: 'testuser',  
+				provider: '',  
+				permissions: 'r'  
+			}  
+		];  
+		
+		const newDataAuth = JSON.stringify(newPermissions);  
+		
+		await pageA.evaluate(dataAuth => {  
+			document.documentElement.setAttribute('data-auth', dataAuth);  
+		}, newDataAuth);  
+		
+		// Wait for the data-auth attribute to propagate to pageB  
+		const propagated = await util.waitForFunction(pageB, expected =>  
+			document.documentElement.getAttribute('data-auth') === expected, 2, newDataAuth);  
+		
+		assert.isTrue(propagated, 'data-auth attribute did not propagate to client B');  
 	});
 
 	it('webstrate.permissions should match what we set on logged in client', async function() {

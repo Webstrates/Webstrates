@@ -330,29 +330,29 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 	recursionCount = 0) {
 	var permissionsList;
 
-	if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === 'html' &&
-		snapshot.data[1] && snapshot.data[1]['data-auth']) {
-		try {
+	// Attempt to read the permissions from the document + inherited documents
+	try {
+		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === 'html' &&
+			snapshot.data[1] && snapshot.data[1]['data-auth']) {
 			permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
 				.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
-		} catch (err) {
-			console.warn('Couldn\'t parse document permissions for', snapshot.id);
-			// We don't have to do anything. No valid document permissions.
-		}
 
-		// We allow a certain number of recursive permission inheritances, i.e. webstrate X inheriting
-		// permissions from Y, inheriting from Z, and so forth. If this is exceeded, we ignore the
-		// "deeper" permissions (and also log a warning on the server).
-		if (recursionCount > ALLOWED_RECURSIVE_INHERITANCES) {
-			console.warn('Too many recursive inheritances in', snapshot.id);
+			// We allow a certain number of recursive permission inheritances, i.e. webstrate X inheriting
+			// permissions from Y, inheriting from Z, and so forth. If this is exceeded, we ignore the
+			// "deeper" permissions (and also log a warning on the server).
+			if (recursionCount > ALLOWED_RECURSIVE_INHERITANCES) {
+				console.warn('Too many recursive inheritances in', snapshot.id);
+				return permissionsList;
+			}
+
+			// Add all permissions to permissionsList by side effect. This is faster than creating new
+			// arrays and copying stuff around.
+			await getInheritedPermissions(permissionsList, recursionCount + 1);
+
 			return permissionsList;
 		}
-
-		// Add all permissions to permissionsList by side effect. This is faster than creating new
-		// arrays and copying stuff around.
-		await getInheritedPermissions(permissionsList, recursionCount + 1);
-
-		return permissionsList;
+	} catch (err) {
+		console.warn('Couldn\'t parse document permissions for', snapshot.id);
 	}
 
 	// If we found no permissions, return default permissions, unless specified otherwise.
@@ -364,7 +364,6 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 };
 
 async function getInheritedPermissions(permissionsList, recursionCount) {
-
 	const inheritWebstrateIds = permissionsList.filter(o => o.webstrateId !== undefined);
 
 	// We do this "the slow way", i.e. not async/parallel, because somebody could otherwise easily
