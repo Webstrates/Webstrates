@@ -33,6 +33,9 @@ const jsonml = {
 	ELEMENT_LIST_OFFSET: 2
 };
 
+
+const inFlightAttributes = new Map();
+
 /**
  * Extract the XML namespace from a DOM element.
  * @param  {DOMNode} element Element.
@@ -59,7 +62,7 @@ function getNamespace(element) {
  * @param {string} value          Attribute value.
  * @private
  */
-function setAttribute(rootElement, path, cleanAttributeName, newValue) {
+function setRawAttribute(rootElement, path, cleanAttributeName, newRawValue) {
 	const [childElement] = corePathTree.elementAtPath(rootElement, path);
 
 	// This has been commented out as it makes non-transient attributes appear transient in protected
@@ -71,23 +74,21 @@ function setAttribute(rootElement, path, cleanAttributeName, newValue) {
 
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 	if (cleanAttributeName === '__wid') {
-		coreUtils.setWidOnElement(childElement, newValue);
+		coreUtils.setWidOnElement(childElement, newRawValue);
 		return;
 	}
 
 	// MongoDB doesn't support periods (.) inkeys, so we store them as &dot; instead.
 	const attributeName = coreUtils.unescapeDots(cleanAttributeName);
-	newValue = coreUtils.unescape(newValue);
-
 	const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
-	if (isSvgPath) childElement.__d = newValue;
+	if (isSvgPath) childElement.__d = newRawValue;
 
-	const oldValue = childElement.getAttribute(attributeName);
-	childElement.setAttribute(attributeName, newValue, coreDOM.elementOptions);
+	const oldRawValue = getRawInFlightAttribute(childElement,attributeName);
+	setRawInFlightAttribute(childElement, attributeName, newRawValue, coreDOM.elementOptions);
 
 	// Last argument is false for not local, i.e happened on another client.
-	coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, oldValue, newValue,
-		false);
+	coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, 
+		coreUtils.unescape(oldRawValue), coreUtils.unescape(newRawValue), false);
 }
 
 /**
@@ -417,20 +418,24 @@ function insertInText(rootElement, path, charIndex, value) {
 			// optional. Therefore, it may just be a change made to a comment or regular text node
 			// without an attribute object. We verify by seeing if an attribute name exists.
 			if (attributeName) {
-				// Attribute value diff.
+				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
+				// form while the value set/getAttribute and passed to event system are in unescaped form.
 				attributeName = path.pop();
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
 				// which messes up our attribute diffing. We also do this in deleteInText below.
 				const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
-				let oldValue = childElement.getAttribute(attributeName);
-				if (isSvgPath) oldValue = childElement.__d;
-				const newValue = oldValue.substring(0, charIndex)
-					+ value + oldValue.substring(charIndex);
-				if (isSvgPath) childElement.__d = newValue;
-				childElement.setAttribute(attributeName, newValue);
-				coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, oldValue, newValue,
-					false);
-				coreEvents.triggerEvent('DOMAttributeTextInsertion', childElement, attributeName, charIndex,
+				let cleanAttributeName = coreUtils.unescapeDots(attributeName);
+				let oldRawValue = getRawInFlightAttribute(childElement,cleanAttributeName);
+
+				if (isSvgPath) oldRawValue = childElement.__d;
+				const newRawValue = oldRawValue.substring(0, charIndex)
+					+ value + oldRawValue.substring(charIndex);
+				if (isSvgPath) childElement.__d = newRawValue;
+
+				setRawInFlightAttribute(childElement, cleanAttributeName, newRawValue);
+				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, coreUtils.unescape(oldRawValue), 
+					coreUtils.unescape(newRawValue), false);
+				coreEvents.triggerEvent('DOMAttributeTextInsertion', childElement, cleanAttributeName, charIndex,
 					value, false);
 				break;
 			}
@@ -472,6 +477,26 @@ function insertInText(rootElement, path, charIndex, value) {
 
 }
 
+function getRawInFlightAttribute(element, cleanAttributeName){
+	let rawValue;
+	let elementAttributes = inFlightAttributes.get(element);
+	if (elementAttributes) rawValue = elementAttributes[cleanAttributeName];
+	if (rawValue===undefined){
+		rawValue = coreUtils.escape(element.getAttribute(cleanAttributeName));
+	} 
+	return rawValue;
+}
+function setRawInFlightAttribute(element, cleanAttributeName, rawValue, options){
+	let elementAttributes = inFlightAttributes.get(element);
+	if (!elementAttributes) {
+		elementAttributes = {};
+		inFlightAttributes.set(element,elementAttributes);
+	}
+	elementAttributes[cleanAttributeName] = rawValue;
+	element.setAttribute(cleanAttributeName, coreUtils.unescape(rawValue), options);
+}
+
+
 /**
  * Recursively navigates an element using path to delete text at an index.
  * @param {DOMNode} parentElement DOMNode used as root element for path navigation.
@@ -491,20 +516,24 @@ function deleteInText(rootElement, path, charIndex, value) {
 			throw Error('Unsupported indexType jsonml.TAGNAME_INDEX (1)');
 		case jsonml.ATTRIBUTE_INDEX:
 			if (attributeName) {
-				// Attribute value diff.
+				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
+				// form while the value set/getAttribute and passed to event system are in unescaped form.
 				attributeName = path.pop();
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
 				// which messes up our attribute diffing. We also do this in insertInText above.
 				const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
-				let oldValue = childElement.getAttribute(attributeName);
-				if (isSvgPath) oldValue = childElement.__d;
-				const newValue = oldValue.substring(0, charIndex)
-					+ oldValue.substring(charIndex + value.length);
-				if (isSvgPath) childElement.__d = newValue;
-				childElement.setAttribute(attributeName, newValue);
-				coreEvents.triggerEvent('DOMAttributeSet', childElement, attributeName, oldValue, newValue,
+				let cleanAttributeName = coreUtils.unescapeDots(attributeName);
+				let oldRawValue = getRawInFlightAttribute(childElement, cleanAttributeName);
+
+				if (isSvgPath) oldRawValue = childElement.__d;
+				const newRawValue = oldRawValue.substring(0, charIndex) + 
+					oldRawValue.substring(charIndex + value.length);
+				if (isSvgPath) childElement.__d = newRawValue;
+
+				setRawInFlightAttribute(childElement,cleanAttributeName, newRawValue);
+				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, coreUtils.unescape(oldRawValue), coreUtils.unescape(newRawValue),
 					false);
-				coreEvents.triggerEvent('DOMAttributeTextDeletion', childElement, attributeName, charIndex,
+				coreEvents.triggerEvent('DOMAttributeTextDeletion', childElement, cleanAttributeName, charIndex,
 					value, false);
 				break;
 			}
@@ -574,7 +603,7 @@ function applyOp(op, rootElement) {
 	// Attribute insertion (object insertion). Also catches replace operations, i.e. operations with
 	// both `oi` and `od`.
 	if ('oi' in op) {
-		return setAttribute(rootElement, path, attributeName, op.oi);
+		return setRawAttribute(rootElement, path, attributeName, op.oi);
 	}
 
 	// Attribute removal (object deletion)
@@ -611,7 +640,7 @@ function applyOp(op, rootElement) {
 
 let savedRootElement = null;
 
-function applyOpFromOpsEvent(ops) {
+function applyOpsFromEvent(ops) {
 	// We disable the mutation observers before applying the operations. Otherwise, applying the
 	// operations would cause new mutations to be created, which in turn would cause the
 	// creation of new operations, leading to a livelock for all clients.
@@ -620,6 +649,16 @@ function applyOpFromOpsEvent(ops) {
 	ops.forEach((op) => {
 		applyOp(op, savedRootElement);
 	});
+
+	// Attributes are no longer in-flight and should be stable
+	for (const [element,attributes] of inFlightAttributes.entries()){
+		for (const [attribute, value] of Object.entries(attributes)){
+			if (element.getAttribute(attribute)!==coreUtils.unescape(value)){
+				console.log('FIXME: Webstrate coreOps: Unstable attribute detected', element, attribute, value);
+			}
+		}
+		inFlightAttributes.delete(element);
+	}
 
 	// And re-enable MuationObservers.
 	coreMutation.resume();
@@ -631,7 +670,7 @@ coreOpApplier.listenForOps = () => {
 	coreEvents.addEventListener('receivedOps', (ops) => {
 		if(savedRootElement != null) {
 			//We already have the root element, apply ops
-			applyOpFromOpsEvent(ops);
+			applyOpsFromEvent(ops);
 		} else {
 			//We are missing the root element, document is still loading, buffer the ops
 			bufferedOps.push(ops);
@@ -645,7 +684,7 @@ coreOpApplier.setRootElement = (rootElement) => {
 
 	//Playback buffered ops, if any
 	bufferedOps.forEach((ops)=>{
-		applyOpFromOpsEvent(ops);
+		applyOpsFromEvent(ops);
 	});
 
 	bufferedOps = [];

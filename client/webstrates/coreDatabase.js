@@ -107,7 +107,7 @@ exports.subscribe = webstrateId => {
 				doc.submitOp(ops, { source });
 			}, coreEvents.PRIORITY.IMMEDIATE);
 
-			doc.on('op', (ops, opsSource) => {
+			doc.on('op batch', (ops, opsSource) => {
 				// We don't broadcast a 'receivedOps' event for ops we create ourselves, as we haven't
 				// received them from anybody.
 				if (opsSource !== source) {

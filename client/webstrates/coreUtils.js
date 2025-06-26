@@ -317,12 +317,13 @@ coreUtilsModule.sanitizeString = (string) => {
 coreUtilsModule.escape = value => value && value.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
 
 /**
- * Replaces &amp; and &quot; with their respective characters (& and ").
+ * Replaces &amp; and &quot; with their respective characters (& and "), in the order
+ * that matches escape()
  * @param  {string} value Escaped string.
  * @return {string}       Unescaped string.
  * @public
  */
-coreUtilsModule.unescape = value => value && value.replace(/&amp;/g, '&').replace(/&quot;/g, '"');
+coreUtilsModule.unescape = value => value && value.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 
 /**
  * Replaces "." with &dot;.
