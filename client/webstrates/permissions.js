@@ -116,8 +116,10 @@ if (!coreUtils.getLocationObject().staticMode) {
 	 * @return {bool}     True if ops modify permissions, false otherwise.
 	 * @private
 	 */
-	const permissionsChanged = (ops) =>
-		ops.some(op => op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+	const permissionsChanged = (ops) => {
+		return ops.some(op => op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+	};
+		
 
 	/**
 	 * Recalculates permissions and trigger permission events if permissions have changed.

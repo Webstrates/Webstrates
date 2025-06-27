@@ -65,70 +65,6 @@ describe('Permissions', function() {
 		});
 	});
 
-	it('anonymous should have access when data-auth is invalid', async function() {
-		// Set data-auth to something invalid  
-		await pageA.evaluate(() => {  
-			document.documentElement.setAttribute('data-auth', 'this-is-not-json');  
-		});  
-		
-		// Not-logged-in can access the webstrate  
-		const resC = await pageC.goto(url, { waitUntil: 'networkidle2' });  
-		assert.equal(resC.status(), 200);  
-		
-		const testString = util.randomString();  
-		await pageC.evaluate((s) => document.body.innerText = s, testString);  
-		const propagated = await util.waitForFunction(pageA, (s) =>  
-			document.body.innerText === s, 2, testString);  
-		assert.isTrue(propagated);  		
-	});	
-
-	it('logged in users should have access when data-auth is invalid', async function() {
-		// ...continues from last testcase
-		if (!util.credentialsProvided) return this.skip();
-		
-		// logged-in can access the webstrate  
-		const resB = await pageB.goto(url, { waitUntil: 'networkidle2' });  
-		assert.equal(resB.status(), 200);  
-		
-		const testString = util.randomString();  
-		await pageB.evaluate((s) => document.body.innerText = s, testString);  
-		const propagated = await util.waitForFunction(pageA, (s) =>  
-			document.body.innerText === s, 2, testString);  
-		assert.isTrue(propagated);  		
-	});	
-
-	it('permission changes made via data-auth on A should propagate and match data-auth on client B', async function() {
-		// Ensure both clients are on the correct page and loaded.  
-		await pageA.goto(url, { waitUntil: 'networkidle2' });  
-		await pageB.goto(url, { waitUntil: 'networkidle2' });  
-		
-		// Set permissions directly via data-auth attribute on pageA  
-		const newPermissions = [  
-			{  
-				username: 'anonymous',  
-				provider: '',  
-				permissions: 'rw'  
-			},  
-			{  
-				username: 'testuser',  
-				provider: '',  
-				permissions: 'r'  
-			}  
-		];  
-		
-		const newDataAuth = JSON.stringify(newPermissions);  
-		
-		await pageA.evaluate(dataAuth => {  
-			document.documentElement.setAttribute('data-auth', dataAuth);  
-		}, newDataAuth);  
-		
-		// Wait for the data-auth attribute to propagate to pageB  
-		const propagated = await util.waitForFunction(pageB, expected =>  
-			document.documentElement.getAttribute('data-auth') === expected, 2, newDataAuth);  
-		
-		assert.isTrue(propagated, 'data-auth attribute did not propagate to client B');  
-	});
-
 	it('webstrate.permissions should match what we set on logged in client', async function() {
 		if (!util.credentialsProvided) return this.skip();
 
@@ -226,7 +162,7 @@ describe('Permissions', function() {
 		});
 	});
 
-	it('webstrate.permissions should match updated permissions',
+	it('webstrate.permissions should match updated permissions (locally)',
 		async function() {
 			if (!util.credentialsProvided) return this.skip();
 
@@ -245,6 +181,44 @@ describe('Permissions', function() {
 				}
 			]);
 		});
+
+	it('webstrate.permissions should match updated permissions (remotely)',
+		async function() {
+			await pageB.goto(url, { waitUntil: 'networkidle2' });
+			await pageC.goto(url, { waitUntil: 'networkidle2' });
+	
+			if (!util.credentialsProvided) return this.skip();
+
+			const tabUser = await pageB.evaluate(() => window.webstrate.user);			
+			const tabPermissions = await pageB.evaluate(() => window.webstrate.permissions);
+			const remoteUser = await pageC.evaluate(() => window.webstrate.user);			
+			const remotePermissions = await pageC.evaluate(() => window.webstrate.permissions);
+
+			assert.deepEqual(tabPermissions, [
+				{
+					username: tabUser.username,
+					provider: config.authType,
+					permissions: 'rw'
+				},
+				{
+					username: 'anonymous',
+					provider: '',
+					permissions: 'r'
+				}
+			], "User in another tab in the same browser did not match");
+			assert.deepEqual(remotePermissions, [
+				{
+					username: tabUser.username,
+					provider: config.authType,
+					permissions: 'rw'
+				},
+				{
+					username: 'anonymous',
+					provider: '',
+					permissions: 'r'
+				}
+			], "Anonymous in another browser did not match");			
+	});
 
 	it('webstrate.user.permissions should remain unchanged for user', async function() {
 		if (!util.credentialsProvided) return this.skip();
@@ -342,6 +316,112 @@ describe('Permissions', function() {
 			document.body.innerText === s, .2, randomString);
 		assert.isTrue(pageCChanged);
 	});
+
+	it('should fire permissionsChanged event locally and remotely', async function() {
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
+		await pageC.goto(url, { waitUntil: 'networkidle2' });
+
+		let fakePermissions = [
+			{
+				username: "anonymous",
+				provider: "",
+				permissions: 'rw'
+			}, 
+			{
+				username: "eventuser",
+				provider: "fake",
+				permissions: 'rw'
+			}, 
+		];
+		await pageC.evaluate(()=>{webstrate.on("permissionsChanged", (e)=>{window.lastChange = e});});
+		await pageA.evaluate(()=>{webstrate.on("permissionsChanged", (e)=>{window.lastChange = e});});
+		await pageC.evaluate((s) => {
+			document.documentElement.setAttribute('data-auth',
+				JSON.stringify(s)
+			);
+		}, fakePermissions);
+		await util.waitForFunction(pageA, () => window.lastChange, 2);  		
+		await util.waitForFunction(pageC, () => window.lastChange, 2);  		
+
+		let aPerm = await pageA.evaluate(() => {return window.lastChange});
+		let cPerm = await pageC.evaluate(() => {return window.lastChange});
+		assert.deepEqual(cPerm, fakePermissions, 'Event is missing or wrong on local client');
+		assert.deepEqual(aPerm, fakePermissions, 'Event is missing or wrong on remote client');
+	});		
+
+	it('anonymous should have access when data-auth is invalid', async function() {
+		// Set data-auth to something invalid  
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate.loaded);
+		await pageA.evaluate(() => {  
+			document.documentElement.setAttribute('data-auth', 'this-is-not-json');  
+		});  
+		
+		// Not-logged-in can access the webstrate  
+		const resC = await pageC.goto(url, { waitUntil: 'networkidle2' });  
+		assert.equal(resC.status(), 200);  
+		
+		const testString = util.randomString();  
+		await pageC.evaluate((s) => document.body.innerText = s, testString);  
+		const propagated = await util.waitForFunction(pageA, (s) =>  
+			document.body.innerText === s, 2, testString);  
+		assert.isTrue(propagated);  		
+	});	
+
+	it('logged in users should have access when data-auth is invalid', async function() {
+		// ...continues from last testcase
+		if (!util.credentialsProvided) return this.skip();
+		
+		// logged-in can access the webstrate  
+		const resB = await pageB.goto(url, { waitUntil: 'networkidle2' });  
+		assert.equal(resB.status(), 200);  
+		
+		const testString = util.randomString();  
+		await pageB.evaluate((s) => document.body.innerText = s, testString);  
+		const propagated = await util.waitForFunction(pageA, (s) =>  
+			document.body.innerText === s, 2, testString);  
+		assert.isTrue(propagated);  		
+	});
+
+	it('permission changes made via data-auth on A should propagate and match data-auth on client B', async function() {
+		// Ensure both clients are on the correct page and loaded.  
+		await pageA.goto(url, { waitUntil: 'networkidle2' });  
+		await util.waitForFunction(pageA, () => window.webstrate.loaded);
+	
+		// Set permissions directly via data-auth attribute on pageA  
+		const newPermissions = [  
+			{  
+				username: 'anonymous',  
+				provider: '',  
+				permissions: 'rw'  
+			},  
+			{  
+				username: 'testuser',  
+				provider: '',  
+				permissions: 'r'  
+			}  
+		];  
+		
+		const newDataAuth = JSON.stringify(newPermissions);  
+		
+		await pageA.evaluate(dataAuth => {  
+			document.documentElement.setAttribute('data-auth', dataAuth);  
+		}, newDataAuth);  
+		
+		// Wait for the data-auth attribute to propagate to pageB  
+		const propagated = await util.waitForFunction(pageB, expected =>  
+			document.documentElement.getAttribute('data-auth') === expected, 2, newDataAuth);  
+		const resultB = await pageB.evaluate(()=>{
+			return document.documentElement.getAttribute('data-auth');
+		})
+		const resultA = await pageA.evaluate(()=>{
+			return document.documentElement.getAttribute('data-auth');
+		})
+		
+		assert.deepEqual(resultA, newDataAuth, 'data-auth attribute did apply on A');  
+		assert.deepEqual(resultB, newDataAuth, 'data-auth attribute did not propagate to client B');  
+	});		
 
 	it('should be able to delete webstrate with write permissions', async function() {
 		if (!util.credentialsProvided) return this.skip();

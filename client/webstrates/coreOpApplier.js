@@ -420,7 +420,6 @@ function insertInText(rootElement, path, charIndex, value) {
 			if (attributeName) {
 				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
 				// form while the value set/getAttribute and passed to event system are in unescaped form.
-				attributeName = path.pop();
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
 				// which messes up our attribute diffing. We also do this in deleteInText below.
 				const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
@@ -518,7 +517,6 @@ function deleteInText(rootElement, path, charIndex, value) {
 			if (attributeName) {
 				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
 				// form while the value set/getAttribute and passed to event system are in unescaped form.
-				attributeName = path.pop();
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
 				// which messes up our attribute diffing. We also do this in insertInText above.
 				const isSvgPath = childElement.tagName.toLowerCase() === 'path' && attributeName === 'd';
@@ -583,7 +581,7 @@ function deleteInText(rootElement, path, charIndex, value) {
  */
 function applyOp(op, rootElement) {
 	let charIndex, attributeName;
-	const path = op.p;
+	const path = [...op.p]; // Clone here because we pop things off it
 	if (path.length === 0) {
 		return;
 	}
