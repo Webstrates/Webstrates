@@ -1,6 +1,6 @@
 {
   "name": "Webstrates",
-  "version": "1.7.1",
+  "version": "1.8.0",
   "description": "Webstrates is a research prototype enabling collaborative editing of websites through DOM manipulations realized by Operational Transformation using ShareJS. Webstrates observes changes to the DOM using MutationObservers.",
   "keywords": [
     "Operational Transformation",
