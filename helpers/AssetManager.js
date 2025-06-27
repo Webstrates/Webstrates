@@ -334,7 +334,7 @@ function filterNewestAssets(assets) {
  * @public
  */
 module.exports.addAsset = async function(webstrateId, asset, searchable, source) {
-	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', source)	
+	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + " " + source)	
 	let version = await documentManager.getDocumentVersion(webstrateId);
 	let result = await db.assets.insertOne({
 		webstrateId,
