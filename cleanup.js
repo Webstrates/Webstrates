@@ -26,7 +26,7 @@ const cleanUp = async () => {
 	const assetDbCursor = await db.assets.find({}, { fileName: 1, _id: 0 });
 	const assetsDb = new Set((await assetDbCursor.toArray()).map(o => o.fileName));
 
-	console.log('Found', assetsFs.size, 'assets in database,', assetsDb.size, 'in file system.');
+	console.log('Found', assetsDb.size, 'assets in database,', assetsFs.size, 'in file system.');
 	console.log('Now finding dangling files/entries. This can take a few minutes...');
 
 	const assetsOnlyInDb = [];
