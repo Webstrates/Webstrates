@@ -164,8 +164,10 @@ if (config.auth) {
 	}
 
 	app.get('/auth/logout', function(req, res) {
-		req.logout();
-		res.redirect(req.header('referer') || '/');
+		req.logout(err => {
+			if (err) res.status(500).send("Failure to log out" + err);
+			res.redirect(req.header('referer') || '/');
+		});
 	});
 }
 
