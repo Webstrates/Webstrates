@@ -251,22 +251,43 @@ app.ws('/:webstrateId', (ws, req) => {
 	runMiddleware('onconnect', [ws, req], ...middleware);
 });
 
+// Move params to req to emulate legacy interface until rest of code has been rewritten to use .params
+let queryExtractor = async (req, res, next)=>{
+	req.webstrateId = req.params.webstrateId;
 
+	// assetName + assetPath
+	if (req.params.asset && req.params.extension) {
+		req.assetName = req.params.asset + "." + req.params.extension;	
+		if (req.params.assetPath) req.assetPath = req.params.assetPath;
+	}
+
+	// version (number) or tag (string)
+	req.versionOrTag = req.params.versionOrTag
+	if ("versionOrTag" in req.params){
+		if (/^-?\d+$/.test(req.params.versionOrTag)){
+			req.version = Number(req.params.versionOrTag);
+		} else {
+			req.tag = req.params.versionOrTag;
+		}
+	}
+
+	next();
+};
 
 app.get('/', httpRequestController.rootRequestHandler);
 app.get('/new', httpRequestController.newWebstrateGetRequestHandler);
-app.post('/new', httpRequestController.extractQuery,
-	httpRequestController.newWebstratePostRequestHandler);
+app.post('/new', httpRequestController.newWebstratePostRequestHandler);
 
-// Matches /<webstrateId>/(<tagOrVersion>)?//<assetName>)?
+// Matches /<webstrateId>/(<versionOrTag>)?//<assetName>)?
 // Handles mostly all requests.
-app.get('/:webstrateId/:tagOrVersion', httpRequestController.extractQuery, httpRequestController.requestHandler);
-app.get('/:webstrateId', httpRequestController.extractQuery, httpRequestController.requestHandler);
+app.get(['/:webstrateId{/:asset.:extension{/*assetPath}}',
+	'/:webstrateId/:versionOrTag{/:asset.:extension{/*assetPath}}'], queryExtractor, 
+	httpRequestController.requestHandler);
 
 // We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
 // of a document.
 app.post('/:webstrateId',
-	httpRequestController.extractQuery,
+	queryExtractor,
 	function(req, res) {
 		if (req.body && 'token' in req.body) {
 			return permissionManager.generateAccessToken(req, res);

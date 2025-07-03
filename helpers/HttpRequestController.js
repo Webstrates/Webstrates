@@ -53,22 +53,6 @@ module.exports.trailingSlashAppendHandler = function(req, res) {
 };
 
 /**
- * Middleware for extracting parameters from the query string and appending them to the request
- * object.
- * @param {obj}       req  Express request object.
- * @param {obj}       res  Express response object.
- * @param  {Function} next Callback
- * @public
- */
-module.exports.extractQuery = function(req, res, next) {
-	const [webstrateId, versionOrTag, assetName, assetPath]
-		= Object.keys(req.params).map(i => req.params[i]);
-	const { version, tag } = extractVersionOrTag(versionOrTag);
-	Object.assign(req, { webstrateId, versionOrTag, assetName, assetPath, version, tag });
-	next();
-};
-
-/**
  * Extracts a version or tag from a string.
  * @param  {string} versionOrTag Version or tag.
  * @return {obj}                 Object with one property, either version or tag.
