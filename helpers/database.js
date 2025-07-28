@@ -33,6 +33,13 @@ MongoClient.connect(global.config.db).then(client =>{
 
 	db.userHistory = _db.collection('userHistory');
 	db.userHistory.createIndex({ userId: 1, }, { unique: true });
+
+	db.invites = _db.collection("invites");
+	db.invites.createIndex({key: 1}, {unique: true});
+	db.invites.createIndex({webstrateId: 1, key: 1});
+	db.invites.createIndex({expiresAt: 1});
+
+
 }).catch(err => {
         // This catch block WILL fire if there's a connection error or a timeout
         console.error("[ERROR] MongoDB Connection Failed (or timed out):", err);

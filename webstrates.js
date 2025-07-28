@@ -64,6 +64,7 @@ if (config.godApi) {
 	middleware.push(require('./middleware/godApiMiddleware.js'));
 }
 middleware.push(require('./middleware/userHistory.js'));
+middleware.push(require('./middleware/userInvites.js'));
 middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
 middleware.push(require('./middleware/shareDbMiddleware.js'));
 
