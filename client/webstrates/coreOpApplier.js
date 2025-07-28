@@ -432,10 +432,10 @@ function insertInText(rootElement, path, charIndex, value) {
 				if (isSvgPath) childElement.__d = newRawValue;
 
 				setRawInFlightAttribute(childElement, cleanAttributeName, newRawValue);
-				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, coreUtils.unescape(oldRawValue), 
-					coreUtils.unescape(newRawValue), false);
-				coreEvents.triggerEvent('DOMAttributeTextInsertion', childElement, cleanAttributeName, charIndex,
-					value, false);
+				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, 
+					coreUtils.unescape(oldRawValue), coreUtils.unescape(newRawValue), false);
+				coreEvents.triggerEvent('DOMAttributeTextInsertion', childElement, 
+					cleanAttributeName, charIndex, value, false);
 				break;
 			}
 			// falls through if not an attribute value change.
@@ -529,10 +529,10 @@ function deleteInText(rootElement, path, charIndex, value) {
 				if (isSvgPath) childElement.__d = newRawValue;
 
 				setRawInFlightAttribute(childElement,cleanAttributeName, newRawValue);
-				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, coreUtils.unescape(oldRawValue), coreUtils.unescape(newRawValue),
-					false);
-				coreEvents.triggerEvent('DOMAttributeTextDeletion', childElement, cleanAttributeName, charIndex,
-					value, false);
+				coreEvents.triggerEvent('DOMAttributeSet', childElement, cleanAttributeName, 
+					coreUtils.unescape(oldRawValue), coreUtils.unescape(newRawValue), false);
+				coreEvents.triggerEvent('DOMAttributeTextDeletion', childElement, 
+					cleanAttributeName, charIndex, value, false);
 				break;
 			}
 			// If not an attribute value change: falls through.
@@ -652,7 +652,8 @@ function applyOpsFromEvent(ops) {
 	for (const [element,attributes] of inFlightAttributes.entries()){
 		for (const [attribute, value] of Object.entries(attributes)){
 			if (element.getAttribute(attribute)!==coreUtils.unescape(value)){
-				console.log('FIXME: Webstrate coreOps: Unstable attribute detected', element, attribute, value);
+				console.log('FIXME: Webstrate coreOps: Unstable attribute detected', 
+					element, attribute, value);
 			}
 		}
 		inFlightAttributes.delete(element);
