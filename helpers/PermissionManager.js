@@ -401,7 +401,7 @@ module.exports.getDefaultPermissions = function(username, provider) {
 };
 
 /**
- * Add permissions for a username and provider to a webstrate with the given webstrateId. If the
+ * Update permissions for a username and provider for a webstrate with the given webstrateId. If the
  * user already has the permissions (either explicitly or through default permissions), nothing
  * is done.
  * @param {string}   username    Username.
@@ -411,12 +411,9 @@ module.exports.getDefaultPermissions = function(username, provider) {
  * @param {string}   source      An identifier for who made the op (added the permissions). source
  *                               is usually the client's websocket connection id, but since we
  *                               don't have a one here, it should just be a userId.
- * @param {Function} next        Callback.
  * @public
- * TODO: THIS SEEMS UNUSED, DELETE?
  */
-module.exports.addPermissions = async function(username, provider, permissions, webstrateId, source,
-	next) {
+module.exports.setUserPermissions = async function(username, provider, permissions, webstrateId, source) {
 	let snapshot = await documentManager.getDocument({ webstrateId });
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||
@@ -425,7 +422,7 @@ module.exports.addPermissions = async function(username, provider, permissions, 
 	}
 
 	var oldPermissions = snapshot.data[1]['data-auth'];
-	snapshot = await module.exports.addPermissionsToSnapshot(username, provider, permissions,
+	snapshot = await module.exports.setUserPermissionsInSnapshot(username, provider, permissions,
 		snapshot);
 	var newPermissions = snapshot.data[1]['data-auth'];
 
@@ -435,10 +432,10 @@ module.exports.addPermissions = async function(username, provider, permissions, 
 		oi: newPermissions
 	};
 
-	documentManager.submitOp(webstrateId, op, source, next);
+	await util.promisify(documentManager.submitOp)(webstrateId, op, source);
 };
 
-module.exports.addPermissionsToSnapshot = async function(username, provider, permissions,
+module.exports.setUserPermissionsInSnapshot = async function(username, provider, permissions,
 	snapshot) {
 	const currentPermissions = await module.exports.getUserPermissionsFromSnapshot(username, provider,
 		snapshot);

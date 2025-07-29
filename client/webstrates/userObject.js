@@ -134,35 +134,59 @@ if (!coreUtils.getLocationObject().staticMode) {
 
 	// API for logged-in users to add, list and delete invite keys
 	publicObject.invites = {
-		create: (permissions = 'r', maxAge = 7 * 24 * 3600) => new Promise((accept, reject) => {
+		create: (options = {}, webstrateId = globalObject.publicObject.webstrateId) => new Promise((accept, reject) => {
+			const {
+				permissions = 'r', 
+				maxAge = 7 * 24 * 3600
+			} = options;
 			websocket.send({
 				wa: 'createInvite',
-				d: globalObject.publicObject.webstrateId,
+				d: webstrateId,
 				options: { permissions: permissions, maxAge: maxAge }
 			}, (err, res) => {
 				if (err) reject(err);
 				else accept(res);
 			});
 		}),
-		get: () => new Promise((accept, reject) => {
+		get: (webstrateId = globalObject.publicObject.webstrateId) => new Promise((accept, reject) => {
 			websocket.send({
 				wa: 'getInvites',
-				d: globalObject.publicObject.webstrateId
+				d: webstrateId
 			}, (err, res) => {
 				if (err) reject(err);
 				else accept(res);
 			});
 		}),
-		remove: (key) => new Promise((accept, reject) => {
+		remove: (key, webstrateId = globalObject.publicObject.webstrateId) => new Promise((accept, reject) => {
 			websocket.send({
 				wa: 'removeInvite',
-				d: globalObject.publicObject.webstrateId,
+				d: webstrateId,
 				options: {key: key}
 			}, (err, res) => {
 				if (err) reject(err);
 				else accept(res);
 			});
-		})
+		}),
+		check: (key, webstrateId = globalObject.publicObject.webstrateId) => new Promise((accept, reject) => {
+			websocket.send({
+				wa: 'checkInvite',
+				d: webstrateId,
+				options: {key: key}
+			}, (err, res) => {
+				if (err) reject(err);
+				else accept(res);
+			});
+		}),
+		use: (key, webstrateId = globalObject.publicObject.webstrateId) => new Promise((accept, reject) => {
+			websocket.send({
+				wa: 'useInvite',
+				d: webstrateId,
+				options: {key: key}
+			}, (err, res) => {
+				if (err) reject(err);
+				else accept(res);
+			});
+		}),		
 	};
 }
 

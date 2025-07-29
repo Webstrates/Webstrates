@@ -530,7 +530,7 @@ async function copyWebstrate(req, res, snapshot) {
 			if (req.user.username === 'anonymous' && req.user.provider === '') {
 				snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
 			} else {
-				snapshot = await permissionManager.addPermissionsToSnapshot(req.user.username,
+				snapshot = await permissionManager.setUserPermissionsInSnapshot(req.user.username,
 					req.user.provider, 'rw', snapshot);
 			}
 		}
@@ -925,7 +925,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 										snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
 									} else {
 										snapshot = await permissionManager
-											.addPermissionsToSnapshot(req.user.username, req.user.provider,
+											.setUserPermissionsInSnapshot(req.user.username, req.user.provider,
 												'rw', snapshot);
 									}
 								}
