@@ -64,21 +64,51 @@ describe('HTTP API', function() {
 		let testURL = "https://webstrate.projects.cavi.au.dk/testcases/test.zip";
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL, { waitUntil: 'domcontentloaded' });
+		await pageB.goto(config.server_address + "new?prototypeUrl=" + testURL, { waitUntil: 'domcontentloaded' });
 
-		const redirectedUrl = pageB.url();
-		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		await pageB.waitForFunction(() => window.test, {
 			timeout: 10000, // Maximum time to wait in milliseconds (adjust as needed)
 			polling: 100 // How often to check the condition in milliseconds (default is requestAnimationFrame or 100ms)
 		});
 
-		let testAsset = await pageB.evaluate(()=>{
+		let testAsset = await pageB.evaluate(() => {
 			return webstrate.assets[0];
 		});
 
 		assert.include(testAsset, {
 			fileName: 'test-asset.ico', fileSize: 15086, mimeType: 'image/vnd.microsoft.icon'
 		})
-	});	
+	});
+
+	it('ZIP files serve their content (base)', async () => {
+		let assetURL = pageB.url()+"test.zip/test_json.json";
+		console.log(assetURL);
+
+		pageA = await browser.newPage();
+		await pageA.goto(assetURL, { waitUntil: 'domcontentloaded' });
+		const pageContent = await pageA.evaluate(() => {
+			return document.body.innerText;
+		});
+
+		const jsonObject = JSON.parse(pageContent);
+		assert.propertyVal(jsonObject, 'success', true, 'Could not find the success property in test zip json');
+	});
+
+	it('ZIP files serve their content (subdir)', async () => {
+		let assetURL = pageB.url() + "test.zip/directory/json_test2.json";
+
+		pageA = await browser.newPage();
+		await pageA.goto(assetURL, { waitUntil: 'domcontentloaded' });
+		const pageContent = await pageA.evaluate(() => {
+			return document.body.innerText;
+		});
+
+		// Cleanup
+		const redirectedUrl = pageB.url();
+		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+
+		const jsonObject = JSON.parse(pageContent);
+		assert.propertyVal(jsonObject, 'subdirectory', true, 'Could not find the subdirectory property in test zip json in a subdir');
+	});
+
 });
