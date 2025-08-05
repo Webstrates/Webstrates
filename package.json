@@ -59,7 +59,7 @@
     "mime-types": "3.0.1",
     "minimist": "1.2.8",
     "mongodb": "6.17.0",
-    "multer": "2.0.1",
+    "multer": "2.0.2",
     "os": "0.1.2",
     "passport": "0.7.0",
     "passport-github": "1.1.0",
