@@ -261,7 +261,7 @@ let queryExtractor = async (req, res, next)=>{
 	// assetName + assetPath
 	if (req.params.asset && req.params.extension) {
 		req.assetName = req.params.asset + "." + req.params.extension;	
-		if (req.params.assetPath) req.assetPath = req.params.assetPath;
+		if (req.params.assetPath) req.assetPath = req.params.assetPath.join("/");
 	}
 
 	// version (number) or tag (string)

@@ -81,7 +81,7 @@ describe('HTTP API', function() {
 	});
 
 	it('ZIP files serve their content (base)', async () => {
-		let assetURL = pageB.url()+"test.zip/test_json.json";
+		let assetURL = pageB.url()+"test.zip/json_test.json";
 		console.log(assetURL);
 
 		pageA = await browser.newPage();
