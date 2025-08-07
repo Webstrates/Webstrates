@@ -321,7 +321,7 @@ app.use((err, req, res, next) => {
 });
 
 var port = argv.p || config.listeningPort || 7007;
-var address = argv.h || config.listeningAddress;
+var address = argv.h || config.listeningAddress || "localhost";
 app.listen(port, address);
 if (WORKER_ID === 1)
-	console.log(`Listening on http://localhost:${port}/ in ${threadCount} thread(s)`);
+	console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);

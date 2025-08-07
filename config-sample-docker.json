@@ -1,0 +1,24 @@
+{
+	"listeningAddress": "0.0.0.0",
+	"listeningPort": 7007,
+	"db": "mongodb://mongodb:27017/webstrate",
+	"niceWebstrateIds": false,
+	"maxAge": "1d",
+	"maxAssetSize": 100,
+	"auth": {
+		"cookie": {
+			"secret": "This is a secret",
+			"duration": 31536000000
+		},
+		"permissionTimeout": 300,
+		"defaultPermissions": [
+			{"username": "anonymous", "provider": "", "permissions": "rw"}
+		],
+		"providers": {
+		}
+	},
+	"tagging": {
+		"autotagInterval": 3600,
+		"tagPrefix": "Session of "
+	}
+}

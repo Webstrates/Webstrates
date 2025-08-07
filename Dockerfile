@@ -1,15 +1,17 @@
-FROM node:14-alpine
+# Start from a small Alpine Linux base image
+FROM node:20-alpine
 
-RUN apk add --update-cache git \
-	&& rm -rf /var/cache/apk/*
+# The 'git' dependency is needed for some npm packages
+RUN apk add --no-cache git
 
+# Fetch dependencies for Webstrates
 COPY /package*.json /app/
 WORKDIR /app
-RUN npm install --production
-
+RUN npm install
 COPY . /app
-RUN npm run build
+#RUN npm run build
 
+# Build and run the server when "up"
 EXPOSE 7007
+CMD ["npm", "start"]
 
-CMD node webstrates.js
