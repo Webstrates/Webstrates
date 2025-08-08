@@ -145,7 +145,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 					d: webstrateId,
 					options: { permissions: permissions, maxAge: maxAge }
 				}, (err, res) => {
-					if (err) reject(err);
+					if (err) reject(new Error(err));
 					else accept(res);
 				});
 			}),
@@ -155,7 +155,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 					wa: 'getInvites',
 					d: webstrateId
 				}, (err, res) => {
-					if (err) reject(err);
+					if (err) reject(new Error(err));
 					else accept(res);
 				});
 			}),
@@ -166,7 +166,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 					d: webstrateId,
 					options: { key: key }
 				}, (err, res) => {
-					if (err) reject(err);
+					if (err) reject(new Error(err));
 					else accept(res);
 				});
 			}),
@@ -177,7 +177,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 					d: webstrateId,
 					options: { key: key }
 				}, (err, res) => {
-					if (err) reject(err);
+					if (err) reject(new Error(err));
 					else accept(res);
 				});
 			}),
@@ -188,7 +188,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 					d: webstrateId,
 					options: { key: key }
 				}, (err, res) => {
-					if (err) reject(err);
+					if (err) reject(new Error(err));
 					else accept(res);
 				});
 			})
