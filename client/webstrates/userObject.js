@@ -181,10 +181,10 @@ if (!coreUtils.getLocationObject().staticMode) {
 					else accept(res);
 				});
 			}),
-		use: (key, webstrateId = globalObject.publicObject.webstrateId) =>
+		accept: (key, webstrateId = globalObject.publicObject.webstrateId) =>
 			new Promise((accept, reject) => {
 				websocket.send({
-					wa: 'useInvite',
+					wa: 'acceptInvite',
 					d: webstrateId,
 					options: { key: key }
 				}, (err, res) => {

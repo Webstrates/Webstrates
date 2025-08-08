@@ -88,7 +88,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		 * 
 		 * @returns 
 		 */
-		useInvite: async ()=>{
+		acceptInvite: async ()=>{
 			// Check invite
 			let invite = await inviteeAPI.checkInvite();
 
