@@ -12,7 +12,7 @@
 		},
 		"permissionTimeout": 300,
 		"defaultPermissions": [
-			{"username": "anonymous", "provider": "", "permissions": "rw"}
+			{"username": "anonymous", "provider": "", "permissions": "arw"}
 		],
 		"providers": {
 		}
