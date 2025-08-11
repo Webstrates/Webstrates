@@ -139,6 +139,7 @@ if (config.auth) {
 			}, (username, password, done) => {
 				return done(null, {
 					username: username,
+					userUrl: 'none-for-testing',
 					provider: 'test',
 					displayName: username,
 					id: username
@@ -165,6 +166,34 @@ if (config.auth) {
 		const strategy = config.auth.providers[key].name;
 
 		if (key === 'test') {
+			app.get('/auth/test', (req, res) => {
+				let referer = req.header('referer');
+				if (req.query.webstrateId) {
+					const origin = new URL(req.header('referer')).origin;
+					referer = origin + '/' + req.query.webstrateId;
+				}
+				req.session.referer = referer;
+
+				res.send(`
+					<html>
+						<body>
+							<h2>Test Login</h2>
+							<form method="post" action="/auth/test">
+								<div>
+									<label>Username:</label>
+									<input type="text" name="username" required>
+								</div>
+								<div style="display: none;">
+									<label>Password:</label>
+									<input type="password" name="password" value="test" required>
+								</div>
+								<button type="submit">Login</button>
+							</form>
+						</body>
+					</html>
+				`);
+			});
+
 			app.post('/auth/test', passport.authenticate('local', {
 				failureRedirect: '/auth/test'
 			}), function (req, res) {

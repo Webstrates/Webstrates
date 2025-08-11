@@ -37,7 +37,7 @@ util.cleanServerAddress = config.server_address.replace(/^(https?:\/\/)([^@]+@)/
 // this way.
 util.isLocalhost = util.cleanServerAddress.match('https?://localhost') !== null;
 
-util.credentialsProvided = config.username && config.password;
+util.credentialsProvided = config.authType === 'test' || (config.username && config.password);
 /**
  * Wait for predicate to become truthy or timeout.
  * @param  {Page} page         Puppeteer page.
@@ -165,6 +165,35 @@ util.logInToAU = async function(page) {
 	return true;
 };
 
+util.logInToTest = async function(page, username = 'testuser') {
+	console.log("Using test auth...");
+
+	// Navigate to the test auth form page
+	await page.goto(config.server_address + 'auth/test', { waitUntil: 'networkidle2' });
+
+	// Wait for the form to be available
+	await page.waitForSelector('form[action="/auth/test"]', { visible: true, timeout: 3000 });
+
+	// Fill in the username field
+	await page.waitForSelector('input[name="username"]', { visible: true, timeout: 1000 });
+	await page.type('input[name="username"]', username);
+
+	// Submit the form and wait for navigation
+	const navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2' });
+	await page.click('button[type="submit"]');
+	await navigationPromise;
+
+	const url = await page.url();
+	console.log("Redirected to: " + url);
+
+	// Check if we successfully redirected back to the server
+	if (!url.startsWith(config.server_address)) {
+		throw new Error(`Test authentication failed. Expected redirect to ${config.server_address}, got ${url}`);
+	}
+
+	return true;
+};
+
 util.logInToAuth = async function(page){
     switch (config.authType){
 	case "github": 
@@ -172,6 +201,9 @@ util.logInToAuth = async function(page){
 	    break;
 	case "au":
 	    return await util.logInToAU(page);
+	    break;
+	case "test":
+	    return await util.logInToTest(page);
 	    break;
 	default:
 	    throw new Error("Unsupported auth type");
