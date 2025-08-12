@@ -23,16 +23,23 @@ describe('Invites', function () {
 		pageB = await browserB.newPage();
 		pageC = await browserC.newPage();
 
-		console.log('Logging in testuserA...');
-		await util.logInToTest(pageA, 'testuserA');
-		console.log('Logged in testuserA...');
+		if (config.authType === 'test') {
+			console.log('Logging in testuserA...');
+			await util.logInToTest(pageA, 'testuserA');
+			console.log('Logged in testuserA...');
 
-		console.log('Logging in testuserB...');
-		await util.logInToTest(pageB, 'testuserB');
-		console.log('Logged in testuserB...');
+			console.log('Logging in testuserB...');
+			await util.logInToTest(pageB, 'testuserB');
+			console.log('Logged in testuserB...');
+		}
 	});
 
 	after(async () => {
+		if (config.authType !== 'test') {
+			util.warn('Skipping most permission tests as no test auth provider was used');
+			return;
+		}
+
 		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 
 		await Promise.all([
@@ -43,6 +50,8 @@ describe('Invites', function () {
 	});
 
 	it('User A should be able to set permissions', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
 		await pageA.evaluate(() => {
@@ -57,11 +66,15 @@ describe('Invites', function () {
 	});
 
 	it('User B should not have access to the webstrate', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		const result = await pageB.goto(url, { waitUntil: 'networkidle2' });
 		assert.equal(result.status(), 403);
 	});
 
 	it('Creating an invitation with a time limit of 2 seconds should be available immediately', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		currentInvitation = await pageA.evaluate(async () => {
 			return await window.webstrate.user.invites.create({
 				permissions: 'r',
@@ -74,16 +87,22 @@ describe('Invites', function () {
 	});
 
 	it('Valid invitation should be in list of currently active invitations', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
 		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Invitation not in invites.get() list');
 	});
 
 	it('Valid invitation should pass the validity check and return data', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		const checkedInvitation = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
 		assert.exists(checkedInvitation, 'Valid invitation did not pass check(...)');
 	});
 
 	it('User B should be able to use the invitation to access the webstrate', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		await pageB.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
 
 		const invitePermission = await pageB.evaluate(async (key, webstrateId) => {
@@ -97,14 +116,18 @@ describe('Invites', function () {
 	});
 
 	it('Expired invitation should not be in list of currently active invitations', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		// Expire the invitation
 		await new Promise((resolve) => { setTimeout(resolve, 2000) });
-		
+
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
 		assert.notExists(invitations.find(i => i.key === currentInvitation.key), 'Invitation expired but still in invites.get() list');
 	});
 
 	it('Expired invitation should fail validity check', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		let error;
 		try {
 			value = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
@@ -115,6 +138,8 @@ describe('Invites', function () {
 	});
 
 	it('Accepting an invitation correctly merges permissions with existing ones', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		currentInvitation = await pageA.evaluate(async () => {
 			return await window.webstrate.user.invites.create({ permissions: 'w' });
 		});
@@ -127,6 +152,8 @@ describe('Invites', function () {
 	});
 
 	it('User A should be able to remove an invitation', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		let invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
 		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Created invitation not found in list');
 
@@ -149,6 +176,8 @@ describe('Invites', function () {
 	});
 
 	it('User should not be able to remove invitations created by other users', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		currentInvitation = await pageA.evaluate(async () => {
 			return await window.webstrate.user.invites.create({ permissions: 'w' });
 		});
@@ -190,6 +219,8 @@ describe('Invites', function () {
 	});
 
 	it('An invite sent by a user which now has lost admin permission becomes invalid', async function () {
+		if (config.authType !== 'test') return this.skip();
+
 		// Remove admin permissions from User A
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
