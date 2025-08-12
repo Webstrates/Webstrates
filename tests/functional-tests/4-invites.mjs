@@ -5,7 +5,7 @@ import { assert, expect } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe.only('Invites', function () {
+describe('Invites', function () {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
