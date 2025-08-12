@@ -128,12 +128,12 @@ if (config.auth) {
 	passport.deserializeUser(sessionManager.deserializeUser);
 
 	for (let key in config.auth.providers) {
-		const providerConfig = config.auth.providers[key];
+		let PassportStrategy, passportInstance;
 
 		if (key === 'test') {
 			console.warn('The test auth provider is only for testing purposes and should not be used in production.');
-			const PassportStrategy = require('passport-local').Strategy;
-			const passportInstance = new PassportStrategy({
+			PassportStrategy = require('passport-local').Strategy;
+			passportInstance = new PassportStrategy({
 				usernameField: 'username',
 				passwordField: 'password'
 			}, (username, password, done) => {
@@ -145,18 +145,17 @@ if (config.auth) {
 					id: username
 				});
 			});
-			providerConfig.name = 'local';
-			passport.use(passportInstance);
 		} else {
-			const PassportStrategy = require(providerConfig.node_module).Strategy;
-			const passportInstance = new PassportStrategy(providerConfig.config,
+			PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
+			passportInstance = new PassportStrategy(config.auth.providers[key].config,
 				(request, accessToken, refreshToken, profile, done) => {
 					profile.provider = key;
 					process.nextTick(() => done(null, profile));
 				});
-			providerConfig.name = passportInstance.name;
-			passport.use(passportInstance);
 		}
+
+		config.auth.providers[key].name = passportInstance.name;
+		passport.use(passportInstance);
 	}
 
 	app.use(passport.initialize());
