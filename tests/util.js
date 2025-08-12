@@ -5,7 +5,7 @@ const util = {};
 config.username = config.username || process.env.WEBSTRATES_TEST_USERNAME;
 config.password = config.password || process.env.WEBSTRATES_TEST_PASSWORD;
 
-util.randomString = function(size = 8,
+util.randomString = function (size = 8,
 	alphabet = '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') {
 	let len = alphabet.length, str = '';
 	while (size--) {
@@ -14,17 +14,17 @@ util.randomString = function(size = 8,
 	return str;
 };
 
-util.allEquals = function(x, y, ...rest) {
+util.allEquals = function (x, y, ...rest) {
 	if (y === undefined) return true;
 	if (x !== y) return false;
 	return util.allEquals(y, ...rest);
 };
 
-util.escapeRegExp = function(s) {
+util.escapeRegExp = function (s) {
 	return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 };
 
-util.webstrateIdRegex =  (config.server && config.server.niceWebstrateIds)
+util.webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
 	? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
 	: '([A-z0-9-]{8,10})';
 
@@ -47,7 +47,7 @@ util.credentialsProvided = config.authType === 'test' || (config.username && con
  * @return {bool}              True if predicate became truthy false otherwise.
  * @public
  */
-util.waitForFunction = async function(page, fn, timeout = 2, ...args) {
+util.waitForFunction = async function (page, fn, timeout = 2, ...args) {
 	if (typeof timeout !== 'number') {
 		throw new Error(`Invalid timeout: ${timeout}, expected number.`);
 	}
@@ -72,7 +72,7 @@ util.showLogs = (page, ...pages) => {
 
 util.warn = (...args) => console.log('\u001b[33m    ! ' + args + '\u001b[0m');
 
-util.logInToGithub = async function(page) {
+util.logInToGithub = async function (page) {
 	if (!util.credentialsProvided) {
 		throw new Error('No GitHub login credentials provided. Update `config.js` to run GitHub ' +
 			'tests.');
@@ -122,39 +122,39 @@ util.logInToGithub = async function(page) {
 	return true;
 };
 
-util.logInToAU = async function(page) {
-	console.log("Using AU auth...");
+util.logInToAU = async function (page) {
+	console.log('Using AU auth...');
 	if (!util.credentialsProvided) {
 		throw new Error('No au login credentials provided. Update `config.js` to run GitHub ' +
 			'tests.');
 	}
 
-	await page.goto(config.server_address + 'auth/'+config.authType, { waitUntil: 'networkidle0' });
+	await page.goto(config.server_address + 'auth/' + config.authType, { waitUntil: 'networkidle0' });
 	let title = await page.title();
 	if (title !== 'Select an authentication source') {
 		throw new Error(`Incorrect login page title: "${title}"`);
 	}
 
 	// Click on auth type and wait for load
-	await page.waitForSelector('.ldap-au input', {visible: true, timeout: 1000});
-	console.log("Selecting AU auth type...");
+	await page.waitForSelector('.ldap-au input', { visible: true, timeout: 1000 });
+	console.log('Selecting AU auth type...');
 	await page.click('.ldap-au input');
 
 	// Fill in data 
-	await page.waitForSelector('input#username', {visible: true, timeout: 3000});
+	await page.waitForSelector('input#username', { visible: true, timeout: 3000 });
 	title = await page.title();
 	if (title !== 'Enter your username and password') {
 		throw new Error(`Incorrect login page title: "${title}"`);
 	}
-	console.log("Typing in user details...");
+	console.log('Typing in user details...');
 	await page.type('input#username', config.username);
 	await page.type('input#password', config.password);
 	navigationPromise = page.waitForNavigation({ waitUntil: 'networkidle2' });
-	await page.click("button#submit_button");
+	await page.click('button#submit_button');
 	await navigationPromise;
 
 	url = await page.url();
-	console.log("Redirecting to..." + url);
+	console.log('Redirecting to...' + url);
 	// If we get sent back to the GitHub login page, throw whatever error GitHub produced.
 	if (!url.startsWith(config.server_address)) {
 		const flashMsg = await page.evaluate(() =>
@@ -165,8 +165,8 @@ util.logInToAU = async function(page) {
 	return true;
 };
 
-util.logInToTest = async function(page, username = 'testuser') {
-	console.log("Using test auth...");
+util.logInToTest = async function (page, username = 'testuser') {
+	console.log('Using test auth...');
 
 	// Navigate to the test auth form page
 	await page.goto(config.server_address + 'auth/test', { waitUntil: 'networkidle2' });
@@ -184,7 +184,7 @@ util.logInToTest = async function(page, username = 'testuser') {
 	await navigationPromise;
 
 	const url = await page.url();
-	console.log("Redirected to: " + url);
+	console.log('Redirected to: ' + url);
 
 	// Check if we successfully redirected back to the server
 	if (!url.startsWith(config.server_address)) {
@@ -194,30 +194,27 @@ util.logInToTest = async function(page, username = 'testuser') {
 	return true;
 };
 
-util.logInToAuth = async function(page){
-    switch (config.authType){
-	case "github": 
-	    return await util.logInToGithub(page);
-	    break;
-	case "au":
-	    return await util.logInToAU(page);
-	    break;
-	case "test":
-	    return await util.logInToTest(page);
-	    break;
-	default:
-	    throw new Error("Unsupported auth type");
-    }
+util.logInToAuth = async function (page) {
+	switch (config.authType) {
+		case 'github':
+			return await util.logInToGithub(page);
+		case 'au':
+			return await util.logInToAU(page);
+		case 'test':
+			return await util.logInToTest(page);
+		default:
+			throw new Error('Unsupported auth type');
+	}
 }
 
-util.sleep = async function(seconds) {
+util.sleep = async function (seconds) {
 	return new Promise(resolve => setTimeout(resolve, seconds * 1000));
 };
 
 util.waitForWebstrateLoaded = async (page) => {
-	await util.waitForFunction(page, async ()=>{
-		await new Promise((resolve, reject)=>{
-			window.webstrate.on("loaded",()=>{
+	await util.waitForFunction(page, async () => {
+		await new Promise((resolve, reject) => {
+			window.webstrate.on('loaded', () => {
 				resolve();
 			});
 		});
