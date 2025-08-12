@@ -11,14 +11,17 @@ describe.only('Invites', function () {
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
 
-	let browserA, browserB, pageA, pageB;
+	let browserA, browserB, browserC, pageA, pageB, pageC;
+	let currentInvitation;
 
 	before(async () => {
 		browserA = await puppeteer.launch();
 		browserB = await puppeteer.launch();
+		browserC = await puppeteer.launch();
 
 		pageA = await browserA.newPage();
 		pageB = await browserB.newPage();
+		pageC = await browserC.newPage();
 
 		console.log('Logging in testuserA...');
 		await util.logInToTest(pageA, 'testuserA');
@@ -27,31 +30,28 @@ describe.only('Invites', function () {
 		console.log('Logging in testuserB...');
 		await util.logInToTest(pageB, 'testuserB');
 		console.log('Logged in testuserB...');
-
-		await pageA.goto(url, { waitUntil: 'networkidle2' });
-
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' }),
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 
-			await Promise.all([
-				browserA.close(),
-				browserB.close()
-			]);
+		await Promise.all([
+			browserA.close(),
+			browserB.close(),
+			browserC.close()
+		]);
 	});
 
 	it('User A should be able to set permissions', async function () {
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
-				JSON.stringify([
-					{
-						username: window.webstrate.user.username,
-						provider: window.webstrate.user.provider,
-						permissions: 'awr'
-					}
-				])
+				JSON.stringify([{
+					username: 'testuserA',
+					provider: 'test',
+					permissions: 'awr'
+				}])
 			);
 		});
 	});
@@ -61,9 +61,7 @@ describe.only('Invites', function () {
 		assert.equal(result.status(), 403);
 	});
 
-	let currentInvitation;
-	it('Creating an invitation with a time limit of 2 seconds should be available immediately: invites.create', async function () {
-
+	it('Creating an invitation with a time limit of 2 seconds should be available immediately', async function () {
 		currentInvitation = await pageA.evaluate(async () => {
 			return await window.webstrate.user.invites.create({
 				permissions: 'r',
@@ -75,43 +73,38 @@ describe.only('Invites', function () {
 		assert.exists(currentInvitation.key, 'Invitation is missing a key');
 	});
 
-	it('Valid invitation should be in list of currently active invitations: invites.get()', async function () {
+	it('Valid invitation should be in list of currently active invitations', async function () {
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-
-		assert.exists(invitations.find(m => m.key === currentInvitation.key), 'Invitation not in invites.get() list');
+		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Invitation not in invites.get() list');
 	});
 
-	it('Valid invitation should be pass validity check and return data: invites.check()', async function () {
-		const checkedInvitation = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key, url);
-
-		assert.exists(checkedInvitation, 'A valid invitation did not pass check(...)');
+	it('Valid invitation should pass the validity check and return data', async function () {
+		const checkedInvitation = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
+		assert.exists(checkedInvitation, 'Valid invitation did not pass check(...)');
 	});
 
 	it('User B should be able to use the invitation to access the webstrate', async function () {
 		await pageB.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
-		
-		const result = await pageB.evaluate(async (key, webstrateId) => {
+
+		const invitePermission = await pageB.evaluate(async (key, webstrateId) => {
 			return await window.webstrate.user.invites.accept(key, webstrateId);
 		}, currentInvitation.key, webstrateId);
-		
-		assert.equal(result, 'r', 'Invitation was not accepted or returned unexpected permissions');
-	});
-	
-	it('User B should now have access to the webstrate', async function () {
+
+		assert.equal(invitePermission, 'r', 'Invitation was not accepted or returned unexpected permissions');
+
 		const result = await pageB.goto(url, { waitUntil: 'networkidle2' });
 		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invitation');
 	});
 
-	it('Expired invitation should not be in list of currently active invitations: invites.get()', async function () {
-
-		// Expire the invitation and try again
+	it('Expired invitation should not be in list of currently active invitations', async function () {
+		// Expire the invitation
 		await new Promise((resolve) => { setTimeout(resolve, 2000) });
+		
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-
-		assert.notExists(invitations.find(m => m.key === currentInvitation.key), 'Invitation expired but still in invites.get() list');
+		assert.notExists(invitations.find(i => i.key === currentInvitation.key), 'Invitation expired but still in invites.get() list');
 	});
 
-	it('Expired invitation should be fail validity check: invites.check()', async function () {
+	it('Expired invitation should fail validity check', async function () {
 		let error;
 		try {
 			value = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
@@ -120,10 +113,138 @@ describe.only('Invites', function () {
 		}
 		expect(error).to.be.an('Error');
 	});
-	
-	
 
-	// TODO: Accepting an invitation correctly merges permissions with existing ones
-	// TODO: An invite sent by a user which now has lost admin permission becomes invalid
-	// TODO: Invite API should be available for logged-in users only
+	it('Accepting an invitation correctly merges permissions with existing ones', async function () {
+		currentInvitation = await pageA.evaluate(async () => {
+			return await window.webstrate.user.invites.create({ permissions: 'w' });
+		});
+
+		const mergedPermissions = await pageB.evaluate(async (key) => {
+			return await window.webstrate.user.invites.accept(key);
+		}, currentInvitation.key);
+
+		assert.equal(mergedPermissions, 'rw', 'User B should have both read and write permissions after accepting the invitation');
+	});
+
+	it('User A should be able to remove an invitation', async function () {
+		let invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
+		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Created invitation not found in list');
+
+		const removeResult = await pageA.evaluate(async (key) => {
+			return await window.webstrate.user.invites.remove(key);
+		}, currentInvitation.key);
+		assert.equal(removeResult.deletedCount, 1, 'Remove operation should return a result');
+
+		invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
+		assert.notExists(invitations.find(i => i.key === currentInvitation.key), 'Removed invitation still appears in list');
+
+		let error;
+		try {
+			await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
+		} catch (ex) {
+			error = ex;
+		}
+		expect(error).to.be.an('Error');
+		expect(error.message).to.include('Invalid invitation key');
+	});
+
+	it('User should not be able to remove invitations created by other users', async function () {
+		currentInvitation = await pageA.evaluate(async () => {
+			return await window.webstrate.user.invites.create({ permissions: 'w' });
+		});
+
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('data-auth',
+				JSON.stringify([
+					{
+						username: 'testuserA',
+						provider: 'test',
+						permissions: 'awr'
+					},
+					{
+						username: 'testuserB',
+						provider: 'test',
+						permissions: 'awr'
+					}
+				])
+			);
+		});
+
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
+
+		let error;
+		try {
+			await pageB.evaluate(async (key) => {
+				return await window.webstrate.user.invites.remove(key);
+			}, currentInvitation.key);
+		} catch (ex) {
+			error = ex;
+		}
+
+		expect(error).to.be.an('Error');
+		expect(error.message).to.include('Unable to delete invite');
+
+		// Verify the invitation still exists
+		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
+		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Invitation should still exist after failed removal attempt');
+	});
+
+	it('An invite sent by a user which now has lost admin permission becomes invalid', async function () {
+		// Remove admin permissions from User A
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('data-auth',
+				JSON.stringify([
+					{
+						username: 'testuserA',
+						provider: 'test',
+						permissions: 'wr'
+					},
+					{
+						username: 'testuserB',
+						provider: 'test',
+						permissions: 'r'
+					}
+				])
+			);
+		});
+
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
+
+		let error;
+		try {
+			await pageB.evaluate(async (key) => {
+				return await window.webstrate.user.invites.accept(key);
+			}, currentInvitation.key);
+		} catch (ex) {
+			error = ex;
+		}
+
+		expect(error).to.be.an('Error');
+		expect(error.message).to.include('Inviter is no longer admin on the webstrate, invitation invalid');
+
+		// Check that no new permissions were granted by getting the data-auth attribute
+		const permissions = await pageB.evaluate(() => {
+			return document.documentElement.getAttribute('data-auth');
+		});
+
+		const userBAuth = JSON.parse(permissions).find(user => user.username === 'testuserB' && user.provider === 'test');
+		assert.exists(userBAuth, 'User B should still be in the data-auth attribute');
+		assert.equal(userBAuth.permissions, 'r', 'User B should not have gained any new permissions after the invite was accepted');
+	});
+
+	it('Invite API should be available for logged-in users only', async function () {
+		await pageC.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
+
+		// Try to create an invitation without being logged in - should fail
+		let error;
+		try {
+			await pageC.evaluate(async () => {
+				return await window.webstrate.user.invites.create();
+			});
+		} catch (ex) {
+			error = ex;
+		}
+		expect(error).to.be.an('Error');
+		expect(error.message).to.include('Must be logged in to handle invites');
+	});
 });
