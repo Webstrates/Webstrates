@@ -2,8 +2,8 @@ const config = require('./config.js');
 
 const util = {};
 
-config.username = config.username || process.env.GITHUB_USERNAME;
-config.password = config.password || process.env.GITHUB_PASSWORD;
+config.username = config.username || process.env.WEBSTRATES_TEST_USERNAME;
+config.password = config.password || process.env.WEBSTRATES_TEST_PASSWORD;
 
 util.randomString = function(size = 8,
 	alphabet = '23456789abcdefghijkmnpqrstuvwxyzABCDEFGHJKLMNPQRSTUVWXYZ') {
