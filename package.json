@@ -81,6 +81,7 @@
     "eslint": "^9.27.0",
     "eslint-webpack-plugin": "^5.0.1",
     "mocha": "11.7.0",
+    "passport-local": "1.0.0",
     "puppeteer": "24.10.2",
     "webpack-cli": "^6.0.1"
   }

@@ -128,12 +128,32 @@ if (config.auth) {
 	passport.deserializeUser(sessionManager.deserializeUser);
 
 	for (let key in config.auth.providers) {
-		const PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
-		const passportInstance = new PassportStrategy(config.auth.providers[key].config,
-			(request, accessToken, refreshToken, profile, done) => {
-				profile.provider = key;
-				process.nextTick(() => done(null, profile));
+		let PassportStrategy, passportInstance;
+
+		if (key === 'test') {
+			console.warn('The test auth provider is only for testing purposes and should not be used in production.');
+			PassportStrategy = require('passport-local').Strategy;
+			passportInstance = new PassportStrategy({
+				usernameField: 'username',
+				passwordField: 'password'
+			}, (username, password, done) => {
+				return done(null, {
+					username: username,
+					userUrl: 'none-for-testing',
+					provider: 'test',
+					displayName: username,
+					id: username
+				});
 			});
+		} else {
+			PassportStrategy = require(config.auth.providers[key].node_module).Strategy;
+			passportInstance = new PassportStrategy(config.auth.providers[key].config,
+				(request, accessToken, refreshToken, profile, done) => {
+					profile.provider = key;
+					process.nextTick(() => done(null, profile));
+				});
+		}
+
 		config.auth.providers[key].name = passportInstance.name;
 		passport.use(passportInstance);
 	}
@@ -143,24 +163,64 @@ if (config.auth) {
 
 	for (let key in config.auth.providers) {
 		const strategy = config.auth.providers[key].name;
-		app.get('/auth/' + key,
-			(req, res, next) => {
+
+		if (key === 'test') {
+			app.get('/auth/test', (req, res) => {
 				let referer = req.header('referer');
 				if (req.query.webstrateId) {
 					const origin = new URL(req.header('referer')).origin;
 					referer = origin + '/' + req.query.webstrateId;
 				}
 				req.session.referer = referer;
-				next();
-			},
-			passport.authenticate(strategy, config.auth.providers[key].authOptions));
-		app.get('/auth/' + key + '/callback', passport.authenticate(strategy, {
-			failureRedirect: '/auth/' + key
-		}), function(req, res) {
-			let referer = req.session.referer;
-			delete req.session.referer;
-			res.redirect(referer || '/');
-		});
+
+				res.send(`
+					<html>
+						<body>
+							<h2>Test Login</h2>
+							<form method="post" action="/auth/test">
+								<div>
+									<label>Username:</label>
+									<input type="text" name="username" required>
+								</div>
+								<div style="display: none;">
+									<label>Password:</label>
+									<input type="password" name="password" value="test" required>
+								</div>
+								<button type="submit">Login</button>
+							</form>
+						</body>
+					</html>
+				`);
+			});
+
+			app.post('/auth/test', passport.authenticate('local', {
+				failureRedirect: '/auth/test'
+			}), function (req, res) {
+				let referer = req.session.referer;
+				delete req.session.referer;
+				res.redirect(referer || '/');
+			});
+		} else {
+			app.get('/auth/' + key,
+				(req, res, next) => {
+					let referer = req.header('referer');
+					if (req.query.webstrateId) {
+						const origin = new URL(req.header('referer')).origin;
+						referer = origin + '/' + req.query.webstrateId;
+					}
+					req.session.referer = referer;
+					next();
+				},
+				passport.authenticate(strategy, config.auth.providers[key].authOptions));
+			app.get('/auth/' + key + '/callback', passport.authenticate(strategy, {
+				failureRedirect: '/auth/' + key
+			}), function (req, res) {
+				let referer = req.session.referer;
+				delete req.session.referer;
+				res.redirect(referer || '/');
+			});
+		}
+
 		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
 	}
 
