@@ -45,7 +45,6 @@ async function fetchCookie(key, isAnywhere = false) {
 		};
 		websocket.send(request, callback);
 	});
-	console.log('Answer is ', answer);
 	return answer;
 }
 

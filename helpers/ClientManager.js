@@ -541,6 +541,8 @@ module.exports.announceNewAsset = function(webstrateId, asset, local) {
  * @public
  */
 module.exports.updateCookie = async function(userId, webstrateId, key, value, local) {
+	if (!key) throw new Error("Must provide a cookie name key");
+
 	var updateObj = {
 		wa: 'cookieUpdate',
 		update: { key, value }
@@ -555,6 +557,22 @@ module.exports.updateCookie = async function(userId, webstrateId, key, value, lo
 
 	if (local) {
 		var webstrateIdQuery = webstrateId || { '$exists': false };
+
+		if (pubsub) {
+			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
+				action: 'cookieUpdate', userId, update: { key, value }, webstrateId, WORKER_ID
+			}));
+		}		
+
+		if (value === undefined) {
+			// If the value is undefined, delete the cookie key entirely
+			await db.cookies.updateOne(
+				{ userId, webstrateId: webstrateIdQuery },
+				{ $pull: { cookies: { key } } }
+			);
+			return;
+		}
+
 		let res = await db.cookies.updateOne(
 			{ userId, webstrateId: webstrateIdQuery, cookies: { key } },
 			{ $set: { 'cookies.$.value': value } }
@@ -570,12 +588,6 @@ module.exports.updateCookie = async function(userId, webstrateId, key, value, lo
 				{ $push: { cookies: { key, value } } }, 
 				{ upsert: true }
 			);
-		}
-
-		if (pubsub) {
-			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'cookieUpdate', userId, update: { key, value }, webstrateId, WORKER_ID
-			}));
 		}
 	}
 };
