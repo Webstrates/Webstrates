@@ -267,40 +267,11 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, lo
 	if (userId === 'anonymous:') {
 		module.exports.sendToClient(socketId, helloMsgObj);
 	} else {
-		// Get user's cookies.
-		var promises = [];
-		promises.push(db.cookies.find({
-			userId, 
-			$or: [ 
-				{ webstrateId }, 
-				{ webstrateId: { '$exists': false }}
-			]
-		}).toArray());
-
-		// Get user's messages.
-		promises.push(messagingManager.getMessages(userId)); // intentionally no await here
-
-		// Attach user's cookies and messages to the hello message object.
-		Promise.all(promises).then(function([cookies, messages]) {
-			helloMsgObj.cookies = { here: {}, anywhere: {} };
-			// Find the "here" (document) cookies entry in the array, and convert the [{ key, value }]
-			// structure into a regular object.
-			var documentCookies = cookies.find(cookie => cookie.webstrateId === webstrateId) || {};
-			if (documentCookies.cookies) {
-				documentCookies.cookies.forEach(({ key, value }) => helloMsgObj.cookies.here[key] = value);
-			}
-
-			// Rinse and repeat for "anywhere" (global) cookies.
-			var globalCookies = cookies.find(cookie => typeof cookie.webstrateId === 'undefined') || {};
-			if (globalCookies.cookies) {
-				globalCookies.cookies.forEach(({ key, value }) =>
-					helloMsgObj.cookies.anywhere[key] = value);
-			}
-
+		// Get user's messages (intentionally no await here)
+		messagingManager.getMessages(userId).then(messages=>{
 			helloMsgObj.messages = messages;
-
 			module.exports.sendToClient(socketId, helloMsgObj);
-		});
+		}); 
 	}
 
 	clients[socketId].webstrates[webstrateId] = [];
@@ -608,6 +579,36 @@ module.exports.updateCookie = async function(userId, webstrateId, key, value, lo
 		}
 	}
 };
+
+module.exports.fetchCookie = async function(userId, webstrateId, key){
+	let cookieQuery = {userId};
+	if (webstrateId){
+		cookieQuery.webstrateId = webstrateId;
+	} else {
+		cookieQuery.webstrateId = { '$exists': false }
+	}
+
+	let result = await db.cookies.findOne(cookieQuery);
+	if (!result) {
+		if (key){
+			return undefined;
+		} else {
+			return {};
+		}
+	}
+	result = result.cookies.reduce((map, entry) => {
+		map[entry.key] = entry.value;
+		return map;
+	}, {});
+
+	if (key){
+		// Single cookie
+		return result[key];
+	} else {
+		// Cookie map
+		return result;
+	}
+}
 
 /**
  * Send message to clients in a webstrate.

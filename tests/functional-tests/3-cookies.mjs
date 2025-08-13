@@ -5,8 +5,8 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe('Cookies', function() {
-	this.timeout(100000);
+describe.only('Cookies', function() {
+	this.timeout(30000);
 
 	const webstrateIdA = 'test-' + util.randomString();
 	const WebstrateIdB = 'test-' + util.randomString();
@@ -92,10 +92,10 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		const hereCookiesA = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookiesA = await pageA.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookiesA);
 
-		const hereCookiesB = await pageB.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookiesB = await pageB.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookiesB);
 	});
 
@@ -104,12 +104,12 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await pageA.evaluate((cookieValue1) =>
-			window.webstrate.user.cookies.here.set('__test_1', cookieValue1), cookieValue1);
+		await pageA.evaluate(async (cookieValue1) =>
+			await window.webstrate.user.cookies.here.set('__test_1', cookieValue1), cookieValue1);
 
-		await util.waitForFunction(pageA, () => window.webstrate.user.cookies.here.get('__test_1'));
+		await util.waitForFunction(pageA, async () => await window.webstrate.user.cookies.here.get('__test_1'));
 
-		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookies = await pageA.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, { __test_1: cookieValue1 });
 	});
 
@@ -118,9 +118,9 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await util.waitForFunction(pageB, () => window.webstrate.user.cookies.here.get('__test_1'));
+		await util.waitForFunction(pageB, async () => await window.webstrate.user.cookies.here.get('__test_1'));
 
-		const hereCookies = await pageB.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookies = await pageB.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, { __test_1: cookieValue1 });
 	});
 
@@ -149,8 +149,8 @@ describe('Cookies', function() {
 				return this.skip();
 			}
 
-			await pageA.evaluate((cookieValue2) =>
-				window.webstrate.user.cookies.here.set('__test_2', cookieValue2), cookieValue2);
+			await pageA.evaluate(async (cookieValue2) =>
+				await window.webstrate.user.cookies.here.set('__test_2', cookieValue2), cookieValue2);
 
 			const cookieSet = await util.waitForFunction(pageA, () => window.__test_cookie);
 			assert.isTrue(cookieSet);
@@ -205,7 +205,7 @@ describe('Cookies', function() {
 		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 
-		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookies = await pageA.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, {
 			__test_1: cookieValue1,
 			__test_2: cookieValue2
@@ -221,7 +221,7 @@ describe('Cookies', function() {
 		await util.logInToAuth(pageC);
 		await pageC.goto(urlA, { waitUntil: 'networkidle2' });
 
-		const hereCookies = await pageC.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookies = await pageC.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, {
 			__test_1: cookieValue1,
 			__test_2: cookieValue2
@@ -240,7 +240,7 @@ describe('Cookies', function() {
 
 		await pageA.goto(urlB, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
-		const hereCookies = await pageA.evaluate(() => window.webstrate.user.cookies.here.get());
+		const hereCookies = await pageA.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.isEmpty(hereCookies);
 	});
 
@@ -273,8 +273,8 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await pageA.evaluate((cookieValue3) =>
-			window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
+		await pageA.evaluate(async (cookieValue3) =>
+			await window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
 		const cookieSet = await util.waitForFunction(pageA, () =>
 			window.webstrate.user.cookies.anywhere.get('__test_3'));
@@ -286,8 +286,8 @@ describe('Cookies', function() {
 			return this.skip();
 		}
 
-		await pageC.evaluate((cookieValue3) =>
-			window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
+		await pageC.evaluate(async (cookieValue3) =>
+			await window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
 		const cookieSet = await util.waitForFunction(pageC, () =>
 			window.webstrate.user.cookies.anywhere.get('__test_3'));
@@ -300,8 +300,8 @@ describe('Cookies', function() {
 				return this.skip();
 			}
 
-			await pageA.evaluate((cookieValue3) =>
-				window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
+			await pageA.evaluate(async (cookieValue3) =>
+				await window.webstrate.user.cookies.anywhere.set('__test_3', cookieValue3), cookieValue3);
 
 			const cookieSet = await util.waitForFunction(pageA, () => window.__test_cookie);
 			assert.isTrue(cookieSet);

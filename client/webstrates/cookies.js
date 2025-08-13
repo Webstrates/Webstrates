@@ -12,7 +12,7 @@ const webstrateId = coreUtils.getLocationObject().webstrateId;
 globalObject.createEvent('cookieUpdateHere');
 globalObject.createEvent('cookieUpdateAnywhere');
 
-function updateCookie(key, value, isAnywhere = false) {
+async function updateCookie(key, value, isAnywhere = false) {
 	var updateObj = {
 		wa: 'cookieUpdate',
 		update: { key, value }
@@ -20,36 +20,57 @@ function updateCookie(key, value, isAnywhere = false) {
 	if (!isAnywhere) {
 		updateObj.d = globalObject.publicObject.webstrateId;
 	}
-	websocket.send(updateObj);
+	await new Promise((resolve, reject)=>{
+		let callback = (err,val)=>{
+			if (err) reject(err);
+			resolve(val);
+		};		
+		websocket.send(updateObj, callback);
+	});
 }
 
-let cookies;
+async function fetchCookie(key, isAnywhere = false) {
+	var request = {
+		wa: 'cookieFetch',
+		cookie: key
+	};
+	if (!isAnywhere) {
+		request.d = globalObject.publicObject.webstrateId;
+	}
+
+	let answer = await new Promise((resolve, reject)=>{
+		let callback = (err,val)=>{
+			if (err) reject(err);
+			resolve(val);
+		};
+		websocket.send(request, callback);
+	});
+	console.log('Answer is ', answer);
+	return answer;
+}
+
 websocket.onjsonmessage = (message) => {
 	switch (message.wa) {
 		case 'hello':
 			if (message.d !== webstrateId) return;
 
-			cookies = message.cookies || { here: {}, anywhere: {} };
-
 			// Only allow cookies if the user object exists, i.e. is logged in with OAuth.
 			if (userObject.publicObject.userId && userObject.publicObject.userId !== 'anonymous:') {
 				userObject.publicObject.cookies = {
 					anywhere: {
-						get: function(key) {
-							return key ? cookies.anywhere[key] : cookies.anywhere;
+						get: async function(key) {
+							return await fetchCookie(key, true);
 						},
-						set: function(key, value) {
-							cookies.anywhere[key] = value;
-							updateCookie(key, value, true);
+						set: async function(key, value) {
+							await updateCookie(key, value, true);
 						}
 					},
 					here: {
-						get: function(key) {
-							return key ? cookies.here[key] : cookies.here;
+						get: async function(key) {
+							return await fetchCookie(key, false);
 						},
-						set: function(key, value, callback) {
-							cookies.here[key] = value;
-							updateCookie(key, value, false);
+						set: async function(key, value) {
+							await updateCookie(key, value, false);
 						}
 					}
 				};
@@ -60,10 +81,8 @@ websocket.onjsonmessage = (message) => {
 
 			var [key, value] = [message.update.key, message.update.value];
 			if (message.d) {
-				cookies.here[key] = value;
 				globalObject.triggerEvent('cookieUpdateHere', key, value);
 			} else {
-				cookies.anywhere[key] = value;
 				globalObject.triggerEvent('cookieUpdateAnywhere', key, value);
 			}
 			break;

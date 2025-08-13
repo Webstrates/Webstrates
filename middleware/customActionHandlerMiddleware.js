@@ -43,12 +43,28 @@ exports.onmessage = async (ws, req, data, next) => {
 			return;
 		}
 		case 'cookieUpdate': {
-			if (data.update && user.userId !== 'anonymous:') {
+			const responseObj = { wa: 'reply', token: data.token };
+			try {
+				if (user.userId === 'anonymous:') throw new Error("Must be logged in to set user cookies");
+				if (!data.update) throw new Error("Must be provide update info");
 				await clientManager.updateCookie(user.userId, webstrateId, 
 					data.update.key, data.update.value,	true);
+				responseObj.reply = true;;
+			} catch (err){
+				responseObj.error = err.message;
 			}
-			return;
+			return ws.send(JSON.stringify(responseObj));
 		}
+		case 'cookieFetch': {
+			const responseObj = { wa: 'reply', token: data.token };
+			try {
+				if (user.userId === 'anonymous:') throw new Error("Must be logged in to fetch user cookies");
+				responseObj.reply = await clientManager.fetchCookie(user.userId, webstrateId, data.cookie);
+			} catch (err){
+				responseObj.error = err.message;
+			}
+			return ws.send(JSON.stringify(responseObj));
+		}		
 	}
 
 	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
