@@ -5,7 +5,7 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe.only('Cookies', function() {
+describe('Cookies', function() {
 	this.timeout(30000);
 
 	const webstrateIdA = 'test-' + util.randomString();
