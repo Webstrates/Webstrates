@@ -278,4 +278,6 @@ describe('Invites', function () {
 		expect(error).to.be.an('Error');
 		expect(error.message).to.include('Must be logged in to handle invites');
 	});
+
+	// TODO: Check HTTP API
 });

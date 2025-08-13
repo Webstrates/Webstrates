@@ -20,6 +20,7 @@ const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
+const invites = require(APP_PATH + '/middleware/userInvites.js');
 
 async function generateWebstrateId(req) {
 	if (config.niceWebstrateIds) {
@@ -167,6 +168,13 @@ module.exports.requestHandler = async function(req, res) {
 			version: req.version,
 			tag: req.tag
 		});
+
+		// First check any invite keys - before permissions are fetched
+		if ('acceptInvite' in req.query){
+			await invites.prepareAPIAccess(req.user);
+			await invites.invitee.acceptInvite(req.webstrateId, req.query.acceptInvite, req.user);
+		}		
+
 		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 			req.user.provider, snapshot);
 
