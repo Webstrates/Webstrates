@@ -90,6 +90,9 @@ describe('Authentication and Login', function() {
 		// avatarUrl is optional
 		assert.containsAllKeys(userObject, ['cookies', 'displayName', 'permissions',
 			'provider', 'userId', 'userUrl', 'username']);
+		assert.notEqual(userObject.userId, 'anonymous:');
+		assert.notEqual(userObject.username, 'anonymous');
+		assert.equal(userObject.provider, config.authType);
 	});
 
 	it('user object should have correct userId, username and provider', async function() {
@@ -112,5 +115,25 @@ describe('Authentication and Login', function() {
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.exists(userObject);
+		assert.notEqual(userObject.userId, 'anonymous:');
+		assert.notEqual(userObject.username, 'anonymous');
+		assert.equal(userObject.provider, config.authType);
+	});
+
+	it('after logout user should be redirected to the frontpage and be logged out', async function () {
+		if (!util.credentialsProvided) return this.skip();
+
+		await pageA.goto(config.server_address + 'auth/logout', { waitUntil: 'networkidle2' });
+
+		const url = await pageA.url();
+		assert.equal(url, util.cleanServerAddress + 'frontpage/');
+
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		userObject = await pageA.evaluate(() => window.webstrate.user);
+
+		assert.propertyVal(userObject, 'userId', 'anonymous:');
+		assert.propertyVal(userObject, 'username', 'anonymous');
+		assert.propertyVal(userObject, 'provider', '');
+		assert.property(userObject, 'permissions');
 	});
 });
