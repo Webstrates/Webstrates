@@ -163,17 +163,17 @@ module.exports.requestHandler = async function(req, res) {
 	}
 
 	try {
-		let snapshot = await documentManager.getDocument({
-			webstrateId: req.webstrateId,
-			version: req.version,
-			tag: req.tag
-		});
-
 		// First check any invite keys - before permissions are fetched
 		if ('acceptInvite' in req.query){
 			await invites.prepareAPIAccess(req.user);
 			await invites.invitee.acceptInvite(req.webstrateId, req.query.acceptInvite, req.user);
-		}		
+		}
+
+		const snapshot = await documentManager.getDocument({
+			webstrateId: req.webstrateId,
+			version: req.version,
+			tag: req.tag
+		});
 
 		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
 			req.user.provider, snapshot);
