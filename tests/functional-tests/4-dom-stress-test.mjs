@@ -5,7 +5,7 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe.only('DOM Stress Test', function() {
+describe('DOM Stress Test', function() {
 	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
