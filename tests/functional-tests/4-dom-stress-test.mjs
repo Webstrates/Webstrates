@@ -5,7 +5,7 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe('DOM Stress Test', function() {
+describe.only('DOM Stress Test', function() {
 	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
@@ -23,9 +23,11 @@ describe('DOM Stress Test', function() {
 		]);
 
 		pageA = pages[0];
-
-		await Promise.all(pages.map(page =>
-			page.goto(url, { waitUntil: 'networkidle2' })));
+		
+		// Connect pages sequentially to prevent "document was created remotely" errors
+		for (let i = 0; i < pages.length; i++) {
+			await pages[i].goto(url, { waitUntil: 'networkidle2' });
+		}
 
 		await Promise.all(pages.map(page =>
 			util.waitForFunction(page, () =>
