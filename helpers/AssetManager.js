@@ -109,6 +109,8 @@ module.exports.getAssets = async function(webstrateId, latestOnly = false) {
 		asset.identifier = asset.fileName;
 		asset.fileName = asset.originalFileName;
 		delete asset.originalFileName;
+		delete asset._id;
+		delete asset.webstrateId;
 	});
 	return assets;
 };
