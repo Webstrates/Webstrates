@@ -134,21 +134,35 @@ describe.only('Assets', function () {
 		assert.equal(content, textFileContent, 'Content of the asset does not match the expected content');
 	});
 
-	it('All assets should be listed in the API', async () => {
+	it('All assets should be listed in the API and HTTP API', async () => {
 		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
 
 		await uploadAssetHelper(pageA, testAssetsFs[1]);
 		await uploadAssetHelper(pageA, testAssetsFs[2]);
 		await uploadAssetHelper(pageA, testAssetsFs[3]);
 
-		const assets = await pageA.evaluate(async () => {
+		let assetsAPI = await pageA.evaluate(async () => {
 			return await window.webstrate.assets;
 		});
+		assetsAPI = assetsAPI.sort((a, b) => a.v - b.v);
 
-		assert.equal(assets.length, 4, 'The number of assets in the list does not match the number of uploaded assets');
+		await pageA.goto(urlA + '?assets', { waitUntil: 'networkidle2' });
+		const content = await pageA.evaluate(() => {
+			return document.body.textContent;
+		});
+		const assetsHTTPAPI = JSON.parse(content).sort((a, b) => a.v - b.v);
+
+		assert.deepEqual(assetsAPI, assetsHTTPAPI, 'Assets from API and HTTP API do not match');
+		assert.equal(assetsAPI.length, 4, 'The number of assets in the list does not match the number of uploaded assets');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.txt'), 'List of assets does not include the text file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv'), 'List of assets does not include the CSV file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.png'), 'List of assets does not include the image file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.zip'), 'List of assets does not include the ZIP file');
 	});
 
 	it('The same asset should have the same identifier across different webstrates', async () => {
+		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
+
 		await uploadAssetHelper(pageB, testAssetsFs[0]);
 
 		const textFileAssetA = await pageA.evaluate(() => {
@@ -198,7 +212,7 @@ describe.only('Assets', function () {
 		const content = await pageA.evaluate(() => {
 			return document.body.textContent;
 		});
-		
+
 		try {
 			const assetsList = JSON.parse(content);
 			assert.isArray(assetsList, 'Content of the ZIP archive should be a JSON array');
