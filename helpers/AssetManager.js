@@ -350,7 +350,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		fileHash: asset.fileHash
 	});
 
-	asset = {
+	const assetToBeAnnounced = {
 		v: version,
 		fileName: asset.originalname,
 		fileSize: asset.size,
@@ -362,13 +362,13 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	if (searchable && asset.mimetype === 'text/csv') {
 		const assetId = result.insertedId;
 		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
-		asset.searchable = true;
+		assetToBeAnnounced.searchable = true;
 	}
-
+	
 	// Inform all clients of the newly added asset.
-	clientManager.announceNewAsset(webstrateId, asset, true);
+	clientManager.announceNewAsset(webstrateId, assetToBeAnnounced, true);
 
-	return asset;
+	return assetToBeAnnounced;
 };
 
 /**
