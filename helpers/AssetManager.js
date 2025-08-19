@@ -351,7 +351,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	});
 
 	if (searchable && asset.mimetype === 'text/csv') {
-		const assetId = result.ops[0]._id;
+		const assetId = result.insertedId;
 		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
 	}
 

@@ -21,7 +21,8 @@ const batchInsertJsonToMongo = (filePath, assetId) => new Promise((accept, rejec
 	let batchRows = [];
 	let counter = 0;
 	csv(csvConfig).fromFile(filePath)
-		.on('json', async row => {
+		.on('data', async data => {
+			const row = JSON.parse(data.toString('utf8'));
 			row._assetId = assetId;
 			batchRows.push(row);
 			counter++;
@@ -126,12 +127,18 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 	// If this webstrate is a copy of another webstrate, the CSV assets will be associated with the
 	// original webstrate, so we use that ID instead.
 	query._assetId = asset._originalId || asset._id;
-	const result = db.assetsCsv
+	const result = await db.assetsCsv
 		.find(query, { _id: 0, _assetId: 0 })
 		.limit(limit)
 		.sort(sort)
-		.skip(skip);
+		.skip(skip)
+		.toArray();
+
+	result.forEach((row) => {
+		delete row._id;
+		delete row._assetId;
+	});
 
 	// 'count' is the the number of all records matching the query, disregarding the limit we've set.
-	return { records: await result.toArray(), count: await result.count() };
+	return { records: result, count: result.length };
 };
