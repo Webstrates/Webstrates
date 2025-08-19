@@ -23,9 +23,11 @@ describe('DOM Stress Test', function() {
 		]);
 
 		pageA = pages[0];
-
-		await Promise.all(pages.map(page =>
-			page.goto(url, { waitUntil: 'networkidle2' })));
+		
+		// Connect pages sequentially to prevent "document was created remotely" errors
+		for (let i = 0; i < pages.length; i++) {
+			await pages[i].goto(url, { waitUntil: 'networkidle2' });
+		}
 
 		await Promise.all(pages.map(page =>
 			util.waitForFunction(page, () =>

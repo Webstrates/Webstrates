@@ -109,6 +109,8 @@ module.exports.getAssets = async function(webstrateId, latestOnly = false) {
 		asset.identifier = asset.fileName;
 		asset.fileName = asset.originalFileName;
 		delete asset.originalFileName;
+		delete asset._id;
+		delete asset.webstrateId;
 	});
 	return assets;
 };
@@ -348,12 +350,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		fileHash: asset.fileHash
 	});
 
-	if (searchable && asset.mimetype === 'text/csv') {
-		const assetId = result.ops[0]._id;
-		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
-	}
-
-	asset = {
+	const assetToBeAnnounced = {
 		v: version,
 		fileName: asset.originalname,
 		fileSize: asset.size,
@@ -362,10 +359,16 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		fileHash: asset.fileHash
 	};
 
+	if (searchable && asset.mimetype === 'text/csv') {
+		const assetId = result.insertedId;
+		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
+		assetToBeAnnounced.searchable = true;
+	}
+	
 	// Inform all clients of the newly added asset.
-	clientManager.announceNewAsset(webstrateId, asset, true);
+	clientManager.announceNewAsset(webstrateId, assetToBeAnnounced, true);
 
-	return asset;
+	return assetToBeAnnounced;
 };
 
 /**

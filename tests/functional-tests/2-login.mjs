@@ -30,34 +30,33 @@ describe('Authentication and Login', function() {
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
-		assert.propertyVal(userObject, 'userId',   'anonymous:');
+		assert.propertyVal(userObject, 'userId', 'anonymous:');
 		assert.propertyVal(userObject, 'username', 'anonymous');
 		assert.propertyVal(userObject, 'provider', '');
-		assert.property(userObject,    'permissions');
+		assert.property(userObject, 'permissions');
 	});
 
 	let authTargetPrefix = {
-	    github: "https://github.com/login?",
-	    au: "https://login.projects.cavi.au.dk",
+		github: 'https://github.com/login?',
+		au: 'https://login.projects.cavi.au.dk',
 		test: config.server_address + 'auth/test'
 	}
 	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`, async function () {
 		if (!util.credentialsProvided) return this.skip();
 
-		await pageA.goto(config.server_address + 'auth/'+config.authType, { waitUntil: 'networkidle2' });
+		await pageA.goto(config.server_address + 'auth/' + config.authType, { waitUntil: 'networkidle2' });
 		const url = pageA.url();
-		assert.isTrue(url.startsWith(authTargetPrefix[config.authType]), "Was the auth correctly set up in config.json?");
+		assert.isTrue(url.startsWith(authTargetPrefix[config.authType]), 'Was the auth correctly set up in config.json?');
 	});
 
-	it('should log in via auth', async function() {
+	it('should log in via auth', async function () {
 		if (!util.credentialsProvided) return this.skip();
 
-		let result = await util.logInToAuth(pageA);
-		const url = await pageA.url();
+		const result = await util.logInToAuth(pageA);
 		assert.isTrue(result, 'Login failed (invalid credentials?)');
 	});
 
-	it('should redirect to Webstrates frontpage', async function() {
+	it('should redirect to Webstrates frontpage', async function () {
 		if (!util.credentialsProvided) {
 			// We won't get redirected when we're not logging in, so we redirect manually to be in the
 			// right state for the next tests.
@@ -74,14 +73,14 @@ describe('Authentication and Login', function() {
 	});
 
 	let userObject;
-	it('user object should exist', async function() {
+	it('user object should exist', async function () {
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.exists(userObject);
 	});
 
-	it('user object should contain all required keys', async function() {
+	it('user object should contain all required keys', async function () {
 		if (!util.credentialsProvided) {
 			assert.containsAllKeys(userObject, ['permissions', 'provider', 'userId', 'username']);
 			return;
@@ -92,18 +91,17 @@ describe('Authentication and Login', function() {
 			'provider', 'userId', 'userUrl', 'username']);
 	});
 
-	it('user object should have correct userId, username and provider', async function() {
+	it('user object should have correct userId, username and provider', async function () {
 		if (!util.credentialsProvided) return this.skip();
 
 
-		assert.equal(userObject.userId, userObject.username+":"+config.authType);
-		assert.isTrue(userObject.username!="anonymous", "User cannot be called anonymous");
+		assert.equal(userObject.userId, userObject.username + ':' + config.authType);
+		assert.isTrue(userObject.username != 'anonymous', 'User cannot be called anonymous');
 		assert.propertyVal(userObject, 'provider', config.authType);
 	});
 
-	it('should also log in on other pages/tabs', async function() {
+	it('should also log in on other pages/tabs', async function () {
 		if (!util.credentialsProvided) return this.skip();
-
 
 		pageB = await browser.newPage();
 		await pageB.goto(config.server_address);
@@ -112,5 +110,25 @@ describe('Authentication and Login', function() {
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.exists(userObject);
+		assert.notEqual(userObject.userId, 'anonymous:');
+		assert.notEqual(userObject.username, 'anonymous');
+		assert.equal(userObject.provider, config.authType);
+	});
+
+	it('after logout user should be redirected to the frontpage and be logged out', async function () {
+		if (!util.credentialsProvided) return this.skip();
+
+		await pageA.goto(config.server_address + 'auth/logout', { waitUntil: 'networkidle2' });
+
+		const url = await pageA.url();
+		assert.equal(url, util.cleanServerAddress + 'frontpage/');
+
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		userObject = await pageA.evaluate(() => window.webstrate.user);
+
+		assert.propertyVal(userObject, 'userId', 'anonymous:');
+		assert.propertyVal(userObject, 'username', 'anonymous');
+		assert.propertyVal(userObject, 'provider', '');
+		assert.property(userObject, 'permissions');
 	});
 });

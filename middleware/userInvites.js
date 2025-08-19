@@ -59,11 +59,15 @@ exports.admin = {
      */
     getInvites: async (webstrateId, user) => {
         await exports.admin.checkIsAdmin(webstrateId, user); // First, check if the user is an admin
-        return await db.invites.find({
+        const invites = await db.invites.find({
             webstrateId: webstrateId,
             'createdBy.username': user.username,
             'createdBy.provider': user.provider,
         }).toArray();
+        invites.forEach((invite) => {
+            delete invite._id;
+        });
+        return invites;
     },
 
     /**

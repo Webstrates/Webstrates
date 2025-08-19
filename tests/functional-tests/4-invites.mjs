@@ -175,6 +175,38 @@ describe('Invites', function () {
 		expect(error.message).to.include('Invalid invitation key');
 	});
 
+	it('Users should be able to accept invites using the HTTP API', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		const invite = await pageA.evaluate(async () => {
+			return await window.webstrate.user.invites.create({ permissions: 'r' });
+		});
+
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('data-auth',
+				JSON.stringify([
+					{
+						username: 'testuserA',
+						provider: 'test',
+						permissions: 'awr'
+					}
+				])
+			);
+		});
+
+		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`, { waitUntil: 'networkidle2' });
+		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invite via HTTP API');
+
+		const permissions = await pageA.evaluate(() => {
+			return document.documentElement.getAttribute('data-auth');
+		});
+
+		const userBAuth = JSON.parse(permissions).find(user => user.username === 'testuserB' && user.provider === 'test');
+		assert.exists(userBAuth, 'User B should be in the data-auth attribute after accepting the invite');
+		assert.equal(userBAuth.permissions, 'r', 'User B should have read permissions after accepting the invite');
+
+	});
+
 	it('User should not be able to remove invitations created by other users', async function () {
 		if (config.authType !== 'test') return this.skip();
 
@@ -278,6 +310,4 @@ describe('Invites', function () {
 		expect(error).to.be.an('Error');
 		expect(error.message).to.include('Must be logged in to handle invites');
 	});
-
-	// TODO: Check HTTP API
 });
