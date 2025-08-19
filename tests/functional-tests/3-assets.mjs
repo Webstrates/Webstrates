@@ -29,6 +29,21 @@ const uploadAssetHelper = async (page, testAsset, searchable = false) => {
 	}, { timeout: 5000 });
 }
 
+const deleteAssetHelper = async (page, fileName) => {
+	await page.evaluate(async (fileName) => {
+		window.testAssetDeleted = false;
+		window.webstrate.deleteAsset(fileName, () => {
+			window.testAssetDeleted = true;
+		});
+	}, fileName);
+
+	await page.waitForFunction(() => {
+		return window.testAssetDeleted === true;
+	}, { timeout: 5000 });
+
+	await page.reload({ waitUntil: 'networkidle2' });
+}
+
 describe.only('Assets', function () {
 	this.timeout(10000);
 
@@ -150,10 +165,13 @@ describe.only('Assets', function () {
 
 		assert.deepEqual(assetsAPI, assetsHTTPAPI, 'Assets from API and HTTP API do not match');
 		assert.equal(assetsAPI.length, 4, 'The number of assets in the list does not match the number of uploaded assets');
+
 		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.txt'), 'List of assets does not include the text file');
 		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv'), 'List of assets does not include the CSV file');
 		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.png'), 'List of assets does not include the image file');
 		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.zip'), 'List of assets does not include the ZIP file');
+
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv' && asset.searchable === true), 'Searchable CSV file is not marked as searchable');
 	});
 
 	it('The same asset should have the same identifier across different webstrates', async () => {
@@ -172,18 +190,7 @@ describe.only('Assets', function () {
 	});
 
 	it('Assets should be able to be deleted', async () => {
-		await pageB.evaluate(async () => {
-			window.testAssetDeleted = false;
-			window.webstrate.deleteAsset('test.txt', () => {
-				window.testAssetDeleted = true;
-			});
-		});
-
-		await pageB.waitForFunction(() => {
-			return window.testAssetDeleted === true;
-		}, { timeout: 5000 });
-
-		await pageB.reload({ waitUntil: 'networkidle2' });
+		await deleteAssetHelper(pageB, 'test.txt');
 
 		const textFileAssetB = await pageB.evaluate(() => {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
@@ -229,5 +236,47 @@ describe.only('Assets', function () {
 		assert.equal(content, textFileContent, 'Content of the file within ZIP archive does not match the expected content');
 	});
 
-	// TODO: Searchable CSVs?
+	it('Searchable CSV assets should be searchable', async () => {
+		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
+
+		const { err, result, count } = await pageA.evaluate(async () => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.searchAsset('test.csv', {
+					query: { name: 'Bob' }
+				}, (err, result, count) => {
+					resolve({ err, result, count });
+				});
+			});
+		});
+
+		assert.isUndefined(err, 'Searching for a searchable asset should not throw an error');
+		assert.isArray(result, 'Search result should be an array');
+		assert.equal(result.length, 1, 'Search result should contain one asset');
+		assert.equal(count, 1, 'Search count should be 1');
+		assert.deepEqual(result[0], {
+			name: 'Bob',
+			age: 35,
+			city: 'Chicago'
+		}, 'Search result does not match expected data');
+	});
+
+	it('Deleted searchable CSV assets should not be searchable', async () => {
+		await deleteAssetHelper(pageA, 'test.csv');
+
+		const { err, result, count } = await pageA.evaluate(async () => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.searchAsset('test.csv', {
+					query: { name: 'Bob' }
+				}, (err, result, count) => {
+					resolve({ err, result, count });
+				});
+			});
+		});
+		
+		assert.isDefined(err, 'Searching for a deleted asset should throw an error');
+		assert.equal(err, 'Asset not found', 'Error message does not match expected error for deleted asset');
+		assert.isArray(result, 'Search result should be an array');
+		assert.equal(result.length, 0, 'Search result should be empty for deleted asset');
+		assert.equal(count, 0, 'Search count should be 0 for deleted asset');
+	});
 });
