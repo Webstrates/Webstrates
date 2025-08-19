@@ -350,11 +350,6 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		fileHash: asset.fileHash
 	});
 
-	if (searchable && asset.mimetype === 'text/csv') {
-		const assetId = result.insertedId;
-		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
-	}
-
 	asset = {
 		v: version,
 		fileName: asset.originalname,
@@ -363,6 +358,12 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		identifier: asset.filename,
 		fileHash: asset.fileHash
 	};
+
+	if (searchable && asset.mimetype === 'text/csv') {
+		const assetId = result.insertedId;
+		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
+		asset.searchable = true;
+	}
 
 	// Inform all clients of the newly added asset.
 	clientManager.announceNewAsset(webstrateId, asset, true);
