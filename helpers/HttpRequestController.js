@@ -255,7 +255,7 @@ module.exports.requestHandler = async function(req, res) {
 				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
 			} catch (error) {
 				console.error(error);
-				return res.status(409).send(String(err));
+				return res.status(409).send(String(error));
 			}
 		}
 
