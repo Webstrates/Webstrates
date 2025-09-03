@@ -421,18 +421,31 @@ module.exports.setUserPermissions = async function(username, provider, permissio
 		return next(new Error('Invalid document'));
 	}
 
-	var oldPermissions = snapshot.data[1]['data-auth'];
+	const oldPermissions = snapshot.data[1]['data-auth'];
 	snapshot = await module.exports.setUserPermissionsInSnapshot(username, provider, permissions,
 		snapshot);
-	var newPermissions = snapshot.data[1]['data-auth'];
+	const newPermissions = snapshot.data[1]['data-auth'];
 
-	var op = {
-		p: [1, 'data-auth'],
-		od: oldPermissions,
-		oi: newPermissions
-	};
+	// Only submit an op if the permissions have changed
+	if (oldPermissions != newPermissions) {
+		let op;
+		if (newPermissions === undefined) {
+			// Delete the property if the new permissions are undefined
+			op = {
+				p: [1, 'data-auth'],
+				od: oldPermissions
+			};
+		} else {
+			// Otherwise, set the new permissions
+			op = {
+				p: [1, 'data-auth'],
+				od: oldPermissions,
+				oi: newPermissions
+			};
+		}
 
-	await util.promisify(documentManager.submitOp)(webstrateId, op, source);
+		await util.promisify(documentManager.submitOp)(webstrateId, op, source);
+	}
 };
 
 module.exports.setUserPermissionsInSnapshot = async function(username, provider, permissions,
