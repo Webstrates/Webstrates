@@ -38,7 +38,7 @@ async function generateWebstrateId(req) {
  * @public
  */
 module.exports.rootRequestHandler = function(req, res) {
-	return res.redirect('/frontpage');
+	return res.redirect('/frontpage/');
 };
 
 /**
