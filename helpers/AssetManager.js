@@ -249,7 +249,7 @@ module.exports.restoreAssets = async function({ webstrateId, version, tag, newVe
 	if (!version) version = await documentManager.getVersionFromTag(webstrateId, tag);
 
 	var query = { webstrateId, v: { $lte: version } };
-	let assets = db.assets.find(query).toArray();
+	let assets = await db.assets.find(query).toArray();
 	
 	// If there are no assets, we can terminate.
 	if (assets.length === 0) return;
@@ -262,7 +262,7 @@ module.exports.restoreAssets = async function({ webstrateId, version, tag, newVe
 			delete asset._id;
 	});
 	
-	await db.assets.insertMany(assets, next);
+	await db.assets.insertMany(assets);
 };
 
 /**
