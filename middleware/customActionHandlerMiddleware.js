@@ -175,6 +175,9 @@ exports.onmessage = async (ws, req, data, next) => {
 				try {
 					let newVersion = await documentManager.restoreDocument({ webstrateId, tag, version }, source);
 
+					// Also restore assets, so the restored version shows the old assets, not the new ones.
+					await assetManager.restoreAssets({ webstrateId, version, tag, newVersion });
+
 					// The permissions of the older version of the document may be different than
 					// what they are now, so we should invalidate the cached permissions.
 					permissionManager.invalidateCachedPermissions(webstrateId);
