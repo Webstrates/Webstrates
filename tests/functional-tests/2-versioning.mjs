@@ -120,4 +120,6 @@ describe('Versioning', function() {
 		// The restored "Hello, World! How are you?" is version 7.
 		assert.equal(version, 7);
 	});
+	
+	// TODO: Add tests using the HTTP API and that assets are restored correctly.
 });

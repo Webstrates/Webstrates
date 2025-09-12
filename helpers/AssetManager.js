@@ -244,25 +244,67 @@ module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, ver
  * @param  {int}      options.newVersion  Version to bump assets to.
  * @public
  */
-module.exports.restoreAssets = async function({ webstrateId, version, tag, newVersion }) {
+module.exports.restoreAssets = async function ({ webstrateId, version, tag, newVersion }) {
 	// We need the version, so if it's not defined, we fetch it
 	if (!version) version = await documentManager.getVersionFromTag(webstrateId, tag);
 
-	var query = { webstrateId, v: { $lte: version } };
-	let assets = await db.assets.find(query).toArray();
-	
+	const assets = await db.assets.find({ webstrateId }).toArray();
+
 	// If there are no assets, we can terminate.
 	if (assets.length === 0) return;
 
-	assets = filterNewestAssets(assets);
-		
-	// Bump the version of all copied assets.
+	// Get the assets at the current version and the assets at the restored version.
+	const assetsNow = {};
+	const assetsThen = {};
 	assets.forEach((asset) => {
-			asset.v = newVersion;
-			delete asset._id;
+		if ((!assetsNow[asset.originalFileName] ||
+			assetsNow[asset.originalFileName].v < asset.v)) {
+			assetsNow[asset.originalFileName] = asset;
+		}
+		if ((!assetsThen[asset.originalFileName]
+			|| assetsThen[asset.originalFileName].v < asset.v)
+			&& asset.v <= version) {
+			assetsThen[asset.originalFileName] = asset;
+		}
 	});
-	
-	await db.assets.insertMany(assets);
+
+	const assetsToRestore = {};
+	const assetsToMarkDeleted = [];
+
+	for (let assetName in assetsNow) {
+		const assetNow = assetsNow[assetName];
+		const assetThen = assetsThen[assetName];
+		const isDeletedNow = !!assetNow.deletedAt;
+		const wasDeletedThen = !assetThen || assetThen?.deletedAt <= version;
+
+		if (isDeletedNow && !wasDeletedThen) {
+			// If the asset is deleted now, but wasn't deleted then, we need to restore it.
+			assetsToRestore[assetName] = Object.assign({}, assetThen);
+		} else if (!isDeletedNow && wasDeletedThen) {
+			// If the asset isn't deleted now, but was deleted then, we need to mark it as deleted.
+			assetsToMarkDeleted.push(assetName);
+		} else if (!isDeletedNow && !wasDeletedThen && assetThen.fileHash != assetNow.fileHash) {
+			// If the asset exists at both versions, but the file hash is different, we need to restore it.
+			assetsToRestore[assetName] = Object.assign({}, assetThen);
+		}
+	}
+
+	if (Object.keys(assetsToRestore).length > 0) {
+		for (let assetName in assetsToRestore) {
+			const asset = assetsToRestore[assetName];
+			asset.v = newVersion;
+			asset.restoredFrom = version;
+			delete asset._id;
+			delete asset.deletedAt;
+		}
+		console.log(`DEBUG Restoring assets`, assetsToRestore);
+		await db.assets.insertMany(Object.values(assetsToRestore));
+	}
+
+	console.log(`DEBUG Marking assets as deleted`, assetsToMarkDeleted);
+	assetsToMarkDeleted.forEach(async (assetName) => {
+		await module.exports.markAssetAsDeleted(webstrateId, assetName);
+	});
 };
 
 /**
