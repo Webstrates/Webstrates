@@ -279,4 +279,6 @@ describe('Assets', function () {
 		assert.equal(result.length, 0, 'Search result should be empty for deleted asset');
 		assert.equal(count, 0, 'Search count should be 0 for deleted asset');
 	});
+	
+	// TODO: Add tests using the HTTP API and that assets are restored correctly and have the "restoredFrom" property set.
 });
