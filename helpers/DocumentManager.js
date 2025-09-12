@@ -347,17 +347,20 @@ module.exports.tagDocument = async function(webstrateId, version, label) {
 
 	var data = snapshot.data;
 	var type = snapshot.type;
-	// All labels and versions have to be unique, so this is how we enforce that. First, try to
-	// set the label for a specific version. Due to our collection's uniqueness constraint, this
-	// will fail if the label already exists.
-	await db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true });
-
-	// Now we can't just update the label, because a label for the version may also exist.
-	// Therefore, we delete anything with the label or version, and then insert it again.
-	await db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]});
 	
-	// And now reinsert.
-	await db.tags.insertOne({ webstrateId, v: version, label, data, type });
+	try {
+		// All labels and versions have to be unique, so this is how we enforce that. First, try to
+		// set the label for a specific version. Due to our collection's uniqueness constraint, this
+		// will fail if the label already exists.
+		await db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true });
+	} catch (err) {
+		// Now we can't just update the label, because a label for the version may also exist.
+		// Therefore, we delete anything with the label or version, and then insert it again.
+		await db.tags.deleteMany({ webstrateId, $or: [ { label }, { v: version } ]});
+		
+		// And now reinsert.
+		await db.tags.insertOne({ webstrateId, v: version, label, data, type });
+	}
 
 	return version;
 };
