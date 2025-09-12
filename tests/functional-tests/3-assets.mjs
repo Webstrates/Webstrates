@@ -44,7 +44,7 @@ const deleteAssetHelper = async (page, fileName) => {
 	await page.reload({ waitUntil: 'networkidle2' });
 }
 
-describe('Assets', function () {
+describe.only('Assets', function () {
 	this.timeout(10000);
 
 	const webstrateIdA = 'test-' + util.randomString();

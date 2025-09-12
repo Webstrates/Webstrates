@@ -5,7 +5,7 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe.only('Versioning', function () {
+describe('Versioning', function () {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
