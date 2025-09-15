@@ -297,11 +297,9 @@ module.exports.restoreAssets = async function ({ webstrateId, version, tag, newV
 			delete asset._id;
 			delete asset.deletedAt;
 		}
-		console.log(`DEBUG Restoring assets`, assetsToRestore);
 		await db.assets.insertMany(Object.values(assetsToRestore));
 	}
 
-	console.log(`DEBUG Marking assets as deleted`, assetsToMarkDeleted);
 	assetsToMarkDeleted.forEach(async (assetName) => {
 		await module.exports.markAssetAsDeleted(webstrateId, assetName);
 	});
