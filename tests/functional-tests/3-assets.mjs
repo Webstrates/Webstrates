@@ -44,7 +44,7 @@ const deleteAssetHelper = async (page, fileName) => {
 	await page.reload({ waitUntil: 'networkidle2' });
 }
 
-describe.only('Assets', function () {
+describe('Assets', function () {
 	this.timeout(10000);
 
 	const webstrateIdA = 'test-' + util.randomString();
@@ -130,10 +130,13 @@ describe.only('Assets', function () {
 		});
 
 		assert.equal(assets.length, 1, 'No assets found after upload');
-		assert
 		assert.equal(assets[0].fileName, 'test.txt', 'Uploaded asset file name does not match');
 		assert.equal(assets[0].mimeType, 'text/plain', 'Uploaded asset file type does not match');
 		assert.hasAllKeys(assets[0], ['v', 'fileName', 'fileSize', 'mimeType', 'identifier', 'fileHash'], 'Uploaded asset does not have all expected properties');
+
+		// Initial version is 1, after uploading an asset it should be 2
+		const version = await pageA.evaluate(() => window.webstrate.version);
+		assert.equal(version, 2);
 	});
 
 	it('Assets should be accessible from their URL', async () => {
@@ -272,13 +275,37 @@ describe.only('Assets', function () {
 				});
 			});
 		});
-		
+
 		assert.isDefined(err, 'Searching for a deleted asset should throw an error');
 		assert.equal(err, 'Asset not found', 'Error message does not match expected error for deleted asset');
 		assert.isArray(result, 'Search result should be an array');
 		assert.equal(result.length, 0, 'Search result should be empty for deleted asset');
 		assert.equal(count, 0, 'Search count should be 0 for deleted asset');
 	});
-	
-	// TODO: Add tests using the HTTP API and that assets are restored correctly and have the "restoredFrom" property set.
+
+	it('Restoring an older version should restore assets to that version', async () => {
+		await deleteAssetHelper(pageA, 'test.txt');
+
+		const assetsBeforeRestore = await pageA.evaluate(() => window.webstrate.assets);
+
+		// The image and ZIP files should still be there, the CSV and text files should be deleted
+		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.png').deletedAt, undefined, 'Image asset should not be deleted before restore');
+		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.zip').deletedAt, undefined, 'ZIP asset should not be deleted before restore');
+		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt, 'CSV asset should be deleted before restore');
+		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.txt').deletedAt, 'Text asset should be deleted before restore');
+
+		// Restore to version 2 where only the text file was there
+		await pageA.goto(urlA + '?restore=2', { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 2);
+
+		const versionAfterRestore = await pageA.evaluate(() => window.webstrate.version);
+		const assetsAfterRestore = await pageA.evaluate(() => window.webstrate.assets);
+
+		// The image and ZIP files should be deleted at the current version, the CSV file should still be deleted, the text file was restored
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.png').deletedAt, versionAfterRestore, 'Image asset should be deleted after restore at current version');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.zip').deletedAt, versionAfterRestore, 'ZIP asset should be deleted after restore at current version');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.csv').deletedAt, assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt, 'CSV asset deletedAt should be unchanged after restore');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).deletedAt, undefined, 'Text asset should not be deleted after restore');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).restoredFrom, 2, 'Text asset should have a restoredFrom property pointing to version 2');
+	});
 });
