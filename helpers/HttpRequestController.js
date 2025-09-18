@@ -602,10 +602,11 @@ async function restoreWebstrate(req, res, snapshot) {
 		// Also restore assets, so the restored version shows the old assets, not the new ones.
 		await assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion });
 
-		delete req.query.restore;
+		let newQuery = Object.assign({}, req.query);
+		delete newQuery.restore;
 		return res.redirect(url.format({
 			pathname:`/${req.webstrateId}/`,
-			query: req.query
+			query: newQuery
 		}));
 	} catch (err){
 		console.error(err);

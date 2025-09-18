@@ -5,7 +5,7 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-describe('Versioning', function() {
+describe('Versioning', function () {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
@@ -68,9 +68,9 @@ describe('Versioning', function() {
 
 	it('should be possible to restore to previous version', async () => {
 		await page.evaluate(async () => {
-			await new Promise((resolve, reject)=>{
-				window.webstrate.restore(2, (err, v)=>{
-					if(err) {
+			await new Promise((resolve, reject) => {
+				window.webstrate.restore(2, (err, v) => {
+					if (err) {
 						reject();
 					} else {
 						resolve();
@@ -97,9 +97,9 @@ describe('Versioning', function() {
 
 	it('should be possible to restore to previous tag', async () => {
 		await page.evaluate(async (t) => {
-			await new Promise((resolve, reject)=>{
-				window.webstrate.restore(t, (err, v)=>{
-					if(err) {
+			await new Promise((resolve, reject) => {
+				window.webstrate.restore(t, (err, v) => {
+					if (err) {
 						reject();
 					} else {
 						resolve();
@@ -119,5 +119,19 @@ describe('Versioning', function() {
 		// The noop op created by the restore is version 6.
 		// The restored "Hello, World! How are you?" is version 7.
 		assert.equal(version, 7);
+	});
+
+	it('restoring should also work using the HTTP API', async () => {
+		await page.goto(url + '?restore=2', { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		assert.equal(page.url(), url + '/');
+
+		const innerText = await page.evaluate(() => document.body.innerText);
+		assert.equal(innerText, 'Hello, World!');
+
+		const version = await page.evaluate(() => window.webstrate.version);
+		// The noop op created by the restore is version 8.
+		// Finally, the restored "Hello, World!" is version 9.
+		assert.equal(version, 9);
 	});
 });
