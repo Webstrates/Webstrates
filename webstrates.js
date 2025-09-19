@@ -315,23 +315,36 @@ app.ws('/:webstrateId', (ws, req) => {
 });
 
 // Move params to req to emulate legacy interface until rest of code has been rewritten to use .params
-let queryExtractor = async (req, res, next)=>{
+const queryExtractor = async (req, res, next) => {
 	req.webstrateId = req.params.webstrateId;
 
-	// assetName + assetPath
-	if (req.params.asset && req.params.extension) {
-		req.assetName = req.params.asset + "." + req.params.extension;	
+	// assetName (+ assetPath)
+	if (req.params.asset) {
+		req.assetName = req.params.asset;
+		if (req.params.extension) req.assetName += "." + req.params.extension;
 		if (req.params.assetPath) req.assetPath = req.params.assetPath.join("/");
 	}
 
 	// version (number) or tag (string)
-	req.versionOrTag = req.params.versionOrTag
-	if ("versionOrTag" in req.params){
-		if (/^-?\d+$/.test(req.params.versionOrTag)){
+	req.versionOrTag = req.params.versionOrTag;
+	if ("versionOrTag" in req.params) {
+		if (/^-?\d+$/.test(req.params.versionOrTag)) {
 			req.version = Number(req.params.versionOrTag);
 		} else {
 			req.tag = req.params.versionOrTag;
 		}
+	}
+
+	if (req.params.assetOrVersionOrTag && req.params.assetOrVersionOrTag.includes('.')) {
+		// If assetOrVersionOrTag contains a dot it is an asset
+		req.assetName = req.params.assetOrVersionOrTag;
+	} else if (req.params.assetOrVersionOrTag && /^-?\d+$/.test(req.params.assetOrVersionOrTag)) {
+		// If it is a number it is a version
+		req.version = Number(req.params.assetOrVersionOrTag);
+		req.versionOrTag = req.params.assetOrVersionOrTag;
+	} else {
+		// Otherwise we need to check in the request handler if there is a tag
+		req.assetOrTag = req.params.assetOrVersionOrTag;
 	}
 
 	next();
@@ -343,9 +356,12 @@ app.post('/new', httpRequestController.newWebstratePostRequestHandler);
 
 // Matches /<webstrateId>/(<versionOrTag>)?//<assetName>)?
 // Handles mostly all requests.
-app.get(['/:webstrateId{/:asset.:extension{/*assetPath}}',
-	'/:webstrateId/:versionOrTag{/:asset.:extension{/*assetPath}}'], queryExtractor, 
-	httpRequestController.requestHandler);
+app.get([
+	'/:webstrateId/:asset.:extension{/*assetPath}',
+	'/:webstrateId/:versionOrTag/:asset.:extension{/*assetPath}',
+	'/:webstrateId{/:versionOrTag/:asset}',
+	'/:webstrateId{/:assetOrVersionOrTag}'
+], queryExtractor, httpRequestController.requestHandler);
 
 // We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
 // of a document.

@@ -151,6 +151,28 @@ const getZipStructure = async (fileName) => new Promise((accept, reject) => {
  * @public
  */
 module.exports.requestHandler = async function(req, res) {
+	if (req.assetOrTag) {
+		let version;
+		try {
+			version = await documentManager.getVersionFromTag(req.webstrateId, req.assetOrTag);
+			req.versionOrTag = req.assetOrTag;
+			req.tag = req.assetOrTag;
+		} catch (e) {
+			// Tag doesn't exist, so assetOrTag must be an asset name.
+			req.assetName = req.assetOrTag;
+		}
+	}
+
+	console.table({
+		webstrateId: req.webstrateId,
+		versionOrTag: req.versionOrTag,
+		version: req.version,
+		tag: req.tag,
+		assetName: req.assetName,
+		assetPath: req.assetPath,
+		assetOrTag: req.assetOrTag
+	});
+
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
 	if (req.query.v && !req.versionOrTag) {
