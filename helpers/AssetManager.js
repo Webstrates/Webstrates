@@ -76,7 +76,7 @@ module.exports.assetUploadHandler = async function(req, res) {
 		}
 		
 		try {
-			let assetRecords = await module.exports.addAssets(req.webstrateId, req.files, searchables, source);
+			let assetRecords = await module.exports.addAssets(req.params.webstrateId, req.files, searchables, source);
 			res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
 		} catch (err){
 			console.error(err);
@@ -440,7 +440,7 @@ module.exports.addAssets = async function(webstrateId, assets, searchables, sour
  */
 function fileFilter(req, file, next) {
 	util.callbackify(async ()=>{
-		const snapshot = await documentManager.getDocument({webstrateId: req.webstrateId});
+		const snapshot = await documentManager.getDocument({webstrateId: req.params.webstrateId});
 		if (!snapshot.type) throw new Error('Document doesn\'t exist.');
 	
 		const permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,

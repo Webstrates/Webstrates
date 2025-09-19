@@ -266,7 +266,7 @@ const sessionMiddleware = function(req, res, next) {
 	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
 	req.user.provider = req.user.providerName || req.user.provider || '';
 	req.user.userId = req.user.userId || (req.user.username + ':' + req.user.provider);
-	req.webstrateId = webstrateId;
+	req.params.webstrateId = webstrateId;
 	next();
 };
 
@@ -314,42 +314,6 @@ app.ws('/:webstrateId', (ws, req) => {
 	runMiddleware('onconnect', [ws, req], ...middleware);
 });
 
-// Move params to req to emulate legacy interface until rest of code has been rewritten to use .params
-const queryExtractor = async (req, res, next) => {
-	req.webstrateId = req.params.webstrateId;
-
-	// assetName (+ assetPath)
-	if (req.params.asset) {
-		req.assetName = req.params.asset;
-		if (req.params.extension) req.assetName += "." + req.params.extension;
-		if (req.params.assetPath) req.assetPath = req.params.assetPath.join("/");
-	}
-
-	// version (number) or tag (string)
-	req.versionOrTag = req.params.versionOrTag;
-	if ("versionOrTag" in req.params) {
-		if (/^-?\d+$/.test(req.params.versionOrTag)) {
-			req.version = Number(req.params.versionOrTag);
-		} else {
-			req.tag = req.params.versionOrTag;
-		}
-	}
-
-	if (req.params.assetOrVersionOrTag && req.params.assetOrVersionOrTag.includes('.')) {
-		// If assetOrVersionOrTag contains a dot it is an asset
-		req.assetName = req.params.assetOrVersionOrTag;
-	} else if (req.params.assetOrVersionOrTag && /^-?\d+$/.test(req.params.assetOrVersionOrTag)) {
-		// If it is a number it is a version
-		req.version = Number(req.params.assetOrVersionOrTag);
-		req.versionOrTag = req.params.assetOrVersionOrTag;
-	} else {
-		// Otherwise we need to check in the request handler if there is a tag
-		req.assetOrTag = req.params.assetOrVersionOrTag;
-	}
-
-	next();
-};
-
 app.get('/', httpRequestController.rootRequestHandler);
 app.get('/new', httpRequestController.newWebstrateGetRequestHandler);
 app.post('/new', httpRequestController.newWebstratePostRequestHandler);
@@ -361,12 +325,11 @@ app.get([
 	'/:webstrateId/:versionOrTag/:asset.:extension{/*assetPath}',
 	'/:webstrateId{/:versionOrTag/:asset}',
 	'/:webstrateId{/:assetOrVersionOrTag}'
-], queryExtractor, httpRequestController.requestHandler);
+], httpRequestController.requestHandler);
 
 // We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
 // of a document.
 app.post('/:webstrateId',
-	queryExtractor,
 	function(req, res) {
 		if (req.body && 'token' in req.body) {
 			return permissionManager.generateAccessToken(req, res);

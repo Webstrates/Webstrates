@@ -101,7 +101,7 @@ module.exports.addClient = function(ws, req, user) {
 	const userClient = {
 		socketId,
 		ipAddress: req.remoteAddress,
-		webstrateId: req.webstrateId,
+		webstrateId: req.params.webstrateId,
 		userAgent: req.headers['user-agent']
 	};
 
