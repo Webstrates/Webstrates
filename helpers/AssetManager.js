@@ -368,7 +368,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		asset.filename = duplicate.fileName;
 	}
 
-	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + " " + source)	
+	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + ' ' + source);
 	const version = await documentManager.getDocumentVersion(webstrateId);
 	const result = await db.assets.insertOne({
 		webstrateId,
@@ -423,7 +423,8 @@ module.exports.addAssets = async function(webstrateId, assets, searchables, sour
 
 /**
  * Filter Multer file uploads to ensure that the webstrate exists and that the user has the
- * appropriate permissions.
+ * appropriate permissions. And that the file name isn't only numbers as it may conflict
+ * with version numbers.
  * @param  {obj}      req  Express Request object.
  * @param  {obj}      file Multer file object.
  * @param  {Function} next Callback.
@@ -431,14 +432,16 @@ module.exports.addAssets = async function(webstrateId, assets, searchables, sour
  * @private
  */
 function fileFilter(req, file, next) {
-	util.callbackify(async ()=>{
-		const snapshot = await documentManager.getDocument({webstrateId: req.params.webstrateId});
+	util.callbackify(async () => {
+		const snapshot = await documentManager.getDocument({ webstrateId: req.params.webstrateId });
 		if (!snapshot.type) throw new Error('Document doesn\'t exist.');
-	
-		const permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
-			req.user.provider, snapshot);
-	
+
+		const permissions = await permissionManager
+			.getUserPermissionsFromSnapshot(req.user.username, req.user.provider, snapshot);
 		if (!permissions.includes('w')) throw new Error('Insufficient permissions.');
+
+		if (/^\d+$/.test(file.originalname)) throw new Error('File name cannot be only numbers.');
+
 		return true;
 	})(next);
 }
