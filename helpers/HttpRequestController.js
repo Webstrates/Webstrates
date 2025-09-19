@@ -152,7 +152,7 @@ const getZipStructure = async (fileName) => new Promise((accept, reject) => {
  */
 module.exports.requestHandler = async function(req, res) {
 	// assetName (+ assetPath)
-	if (req.params.asset) {
+	if ("asset" in req.params) {
 		req.params.assetName = req.params.asset;
 		if (req.params.extension) req.params.assetName += "." + req.params.extension;
 		if (req.params.assetPath) req.params.assetPath = req.params.assetPath.join("/");
@@ -189,19 +189,6 @@ module.exports.requestHandler = async function(req, res) {
 			}
 		}
 	}
-
-	// TODO Remove debug log later
-	console.table({
-		webstrateId: req.params.webstrateId,
-		versionOrTag: req.params.versionOrTag,
-		version: req.params.version,
-		tag: req.params.tag,
-		asset: req.params.asset,
-		assetName: req.params.assetName,
-		extension: req.params.extension,
-		assetPath: req.params.assetPath,
-		assetOrVersionOrTag: req.params.assetOrVersionOrTag
-	});
 
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
