@@ -991,11 +991,16 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 								const filePath = assetManager.UPLOAD_DEST + fileName;
 								const writeStream = fs.createWriteStream(filePath);
 								readStream.pipe(writeStream);
-								assets.push({
-									filename: fileName,
-									originalname: entry.fileName.match(/([^/]+)$/)[0],
-									size: entry.uncompressedSize
-								});
+								
+								// If the file has no extension and consists only of numbers,
+								// we ignore it as these are not allowed as asset names.
+								if (!entry.fileName.match(/([^/]+)$/)[0].match(/^\d+$/)) {
+									assets.push({
+										filename: fileName,
+										originalname: entry.fileName.match(/([^/]+)$/)[0],
+										size: entry.uncompressedSize
+									});
+								}
 							});
 						}
 					});
