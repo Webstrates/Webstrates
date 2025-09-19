@@ -926,7 +926,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 								const userPermissions = await permissionManager
 									.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
 										snapshot);
-								// If user doesn't have write permissions to the docuemnt, add them if
+								// If user doesn't have write permissions to the document, add them if
 								// the user is logged in, otherwise just delete all permissions on the
 								// new document.
 								if (!userPermissions.includes('w')) {
@@ -955,8 +955,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 								assets.push({
 									filename: fileName,
 									originalname: entry.fileName.match(/([^/]+)$/)[0],
-									size: entry.uncompressedSize,
-									mimetype: mime.lookup(entry.fileName)
+									size: entry.uncompressedSize
 								});
 							});
 						}
