@@ -109,7 +109,7 @@ module.exports.generateAccessToken = function(req, res) {
 		'token-based access (cannot generate tokens using tokens).');
 	}
 	var duration = Number(req.body.token) > 0 ? Number(req.body.token) : 300;
-	var webstrateId = req.webstrateId;
+	var webstrateId = req.params.webstrateId;
 	var username = req.user.username;
 	var provider = req.user.provider;
 
