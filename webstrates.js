@@ -36,7 +36,7 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
 
 // Setting up multi-threading. If config.threads is 0, a thread for each core is created.
-var threadCount = 1;
+let threadCount = 1;
 if (typeof config.threads !== 'undefined') {
 	threadCount = parseInt(config.threads) || require('os').cpus().length;
 	if (!config.pubsub) {
@@ -44,7 +44,7 @@ if (typeof config.threads !== 'undefined') {
 	} else {
 		threadCount = parseInt(config.threads) || require('os').cpus().length;
 		if (cluster.isMaster) {
-			for (var i = 0; i < threadCount; ++i) {
+			for (let i = 0; i < threadCount; ++i) {
 				cluster.fork();
 			}
 			return;
@@ -52,7 +52,7 @@ if (typeof config.threads !== 'undefined') {
 	}
 }
 
-var app = express();
+const app = express();
 expressWs(app);
 
 
@@ -90,7 +90,7 @@ if (config.basicAuth) {
 	if (WORKER_ID === 1) console.log('Basic auth enabled');
 	var basic = httpAuth.basic({
 		realm: config.basicAuth.realm
-	}, function(username, password, callback) {
+	}, function (username, password, callback) {
 		return callback(username === config.basicAuth.username
 			&& password === config.basicAuth.password);
 	});
@@ -110,7 +110,7 @@ if (config.auth) {
 
 	// Work around passport >0.5.3 open issue needing session.regenerate which is not provided by client-sessions
 	// https://github.com/jaredhanson/passport/issues/904
-	app.use(function(request, response, next) {
+	app.use(function (request, response, next) {
 		if (request.session && !request.session.regenerate) {
 			request.session.regenerate = (cb) => {
 				cb()
@@ -224,26 +224,25 @@ if (config.auth) {
 		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
 	}
 
-	app.get('/auth/logout', function(req, res) {
+	app.get('/auth/logout', function (req, res) {
 		req.logout(err => {
-			if (err) res.status(500).send("Failure to log out" + err);
+			if (err) res.status(500).send('Failure to log out' + err);
 			res.redirect(req.header('referer') || '/');
 		});
 	});
 }
 
 // Ensure trailing slash after webstrateId and tag/label.
-app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i,
-	httpRequestController.trailingSlashAppendHandler);
+app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i, httpRequestController.trailingSlashAppendHandler);
 
 
 /**
-	Middleware for extracting user data from cookies used for Express HTTP requests only.
+ * Middleware for extracting user data from cookies used for Express HTTP requests only.
  */
-const sessionMiddleware = function(req, res, next) {
+const sessionMiddleware = function (req, res, next) {
 	let webstrateId;
 
-	if (req.params.any?.length>2) webstrateId = req.params.any[1];
+	if (req.params.any?.length > 2) webstrateId = req.params.any[1];
 
 	req.remoteAddress = req.remoteAddress || (req.headers && (req.headers['X-Forwarded-For'] ||
 		req.headers['x-forwarded-for'])) || (req.connection && req.connection.remoteAddress);
@@ -272,7 +271,7 @@ const sessionMiddleware = function(req, res, next) {
 
 
 // This middleware gets triggered on both regular HTTP request and websocket connections.
-app.use("*any", function(req, res, next) {
+app.use('*any', function (req, res, next) {
 	sessionMiddleware(req, res, next);
 });
 
@@ -329,29 +328,25 @@ app.get([
 
 // We can only post to /<webstrateId>/, because we won't allow users to add assets to old versions
 // of a document.
-app.post('/:webstrateId',
-	function(req, res) {
-		if (req.body && 'token' in req.body) {
-			return permissionManager.generateAccessToken(req, res);
-		}
-
-		if (req.headers['content-type'].startsWith('multipart/form-data;')) {
-			return assetManager.assetUploadHandler(req, res);
-		}
-
-		return res.status(422).send('Parameter missing from request. No \'token\' or files found.');
+app.post('/:webstrateId', function (req, res) {
+	if (req.body && 'token' in req.body) {
+		return permissionManager.generateAccessToken(req, res);
 	}
-);
 
+	if (req.headers['content-type'].startsWith('multipart/form-data;')) {
+		return assetManager.assetUploadHandler(req, res);
+	}
 
+	return res.status(422).send('Parameter missing from request. No \'token\' or files found.');
+});
 
 // Catch all for get.
-app.get("*any",function(req, res) {
+app.get('*any', function (req, res) {
 	res.send('Invalid request URL.');
 });
 
 // Catch all for post.
-app.post('*any',function(req, res) {
+app.post('*any', function (req, res) {
 	res.send('You can only post assets to URLs of the form /<webstrateId>/.');
 });
 
@@ -359,8 +354,7 @@ app.use((err, req, res, next) => {
 	console.log(err, next());
 });
 
-var port = argv.p || config.listeningPort || 7007;
-var address = argv.h || config.listeningAddress || "localhost";
+const port = argv.p || config.listeningPort || 7007;
+const address = argv.h || config.listeningAddress || 'localhost';
 app.listen(port, address);
-if (WORKER_ID === 1)
-	console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
+if (WORKER_ID === 1) console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
