@@ -5,6 +5,7 @@ const util = require('util');
 const multer = require('multer');
 const db = require(APP_PATH + '/helpers/database.js');
 const md5File = require('md5-file');
+const mime = require('mime-types');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
@@ -26,8 +27,8 @@ const upload = multer({
  * @public
  */
 module.exports.assetUploadHandler = async function(req, res) {
-		upload(req, res, async function(err) {
-				if (err) {
+	upload(req, res, async function(err) {
+		if (err) {
 			console.error(err);
 			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
 				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` } : err);
@@ -37,26 +38,7 @@ module.exports.assetUploadHandler = async function(req, res) {
 			return res.status(422).json({ error: 'Parameter missing from request.' });
 		}
 
-				const source = `${req.user.userId} (${req.remoteAddress})`;
-
-		// Adding hashes to each file by initially generating an array of promises that'll trigger with
-		// the hash value when each hash has been generated.
-		const hashPromises = req.files.map(async file => md5File(file.path));
-		const hashes = await Promise.all(hashPromises);
-		// After all promises have been resolved, add the hashes to the files.
-		req.files.forEach((file, i) => file.fileHash = hashes[i]);
-
-		const duplicatePromises = req.files.map(async (file) => {
-			const duplicate = await findDuplicateAsset(file);
-			if (!duplicate) return;
-			// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
-			// no reason to make the user wait for us to delete the file. The user doesn't care.
-			deleteAssetFromFileSystem(file.filename);
-			// Multer uses lower case properties, we save assets as camelCase in the database, so the
-			// properties are indeed file.filename and duplicat.fileName (capital N). This is not a typo.
-			file.filename = duplicate.fileName;
-		});
-		await Promise.all(duplicatePromises);
+		const source = `${req.user.userId} (${req.remoteAddress})`;
 
 		let searchables = [];
 		if (req.body.searchable) {
@@ -84,16 +66,6 @@ module.exports.assetUploadHandler = async function(req, res) {
 		}
 	});
 };
-
-/**
- * Find duplicate asset in database (i.e. asset with matching size and hash).
- * @param  {object} asset Asset object.
- * @return {object}       (async) First duplicate asset object if any, otherwise null.
- * @private
- */
-const findDuplicateAsset = async (asset) => {
-	return await db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
-}
 
 /**
  * Get list of assets.
@@ -372,13 +344,33 @@ function filterNewestAssets(assets) {
  * added to the file name.
  * @param {string}   webstrateId WebstrateId.
  * @param {obj}      asset       Asset information.
+ * @param {boolean}  searchable  Whether the asset should be made searchable.
  * @param {string}   source      Origin of assets (some client identifier)
  * @public
  */
 module.exports.addAsset = async function(webstrateId, asset, searchable, source) {
+	// Detect mimetype if not already set
+	if (!asset.mimetype) {
+		asset.mimetype = mime.lookup(asset.originalname) || 'application/octet-stream';
+	}
+
+	// Generate hash for the asset
+	asset.fileHash = await md5File(module.exports.UPLOAD_DEST + asset.filename);
+
+	// Check for duplicates and handle accordingly
+	const duplicate = await db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
+	if (duplicate) {
+		// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
+		// no reason to make the user wait for us to delete the file. The user doesn't care.
+		deleteAssetFromFileSystem(asset.filename);
+		// Multer uses lower case properties, we save assets as camelCase in the database, so the
+		// properties are indeed asset.filename and duplicate.fileName (capital N). This is not a typo.
+		asset.filename = duplicate.fileName;
+	}
+
 	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + " " + source)	
-	let version = await documentManager.getDocumentVersion(webstrateId);
-	let result = await db.assets.insertOne({
+	const version = await documentManager.getDocumentVersion(webstrateId);
+	const result = await db.assets.insertOne({
 		webstrateId,
 		v: version,
 		// asset.filename is the name of the file on our system, originalname is what the file was
@@ -404,7 +396,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
 		assetToBeAnnounced.searchable = true;
 	}
-	
+
 	// Inform all clients of the newly added asset.
 	clientManager.announceNewAsset(webstrateId, assetToBeAnnounced, true);
 
