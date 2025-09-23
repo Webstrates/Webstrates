@@ -56,7 +56,7 @@ describe('Assets', function () {
 
 	let browserA, browserB, pageA, pageB;
 	let testDir;
-	let testTextFile, testCsvFile, testImageFile, testZipFile;
+	let testTextFile, testCsvFile, testImageFile, testZipFile, testNumericFile;
 
 	before(async () => {
 		browserA = await puppeteer.launch();
@@ -104,11 +104,14 @@ describe('Assets', function () {
 			archive.file(testImageFile, { name: 'test.png' });
 			archive.finalize();
 		});
+		
+		testNumericFile = path.join(testDir, '123456');
+		fs.writeFileSync(testNumericFile, 'This is a test file with only numbers as the name.');
 	});
 
 	after(async () => {
 		// Clean up test files
-		[testTextFile, testCsvFile, testImageFile, testZipFile].forEach(file => {
+		[testTextFile, testCsvFile, testImageFile, testZipFile, testNumericFile].forEach(file => {
 			if (fs.existsSync(file)) {
 				fs.unlinkSync(file);
 			}
@@ -137,6 +140,16 @@ describe('Assets', function () {
 		// Initial version is 1, after uploading an asset it should be 2
 		const version = await pageA.evaluate(() => window.webstrate.version);
 		assert.equal(version, 2);
+	});
+	
+	it('Assets without an extension and only numbers as the name should not be uploadable', async () => {
+		await uploadAssetHelper(pageA, testNumericFile);
+
+		const assets = await pageA.evaluate(async () => {
+			return await window.webstrate.assets;
+		});
+
+		assert.equal(assets.length, 1, 'Asset without an extension and only numbers as the name should not be uploadable');
 	});
 
 	it('Assets should be accessible from their URL', async () => {

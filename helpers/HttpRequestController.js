@@ -151,13 +151,52 @@ const getZipStructure = async (fileName) => new Promise((accept, reject) => {
  * @public
  */
 module.exports.requestHandler = async function(req, res) {
+	// assetName (+ assetPath)
+	if ("asset" in req.params) {
+		req.params.assetName = req.params.asset;
+		if (req.params.extension) req.params.assetName += "." + req.params.extension;
+		if (req.params.assetPath) req.params.assetPath = req.params.assetPath.join("/");
+	}
+
+	// version (number) or tag (string)
+	if ("versionOrTag" in req.params) {
+		if (/^-?\d+$/.test(req.params.versionOrTag)) {
+			req.params.version = Number(req.params.versionOrTag);
+		} else {
+			req.params.tag = req.params.versionOrTag;
+		}
+	}
+
+	if ("assetOrVersionOrTag" in req.params) {
+		if (req.params.assetOrVersionOrTag.includes('.')) {
+			// If assetOrVersionOrTag contains a dot it is an asset
+			req.params.assetName = req.params.assetOrVersionOrTag;
+		} else if (/^-?\d+$/.test(req.params.assetOrVersionOrTag)) {
+			// If it is a number it is a version
+			req.params.version = Number(req.params.assetOrVersionOrTag);
+			req.params.versionOrTag = req.params.assetOrVersionOrTag;
+		} else {
+			// Otherwise we need to check in the request handler if there is a tag
+			try {
+				const version = await documentManager.getVersionFromTag(req.params.webstrateId, req.params.assetOrVersionOrTag);
+				if (version) {
+					req.params.versionOrTag = req.params.assetOrVersionOrTag;
+					req.params.tag = req.params.assetOrVersionOrTag;
+				}
+			} catch (e) {
+				// Tag doesn't exist, so assetOrVersionOrTag must be an asset name.
+				req.params.assetName = req.params.assetOrVersionOrTag;
+			}
+		}
+	}
+
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
 	// /<webstrateId>/<versionOrTag>/?copy.
-	if (req.query.v && !req.versionOrTag) {
+	if (req.query.v && !req.params.versionOrTag) {
 		const version = req.query.v;
 		delete req.query.v;
 		return res.redirect(url.format({
-			pathname: `/${req.webstrateId}/${version}/`,
+			pathname: `/${req.params.webstrateId}/${version}/`,
 			query: req.query
 		}));
 	}
@@ -166,13 +205,13 @@ module.exports.requestHandler = async function(req, res) {
 		// First check any invite keys - before permissions are fetched
 		if ('acceptInvite' in req.query){
 			await invites.prepareAPIAccess(req.user);
-			await invites.invitee.acceptInvite(req.webstrateId, req.query.acceptInvite, req.user);
+			await invites.invitee.acceptInvite(req.params.webstrateId, req.query.acceptInvite, req.user);
 		}
 
 		const snapshot = await documentManager.getDocument({
-			webstrateId: req.webstrateId,
-			version: req.version,
-			tag: req.tag
+			webstrateId: req.params.webstrateId,
+			version: req.params.version,
+			tag: req.params.tag
 		});
 
 		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
@@ -193,16 +232,16 @@ module.exports.requestHandler = async function(req, res) {
 		setCorsHeaders(req, res, snapshot);
 
 		// Requesting an asset.
-		if (req.assetName) {
+		if (req.params.assetName) {
 			try {
 				const asset = await assetManager.getAsset({
-					webstrateId: req.webstrateId,
-					assetName: req.assetName,
+					webstrateId: req.params.webstrateId,
+					assetName: req.params.assetName,
 					version: snapshot.v
 				});
 
 				if (!asset) {
-					return res.status(404).send(`Asset "${req.assetName}" not found.`);
+					return res.status(404).send(`Asset "${req.params.assetName}" not found.`);
 				}
 
 				if ('dir' in req.query) {
@@ -211,14 +250,14 @@ module.exports.requestHandler = async function(req, res) {
 					return;
 				}
 
-				if (req.assetPath) {
+				if (req.params.assetPath) {
 					return yauzl.open(APP_PATH + '/uploads/' + asset.fileName, { lazyEntries: true },
 						(err, zipFile) => {
 							if (err) {
-								return res.status(400).send(`"${req.assetName}" is not a valid ZIP file.`);
+								return res.status(400).send(`"${req.params.assetName}" is not a valid ZIP file.`);
 							}
 							zipFile.on('entry', async entry => {
-								if (req.assetPath !== entry.fileName) {
+								if (req.params.assetPath !== entry.fileName) {
 									return zipFile.readEntry();
 								}
 
@@ -241,8 +280,8 @@ module.exports.requestHandler = async function(req, res) {
 							zipFile.readEntry();
 
 							zipFile.once('end', async () => {
-								res.status(404).send(`File "${req.assetPath}" not found in asset ` +
-									`"${req.assetName}".\n`);
+								res.status(404).send(`File "${req.params.assetPath}" not found in asset ` +
+									`"${req.params.assetName}".\n`);
 							});
 						});
 				}
@@ -250,7 +289,7 @@ module.exports.requestHandler = async function(req, res) {
 				// `/<webstrateId>/<asset>` may not always refer to the same asset, but to optimize rapid
 				// requests, we set a maxAge anyway. If the requested asset includes a specific version,
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
-				var maxAge = req.version ? '1y' : (config.maxAge || '1m');
+				var maxAge = req.params.version ? '1y' : (config.maxAge || '1m');
 				res.type(asset.mimeType);
 				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
 			} catch (error) {
@@ -343,7 +382,7 @@ module.exports.requestHandler = async function(req, res) {
 			// If the document contains a user with admin permissions, only admins can restore the
 			// document.
 			if (!req.user.permissions.includes('a') &&
-				await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+				await permissionManager.webstrateHasAdmin(req.params.webstrateId)) {
 				return res.status(403).send('Admin permissions are required to restore this document.');
 			}
 
@@ -369,7 +408,7 @@ module.exports.requestHandler = async function(req, res) {
 			// If the document contains a user with admin permissions, only admins can delete the
 			// document.
 			if (!req.user.permissions.includes('a') &&
-				await permissionManager.webstrateHasAdmin(req.webstrateId)) {
+				await permissionManager.webstrateHasAdmin(req.params.webstrateId)) {
 				return res.status(403).send('Admin permissions are required to delete this document.');
 			}
 
@@ -405,8 +444,8 @@ function serveVersion(req, res, snapshot) {
 async function serveOps(req, res) {
 	try {
 		res.json(await documentManager.getOps({
-			webstrateId: req.webstrateId,
-			version: Number(req.version || req.query.to) || undefined,
+			webstrateId: req.params.webstrateId,
+			version: Number(req.params.version || req.query.to) || undefined,
 			initialVersion: Number(req.query.from) || undefined
 		}));
 	} catch (err){
@@ -422,7 +461,7 @@ async function serveOps(req, res) {
  * @private
  */
 function serveTags(req, res) {
-	documentManager.getTags(req.webstrateId, function(err, tags) {
+	documentManager.getTags(req.params.webstrateId, function(err, tags) {
 		if (err) {
 			console.error(err);
 			return res.status(409).send(String(err));
@@ -440,7 +479,7 @@ function serveTags(req, res) {
 async function serveAssets(req, res) {
 	try {
 		let latestOnly = 'latest' in req.query;
-		return res.json(await assetManager.getAssets(req.webstrateId, latestOnly));
+		return res.json(await assetManager.getAssets(req.params.webstrateId, latestOnly));
 	} catch (err){
 		console.error(err);
 		return res.status(409).send(String(err));
@@ -461,7 +500,7 @@ function serveJsonMLWebstrate(req, res, snapshot) {
 function serveRawWebstrate(req, res, snapshot) {
 	// A specific version of webstrate is immutable, so we can cache a request to a specific version
 	// indefinitely. Tags can be moved, so we can't do the same there.
-	if (req.version) {
+	if (req.params.version) {
 		// In reality, we just cache for a year.
 		res.setHeader('Cache-Control', 'public, max-age=31557600');
 	}
@@ -481,34 +520,34 @@ function serveRawWebstrate(req, res, snapshot) {
  */
 async function serveCompressedWebstrate(req, res, snapshot) {
 	try {
-		let assets = await assetManager.getCurrentAssets(req.webstrateId);
+		let assets = await assetManager.getCurrentAssets(req.params.webstrateId);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		const archive = archiver(format, { store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
-			{ name: `${req.webstrateId}/index.html` });
+			{ name: `${req.params.webstrateId}/index.html` });
 
 		assets.forEach(function(asset) {
 			const filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
 			if (fs.existsSync(filePath)) {
 				archive.file(filePath,
-					{ name: `${req.webstrateId}/${asset.originalFileName}` });
+					{ name: `${req.params.webstrateId}/${asset.originalFileName}` });
 
 				// If the file is searchable, we create a dummy file with the contents 'searchable', so we
 				// know to make the file searchable if the archive is uploaded again (or to another server).
 				if (asset.searchable) {
 					archive.append('searchable',
-						{ name: `${req.webstrateId}/${asset.originalFileName}.searchable` });
+						{ name: `${req.params.webstrateId}/${asset.originalFileName}.searchable` });
 				}
 			} else {
 				console.warn(`Asset ${filePath} (${asset.originalFileName}) for Webstrate ` +
-					`${req.webstrateId} doesn't exist. Deleting it from database.`);
+					`${req.params.webstrateId} doesn't exist. Deleting it from database.`);
 				// The deletion happens async, but there's no reason to make the user wait for it.
 				assetManager.deleteAssetFromDatabase(asset.fileName);
 			}
 		});
 		archive.finalize();
-		const potentialTag = req.tag ? ('-' + req.tag) : '';
-		const filename = req.query.filename || `${req.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
+		const potentialTag = req.params.tag ? ('-' + req.params.tag) : '';
+		const filename = req.query.filename || `${req.params.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
 		res.attachment(filename);
 		archive.pipe(res);
 	} catch (err){
@@ -518,7 +557,7 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 }
 
 function serveTokenList(req, res) {
-	res.json(permissionManager.getAccessTokens(req.webstrateId));
+	res.json(permissionManager.getAccessTokens(req.params.webstrateId));
 }
 
 /**
@@ -551,7 +590,7 @@ async function copyWebstrate(req, res, snapshot) {
 		// will always be set, even if no version is specified, or the user is accessing the webstrate
 		// through a tag.
 		await assetManager.copyAssets({
-			fromWebstrateId: req.webstrateId,
+			fromWebstrateId: req.params.webstrateId,
 			toWebstrateId: webstrateId,
 			version: snapshot.v
 		});
@@ -579,10 +618,10 @@ async function copyWebstrate(req, res, snapshot) {
 async function restoreWebstrate(req, res, snapshot) {
 	// There shouldn't be a version or tag in the first part of the URL, i.e.
 	// `/<id>/<version|tag>/?restore` is not allowed.
-	if (req.version || req.tag) {
+	if (req.params.version || req.params.tag) {
 		return res.status(409).send('Can not restore a document at a previous tag or version.' +
-			` Did you mean <code><a href="/${req.webstrateId}/?restore=${req.versionOrTag}">` +
-			`/${req.webstrateId}/?restore=${req.versionOrTag}</a></code>?`);
+			` Did you mean <code><a href="/${req.params.webstrateId}/?restore=${req.params.versionOrTag}">` +
+			`/${req.params.webstrateId}/?restore=${req.params.versionOrTag}</a></code>?`);
 	}
 
 	// A version or tag in the query string, however, should be defined.
@@ -596,16 +635,16 @@ async function restoreWebstrate(req, res, snapshot) {
 	// clientId. We'll just use the userId instead.
 	var source = req.user.userId;
 	try {
-		let newVersion = await documentManager.restoreDocument({ webstrateId: req.webstrateId, version, tag },
+		let newVersion = await documentManager.restoreDocument({ webstrateId: req.params.webstrateId, version, tag },
 			source);
 
 		// Also restore assets, so the restored version shows the old assets, not the new ones.
-		await assetManager.restoreAssets({ webstrateId: req.webstrateId, version, tag, newVersion });
+		await assetManager.restoreAssets({ webstrateId: req.params.webstrateId, version, tag, newVersion });
 
 		let newQuery = Object.assign({}, req.query);
 		delete newQuery.restore;
 		return res.redirect(url.format({
-			pathname:`/${req.webstrateId}/`,
+			pathname:`/${req.params.webstrateId}/`,
 			query: newQuery
 		}));
 	} catch (err){
@@ -625,8 +664,8 @@ async function deleteWebstrate(req, res) {
 	var source = req.user.userId;
 
 	try {
-		await assetManager.deleteAssets(req.webstrateId);
-		await documentManager.deleteDocument(req.webstrateId, source);
+		await assetManager.deleteAssets(req.params.webstrateId);
+		await documentManager.deleteDocument(req.params.webstrateId, source);
 		res.redirect('/');
 	} catch (err){
 		console.error(err);
@@ -952,11 +991,16 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 								const filePath = assetManager.UPLOAD_DEST + fileName;
 								const writeStream = fs.createWriteStream(filePath);
 								readStream.pipe(writeStream);
-								assets.push({
-									filename: fileName,
-									originalname: entry.fileName.match(/([^/]+)$/)[0],
-									size: entry.uncompressedSize
-								});
+								
+								// If the file has no extension and consists only of numbers,
+								// we ignore it as these are not allowed as asset names.
+								if (!entry.fileName.match(/([^/]+)$/)[0].match(/^\d+$/)) {
+									assets.push({
+										filename: fileName,
+										originalname: entry.fileName.match(/([^/]+)$/)[0],
+										size: entry.uncompressedSize
+									});
+								}
 							});
 						}
 					});
