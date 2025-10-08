@@ -5,6 +5,8 @@ const bodyParser = require('body-parser');
 const cluster = require('cluster');
 const express = require('express');
 const expressWs = require('express-ws');
+const fs = require('fs');
+const https = require('https');
 const httpAuth = require('http-auth');
 const passport = require('passport');
 const sessions = require('client-sessions');
@@ -53,8 +55,6 @@ if (typeof config.threads !== 'undefined') {
 }
 
 const app = express();
-expressWs(app);
-
 
 const middleware = [];
 
@@ -275,6 +275,9 @@ app.use('*any', function (req, res, next) {
 	sessionMiddleware(req, res, next);
 });
 
+// Initialize WebSocket support before defining WebSocket routes
+expressWs(app);
+
 app.ws('/:webstrateId', (ws, req) => {
 	const socketId = clientManager.addClient(ws, req, req.user);
 	req.socketId = socketId;
@@ -356,5 +359,33 @@ app.use((err, req, res, next) => {
 
 const port = argv.p || config.listeningPort || 7007;
 const address = argv.h || config.listeningAddress || 'localhost';
-app.listen(port, address);
+
+// Create HTTP server
+const httpServer = require('http').createServer(app);
+expressWs(app, httpServer);
+
+// Start HTTP server
+httpServer.listen(port, address);
 if (WORKER_ID === 1) console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
+
+// Start HTTPS server if SSL is configured
+if (config.ssl && config.ssl.enabled) {
+	try {
+		const sslOptions = {
+			key: fs.readFileSync(config.ssl.key),
+			cert: fs.readFileSync(config.ssl.cert)
+		};
+		
+		const httpsPort = config.ssl.port || 7008;
+		const httpsServer = https.createServer(sslOptions, app);
+		
+		// Add WebSocket support to HTTPS server
+		expressWs(app, httpsServer);
+		
+		httpsServer.listen(httpsPort, address);
+		if (WORKER_ID === 1) console.log(`Listening on https://${address}:${httpsPort}/ (SSL) in ${threadCount} thread(s)`);
+	} catch (err) {
+		console.error('Failed to start HTTPS server:', err.message);
+		console.error('Make sure SSL certificate files exist and are readable.');
+	}
+}
