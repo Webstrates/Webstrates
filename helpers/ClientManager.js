@@ -638,6 +638,16 @@ module.exports.sendToClients = function(webstrateId, message) {
 };
 
 /**
+ * Get client information by socketId.
+ * @param  {string} socketId SocketId.
+ * @return {object|null}     Client object or null if not found.
+ * @public
+ */
+module.exports.getClient = function(socketId) {
+	return clients[socketId] || null;
+};
+
+/**
  * Send message to client by socketId.
  * @param  {string} socketId SocketId.
  * @param  {mixed} message   Message.

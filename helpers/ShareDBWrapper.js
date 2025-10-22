@@ -136,6 +136,17 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			user = permissionManager.getUserFromAccessToken(webstrateId, token);
 		}
 
+		// If user is still undefined (e.g., due to websocket reuse issues), try to get it from ClientManager
+		if (!user) {
+			const clientInfo = clientManager.getClient(socketId);
+			if (clientInfo && clientInfo.user) {
+				user = clientInfo.user;
+				console.log(`Retrieved user context from ClientManager for websocket reuse: ${user.userId}`);
+			} else {
+				return next('Forbidden - No user context available');
+			}
+		}
+
 		if (!config.disableSessionLog && !req.agent.sessionLogged) {
 			await insertSessionLog({
 				sessionId: req.agent.clientId,
