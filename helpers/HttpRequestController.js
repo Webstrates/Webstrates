@@ -584,6 +584,13 @@ async function copyWebstrate(req, res, snapshot) {
 
 		// Remove all admin permissions from the new snapshot.
 		snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
+		
+		// When copying from a tagged/versioned URL, the snapshot may contain metadata like label, tag, 
+		// version number, etc. We should not copy these to the new document since it's a separate entity.
+		// The new document will start at version 1 without any tags.
+		delete snapshot.label;
+		delete snapshot.tag;
+		
 		await documentManager.createNewDocument({ webstrateId, snapshot });
 		
 		// Also copy over all the assets. Note that we pass through snapshot.v, because we know this

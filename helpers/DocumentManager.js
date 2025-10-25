@@ -45,8 +45,11 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	}
 
 	// Let ShareDB handle the creation of the document.
+	// Extract only type and data from snapshot to avoid passing metadata like _id, webstrateId, v, label
+	// which can be present when the snapshot comes from a tag.
+	const createSnapshot = { type: snapshot.type, data: snapshot.data };
 	try {
-		await ShareDbWrapper.submit(webstrateId, { v: 0, create: snapshot });
+		await ShareDbWrapper.submit(webstrateId, { v: 0, create: createSnapshot });
 	} catch (err){
 		if (err.message == 'Document was created remotely') throw new Error('Webstrate already exists.');
 		if (err.message === 'Missing create type') throw new Error('Prototype webstrate doesn\'t exist.');
