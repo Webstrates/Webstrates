@@ -55,7 +55,7 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 
 	// Add current tag if it exists. All other tags are left behind, because the new document
 	// starts from version 1.
-	if (snapshot.label) await util.promisify(module.exports.tagDocument)(webstrateId, 1, snapshot.label);
+	if (snapshot.label) await module.exports.tagDocument(webstrateId, 1, snapshot.label);
 
 	return webstrateId;
 };
