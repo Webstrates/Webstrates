@@ -44,7 +44,7 @@
     "bson": "6.10.4",
     "client-sessions": "0.8.0",
     "console-stamp": "3.1.2",
-    "csvtojson": "2.0.10",
+    "csvtojson": "2.0.13",
     "diff-match-patch": "1.0.5",
     "express": "5.1.0",
     "express-ws": "5.0.2",
