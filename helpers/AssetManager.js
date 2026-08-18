@@ -88,16 +88,21 @@ module.exports.getAssets = async function(webstrateId, latestOnly = false) {
 };
 
 /**
- * Get assets accessible at the current version.
+ * Get assets accessible at a given version.
  * @param  {string}   webstrateId WebstrateId.
+ * @param  {int}      version     Version to get the assets at. If left out, the assets of the
+ *                                newest version are returned.
  * @return {array}                (async) List of current assets.
  * @public
  */
-module.exports.getCurrentAssets = async function(webstrateId) {
-	let assets = await db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
+module.exports.getCurrentAssets = async function(webstrateId, version) {
+	const query = { webstrateId };
+	if (version) query.v = { $lte: version };
+	let assets = await db.assets.find(query, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
 	assets = filterNewestAssets(assets);
-	// Filter out deleted assets.
-	assets = assets.filter(asset => !asset.deletedAt);
+	// Filter out assets that were deleted at or before `version`. Without a version we're looking at
+	// the newest version of the document, where every deleted asset is gone.
+	assets = assets.filter(asset => !asset.deletedAt || (version && asset.deletedAt > version));
 	return assets;
 };
 
@@ -185,7 +190,13 @@ module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, ver
 	let assets = await db.assets.find(query).toArray();
 	assets = filterNewestAssets(assets);
 
-	// If there are no assets, we can terminate.
+	// Only copy assets that were actually alive at `version`. Same rule as getAsset(): an asset is
+	// deleted at `version` if it was deleted at that version or earlier (deletedAt <= version), and
+	// still alive if it was only deleted afterwards (deletedAt > version).
+	assets = assets.filter(asset => !asset.deletedAt || asset.deletedAt > version);
+
+	// If there are no assets left, we can terminate. This has to happen after the filtering above,
+	// as insertMany() throws on an empty array.
 	if (assets.length === 0) return;
 
 	// When prototyping a new document, we always start from version 0, so we are going to reset
@@ -200,6 +211,11 @@ module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, ver
 		// webstrate, we don't copy all the CSV rows.
 		asset._originalId = asset._originalId || asset._id;
 		delete asset._id;
+
+		// deletedAt refers to a version of the *source* document, so it's meaningless in the copy,
+		// which starts over at version 0. The asset is alive at `version`, so the copy must not
+		// inherit a deletion that only happens later in the source's history.
+		delete asset.deletedAt;
 	});
 	await db.assets.insertMany(assets);
 };
