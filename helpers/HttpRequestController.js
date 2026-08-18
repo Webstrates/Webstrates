@@ -520,7 +520,9 @@ function serveRawWebstrate(req, res, snapshot) {
  */
 async function serveCompressedWebstrate(req, res, snapshot) {
 	try {
-		let assets = await assetManager.getCurrentAssets(req.params.webstrateId);
+		// We pass along the version being served, so downloading an old version or a tag archives the
+		// assets that were alive back then, rather than the ones that exist right now.
+		let assets = await assetManager.getCurrentAssets(req.params.webstrateId, snapshot.v);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		const archive = archiver(format, { store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
