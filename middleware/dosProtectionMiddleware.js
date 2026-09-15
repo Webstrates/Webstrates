@@ -1,31 +1,17 @@
 'use strict';
-const redis = require('redis');
 /*
 	Rate limiting. Limits the number of messages per interval to avoid clients that have run
 	haywire from DoS'ing the server. Also prevents actual malicious users from DoS'ing the server.
 */
-
-const pubsub = global.config.pubsub && {
-	publisher: redis.createClient(global.config.pubsub),
-	subscriber: redis.createClient(global.config.pubsub)
-};
-
-const BANLIST_CHANNEL = 'webstratesBans';
 
 // Map from remoteAddress (IP adresses) to expiration timestamp.
 const addressBanList = new Map();
 // Map from remoteAddress to number of ops in interval.
 const opsList = new Map();
 
-function banClient(remoteAddress, local) {
+function banClient(remoteAddress) {
 	const timestamp = Date.now();
 	addressBanList.set(remoteAddress, timestamp);
-
-	if (local && pubsub) {
-		pubsub.publisher.publish(BANLIST_CHANNEL, JSON.stringify({
-			WORKER_ID, remoteAddress, timestamp
-		}));
-	}
 }
 
 if (global.config.rateLimit) {
@@ -66,26 +52,6 @@ if (global.config.rateLimit) {
 		}
 		next();
 	};
-
-	if (pubsub) {
-		pubsub.subscriber.subscribe(BANLIST_CHANNEL);
-		pubsub.subscriber.on('message', (channel, message) => {
-			// Ignore messages on other channels.
-			if (channel !== BANLIST_CHANNEL) {
-				return;
-			}
-
-			message = JSON.parse(message);
-
-			// Ignore messages from ourselves.
-			if (message.WORKER_ID === WORKER_ID) {
-				return;
-			}
-
-			banClient(message.remoteAddress);
-		});
-	}
-
 
 	// Reset op and signal counts.
 	setInterval(function() {

@@ -2,53 +2,14 @@
 
 const util = require('util');
 const shortId = require('shortid');
-const redis = require('redis');
 const documentManager = require(global.APP_PATH + '/helpers/DocumentManager.js');
 
-const pubsub = global.config.pubsub && {
-	publisher: redis.createClient(global.config.pubsub),
-	subscriber: redis.createClient(global.config.pubsub)
-};
-
-var PUBSUB_CHANNEL = 'webstratesPermissions';
 var authConfig = global.config.auth;
 
 var accessTokens = {};
 var permissionsCache = {};
 var timeToLive = authConfig && authConfig.permissionTimeout || 120;
 var defaultPermissionsList = authConfig && authConfig.defaultPermissions;
-
-// Listen for events happening on other server instances. This is only used when using multi-
-// threading and Redis.
-if (pubsub) {
-	pubsub.subscriber.subscribe(PUBSUB_CHANNEL);
-	pubsub.subscriber.on('message', function(channel, message) {
-		message = JSON.parse(message);
-
-		// Ignore messages from ourselves.
-		if (message.WORKER_ID === WORKER_ID) {
-			return;
-		}
-
-		switch (message.action) {
-			case 'invalidateCachedPermissions':
-				module.exports.invalidateCachedPermissions(message.webstrateId);
-				break;
-			case 'saveAccessToken':
-				saveAccessToken(message.webstrateId, message.token, message.username,
-					message.provider, message.expiration, false);
-				break;
-			case 'expireAccessToken':
-				module.exports.expireAccessToken(message.webstrateId, message.token, false);
-				break;
-			case 'expireAllAccessTokens':
-				module.exports.expireAllAccessTokens(message.webstrateId, false);
-				break;
-			default:
-				console.warn('Unknown action', message);
-		}
-	});
-}
 
 /**
  * Determines whether a user is allowed to create a webstrate.
@@ -116,37 +77,26 @@ module.exports.generateAccessToken = function(req, res) {
 	var token = shortId.generate();
 	var expiration = (Date.now()/1000|0) + duration;
 
-	saveAccessToken(webstrateId, token, username, provider, expiration, true);
+	saveAccessToken(webstrateId, token, username, provider, expiration);
 
 	res.json({ webstrateId, username, provider, token, expiration });
 };
 
 /**
- * Save access token and broadcast through publish/subscribe.
+ * Save access token.
  * @param {[type]} webstrateId WebstrateId.
  * @param {string} token       Access token.
  * @param {string} username    Username.
  * @param {string} provider    Provider.
  * @param {Date} expiration    Expiration date.
- * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
- *                             or remotely (on another server instance). We should only forward
- *                             local cache invalidation requests, otherwise we end up in a
- *                             livelock where we continuously send the same request back and forth
- *                             between instances.
  * @private
  */
-function saveAccessToken(webstrateId, token, username, provider, expiration, local) {
+function saveAccessToken(webstrateId, token, username, provider, expiration) {
 	if (!accessTokens[webstrateId]) {
 		accessTokens[webstrateId] = {};
 	}
 
 	accessTokens[webstrateId][token] = { username, provider, expiration };
-
-	if (local && pubsub) {
-		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'saveAccessToken', webstrateId, token, username, provider, expiration, WORKER_ID
-		}));
-	}
 
 	// Also clean up expired tokens. This happens async. No need to make the user wait.
 	setImmediate(cleanUpExpiredTokens);
@@ -182,45 +132,21 @@ module.exports.getAccessTokens = function(webstrateId) {
  * Expire an access token.
  * @param {[type]} webstrateId WebstrateId.
  * @param {string} token       Access token.
- * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
- *                             or remotely (on another server instance). We should only forward
- *                             local cache invalidation requests, otherwise we end up in a
- *                             livelock where we continuously send the same request back and forth
- *                             between instances.
  * @public
  */
-module.exports.expireAccessToken = function(webstrateId, token, local) {
+module.exports.expireAccessToken = function(webstrateId, token) {
 	if (accessTokens[webstrateId]) {
 		delete accessTokens[webstrateId][token];
-	}
-
-	// Even if the access token doesn't exist locally, we still publish it to the other instances.
-	// A clever timing attack could otherwise make it difficult to expire an access token.
-	if (local && pubsub) {
-		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'expireAccessToken', webstrateId, token, WORKER_ID
-		}));
 	}
 };
 
 /**
  * Expire all access token.
  * @param {[type]} webstrateId WebstrateId.
- * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
- *                             or remotely (on another server instance). We should only forward
- *                             local cache invalidation requests, otherwise we end up in a
- *                             livelock where we continuously send the same request back and forth
- *                             between instances.
  * @public
  */
-module.exports.expireAllAccessTokens = function(webstrateId, local) {
+module.exports.expireAllAccessTokens = function(webstrateId) {
 	delete accessTokens[webstrateId];
-
-	if (local && pubsub) {
-		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'expireAllAccessTokens', webstrateId, WORKER_ID
-		}));
-	}
 };
 
 /**
@@ -509,21 +435,10 @@ module.exports.removeAdminPermissionsFromSnapshot = async function(snapshot) {
 /**
  * Deletes all caches for a specific webstrate.
  * @param {string} webstrateId WebstrateId.
- * @param {bool}   local       Whether the invalidation happened locally (on this server instance)
- *                             or remotely (on another server instance). We should only forward
- *                             local cache invalidation requests, otherwise we end up in a
- *                             livelock where we continuously send the same request back and forth
- *                             between instances.
  * @public
  */
-module.exports.invalidateCachedPermissions = function(webstrateId, local) {
+module.exports.invalidateCachedPermissions = function(webstrateId) {
 	delete permissionsCache[webstrateId];
-
-	if (local && pubsub) {
-		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'invalidateCachedPermissions', webstrateId, WORKER_ID
-		}));
-	}
 };
 
 /**

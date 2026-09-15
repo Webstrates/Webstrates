@@ -27,18 +27,18 @@ exports.onmessage = async (ws, req, data, next) => {
 			const message = data.m;
 			const recipients = data.recipients;
 			const senderId = user.userId === 'anonymous:' ? socketId : user.userId;
-			await messagingManager.sendMessage(recipients, message, senderId, true);
+			await messagingManager.sendMessage(recipients, message, senderId);
 			return;
 		}
 		case 'deleteMessage': {
 			if (user.userId !== 'anonymous:') {
-				await messagingManager.deleteMessage(user.userId, data.messageId, true);
+				await messagingManager.deleteMessage(user.userId, data.messageId);
 			}
 			return;
 		}
 		case 'deleteAllMessages': {
 			if (user.userId !== 'anonymous:') {
-				await messagingManager.deleteAllMessages(user.userId, true);
+				await messagingManager.deleteAllMessages(user.userId);
 			}
 			return;
 		}
@@ -47,8 +47,8 @@ exports.onmessage = async (ws, req, data, next) => {
 			try {
 				if (user.userId === 'anonymous:') throw new Error("Must be logged in to set user cookies");
 				if (!data.update) throw new Error("Must be provide update info");
-				await clientManager.updateCookie(user.userId, webstrateId, 
-					data.update.key, data.update.value,	true);
+				await clientManager.updateCookie(user.userId, webstrateId,
+					data.update.key, data.update.value);
 				responseObj.reply = true;;
 			} catch (err){
 				responseObj.error = err.message;
@@ -126,13 +126,13 @@ exports.onmessage = async (ws, req, data, next) => {
 			const nodeId = data.id || 'document';
 			const message = data.m;
 			const recipients = data.recipients;
-			clientManager.publish(socketId, webstrateId, nodeId, message, recipients, true);
+			clientManager.publish(socketId, webstrateId, nodeId, message, recipients);
 			break;
 		}
 		// Signaling on user object.
 		case 'signalUserObject': {
 			const message = data.m;
-			clientManager.signalUserObject(user.userId, socketId, message, webstrateId, true);
+			clientManager.signalUserObject(user.userId, socketId, message, webstrateId);
 			return;
 		}
 		// Mark asset as deleted.
@@ -181,7 +181,7 @@ exports.onmessage = async (ws, req, data, next) => {
 					// The permissions of the older version of the document may be different than
 					// what they are now, so we should invalidate the cached permissions.
 					permissionManager.invalidateCachedPermissions(webstrateId);
-					permissionManager.expireAllAccessTokens(webstrateId, true);
+					permissionManager.expireAllAccessTokens(webstrateId);
 
 					ws.send(JSON.stringify({ wa: 'reply', reply: newVersion,
 						token: data.token }));

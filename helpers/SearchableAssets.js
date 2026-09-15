@@ -5,7 +5,7 @@ const db = require(APP_PATH + '/helpers/database.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 
 const csvConfig = {
-	workerNum: 1, //, Math.max(1, Math.round(config.threads / 2)),
+	workerNum: 1,
 	checkType: true,
 	flatKeys: false
 };

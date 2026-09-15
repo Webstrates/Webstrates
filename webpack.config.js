@@ -20,7 +20,6 @@ try {
 
 const serverConfig = configHelper.getConfig();
 const cleanServerConfig = {
-        threads: serverConfig.threads,
         niceWebstrateIds: serverConfig.niceWebstrateIds,
         maxAssetSize: serverConfig.maxAssetSize,
         rateLimit: serverConfig.rateLimit,

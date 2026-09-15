@@ -2,14 +2,12 @@
 
 const argv = require('minimist')(process.argv.slice(2));
 const bodyParser = require('body-parser');
-const cluster = require('cluster');
 const express = require('express');
 const expressWs = require('express-ws');
 const httpAuth = require('http-auth');
 const passport = require('passport');
 const sessions = require('client-sessions');
 
-global.WORKER_ID = (cluster.worker && cluster.worker.id) || 1;
 global.APP_PATH = __dirname;
 
 require('console-stamp')(console, {
@@ -35,23 +33,6 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
 
-// Setting up multi-threading. If config.threads is 0, a thread for each core is created.
-let threadCount = 1;
-if (typeof config.threads !== 'undefined') {
-	threadCount = parseInt(config.threads) || require('os').cpus().length;
-	if (!config.pubsub) {
-		console.warn('Can\'t run multithreaded without Redis');
-	} else {
-		threadCount = parseInt(config.threads) || require('os').cpus().length;
-		if (cluster.isMaster) {
-			for (let i = 0; i < threadCount; ++i) {
-				cluster.fork();
-			}
-			return;
-		}
-	}
-}
-
 const app = express();
 expressWs(app);
 
@@ -60,9 +41,6 @@ const middleware = [];
 
 middleware.push(require('./middleware/dosProtectionMiddleware.js'));
 middleware.push(require('./middleware/keepAliveMiddleware.js'));
-if (config.godApi) {
-	middleware.push(require('./middleware/godApiMiddleware.js'));
-}
 middleware.push(require('./middleware/userHistory.js'));
 middleware.push(require('./middleware/userInvites.js'));
 middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
@@ -87,7 +65,7 @@ app.use(bodyParser.urlencoded({ extended: true }));
 app.use(express.static('static', { maxAge: config.maxAge }));
 
 if (config.basicAuth) {
-	if (WORKER_ID === 1) console.log('Basic auth enabled');
+	console.log('Basic auth enabled');
 	var basic = httpAuth.basic({
 		realm: config.basicAuth.realm
 	}, function (username, password, callback) {
@@ -221,7 +199,7 @@ if (config.auth) {
 			});
 		}
 
-		if (WORKER_ID === 1) console.log(strategy + '-based authentication enabled');
+		console.log(strategy + '-based authentication enabled');
 	}
 
 	app.get('/auth/logout', function (req, res) {
@@ -357,4 +335,4 @@ app.use((err, req, res, next) => {
 const port = argv.p || config.listeningPort || 7007;
 const address = argv.h || config.listeningAddress || 'localhost';
 app.listen(port, address);
-if (WORKER_ID === 1) console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
+console.log(`Listening on http://${address}:${port}/`);

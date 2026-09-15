@@ -1,48 +1,8 @@
 'use strict';
 
 const shortId = require('shortid');
-const redis = require('redis');
 const db = require(APP_PATH + '/helpers/database.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
-
-const pubsub = global.config.pubsub && {
-	publisher: redis.createClient(global.config.pubsub),
-	subscriber: redis.createClient(global.config.pubsub)
-};
-
-var PUBSUB_CHANNEL = 'webstratesMessages';
-
-// Listen for events happening on other server instances. This is only used when using multi-
-// threading and Redis.
-if (pubsub) {
-	pubsub.subscriber.subscribe(PUBSUB_CHANNEL);
-	pubsub.subscriber.on('message', function(channel, message) {
-
-		message = JSON.parse(message);
-
-		// Ignore messages from ourselves.
-		if (message.WORKER_ID === WORKER_ID) {
-			return;
-		}
-
-		switch (message.action) {
-			case 'clientAdded':
-				module.exports.clientAdded(message.socketId, message.userId);
-				break;
-			case 'message':
-				broadcastToUserEverywhere(message.userId, message.messageId, message.message, message.senderId);
-				break;
-			case 'allMessagesDeleted':
-				module.exports.deleteAllMessages(message.userId);
-				break;
-			case 'messageDeleted':
-				module.exports.deleteMessage(message.userId, message.messageId);
-				break;
-			default:
-				console.warn('Unknown action', message);
-		}
-	});
-}
 
 // Mapping from socketId to userId: string -> string.
 var socketUserMap = new Map();
@@ -51,17 +11,10 @@ var socketUserMap = new Map();
  * Creates a mapping from socketId to userId. Called by ClientManager.
  * @param  {string} socketId SocketId.
  * @param  {string} userId   UserId.
- * @param  {bool} local      Whether the request is done locally or remotely.
  * @public
  */
-module.exports.clientAdded = function(socketId, userId, local) {
+module.exports.clientAdded = function(socketId, userId) {
 	socketUserMap.set(socketId, userId);
-
-	if (local && pubsub) {
-		pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-			action: 'clientAdded', socketId, userId, WORKER_ID: WORKER_ID
-		}));
-	}
 };
 
 /**
@@ -70,13 +23,12 @@ module.exports.clientAdded = function(socketId, userId, local) {
  * @param  {mixed} recipients Recipient or list of recipients. Either socketIds or userId.
  * @param  {mixed} message    Messages (any type).
  * @param  {[type]} senderId  SenderId
- * @param  {bool} local       Whether the request is done locally or remotely.
  * @public
  */
-module.exports.sendMessage = async function(recipients, message, senderId, local) {
+module.exports.sendMessage = async function(recipients, message, senderId) {
 	if (Array.isArray(recipients)) {
 		return await Promise.all(recipients.map(recipient=>{
-			return module.exports.sendMessage(recipient, message, senderId, local); // intentionally no await here
+			return module.exports.sendMessage(recipient, message, senderId); // no await here
 		}));
 	}
 
@@ -92,15 +44,8 @@ module.exports.sendMessage = async function(recipients, message, senderId, local
 
 	// Send it
 	const messageId = shortId.generate();
-	broadcastToUserEverywhere(userId, messageId, message, senderId, local);
-	if (local) {
-		saveMessage(userId, messageId, message, senderId);
-		if (pubsub) {
-			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'message', userId, messageId, message, senderId, WORKER_ID: WORKER_ID
-			}));
-		}
-	}
+	broadcastToUserEverywhere(userId, messageId, message, senderId);
+	saveMessage(userId, messageId, message, senderId);
 };
 
 /**
@@ -132,21 +77,14 @@ module.exports.getMessages = async function(userId) {
  * @param  {string} messageId MessageId.
  * @public
  */
-module.exports.deleteMessage = async function(userId, messageId, local) {
+module.exports.deleteMessage = async function(userId, messageId) {
 	if (!userId || !messageId) return;
 
 	clientManager.broadcastToUserClients(userId, {
 		wa: 'messageDeleted', messageId
 	});
 
-	if (local) {
-		await db.messages.deleteOne({ userId, messageId });
-		if (pubsub) {
-			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'messageDeleted', userId, messageId, WORKER_ID: WORKER_ID
-			}));
-		}
-	}
+	await db.messages.deleteOne({ userId, messageId });
 };
 
 
@@ -155,21 +93,14 @@ module.exports.deleteMessage = async function(userId, messageId, local) {
  * @param  {string} userId UserId.
  * @public
  */
-module.exports.deleteAllMessages = async function(userId, local) {
+module.exports.deleteAllMessages = async function(userId) {
 	if (!userId) return;
 
 	clientManager.broadcastToUserClients(userId, {
 		wa: 'allMessagesDeleted'
 	});
 
-	if (local) {
-		await db.messages.deleteMany({ userId });
-		if (pubsub) {
-			pubsub.publisher.publish(PUBSUB_CHANNEL, JSON.stringify({
-				action: 'allMessageDeleted', userId, WORKER_ID: WORKER_ID
-			}));
-		}
-	}
+	await db.messages.deleteMany({ userId });
 };
 
 /**

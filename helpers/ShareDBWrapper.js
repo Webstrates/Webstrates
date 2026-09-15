@@ -2,10 +2,8 @@
 
 const bson = require('bson');
 const v8 = require('v8');
-const redis = require('redis');
 const sharedb = require('sharedb');
 const sharedbMongo = require('sharedb-mongo');
-const sharedbRedisPubSub = require('sharedb-redis-pubsub');
 const db = require(APP_PATH + '/helpers/database.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
@@ -15,11 +13,7 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const COLLECTION_NAME = 'webstrates';
 
 const share = sharedb({
-	db: sharedbMongo(global.config.db,{mongoOptions: {}}),
-	pubsub: global.config.pubsub && sharedbRedisPubSub({
-		client: redis.createClient(global.config.pubsub),
-		observer: redis.createClient(global.config.pubsub)
-	})
+	db: sharedbMongo(global.config.db,{mongoOptions: {}})
 });
 
 const agent = share.connect();
@@ -107,16 +101,16 @@ share.use(['afterWrite'], (req, next) => {
 	// the document existed — invalidate both caches on creation.
 	if (req.op && req.op.create) {
 		const createdWebstrateId = req.op.d;
-		permissionManager.invalidateCachedPermissions(createdWebstrateId, true);
-		permissionManager.expireAllAccessTokens(createdWebstrateId, true);
+		permissionManager.invalidateCachedPermissions(createdWebstrateId);
+		permissionManager.expireAllAccessTokens(createdWebstrateId);
 		return next();
 	}
 
 	// If the permissions have changed, invalidate the permissions cache and expire all access tokens.
 	if (changesPermissions(req.op.op)) {
 		const webstrateId = req.op.d;
-		permissionManager.invalidateCachedPermissions(webstrateId, true);
-		permissionManager.expireAllAccessTokens(webstrateId, true);
+		permissionManager.invalidateCachedPermissions(webstrateId);
+		permissionManager.expireAllAccessTokens(webstrateId);
 	}
 
 	next();
@@ -191,7 +185,9 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 			case 'receive':
 			// u = unsubscribe.
 				if (req.data.a === 'u') {
-					clientManager.removeClientFromWebstrate(socketId, webstrateId, true);
+					// No userId passed: the client may stay connected after unsubscribing, so
+					// its userClient entry is only cleaned up on disconnect (removeClient).
+					clientManager.removeClientFromWebstrate(socketId, webstrateId);
 					return;
 				}
 
@@ -207,8 +203,8 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 							return next('Forbidden, admin permission required');
 						}
 
-						permissionManager.invalidateCachedPermissions(webstrateId, true);
-						permissionManager.expireAllAccessTokens(webstrateId, true);
+						permissionManager.invalidateCachedPermissions(webstrateId);
+						permissionManager.expireAllAccessTokens(webstrateId);
 					}
 				}
 
@@ -220,7 +216,7 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 				// Initial document request (s = subscribe).
 				if (req.data.a === 's' && permissions.includes('r')) {
 				// Add client and send "hello" message including client list.
-					clientManager.addClientToWebstrate(socketId, user.userId, webstrateId, true);
+					clientManager.addClientToWebstrate(socketId, user.userId, webstrateId);
 
 					// Send list of tags to clients if any.
 					documentManager.getTags(webstrateId, function(err, tags) {

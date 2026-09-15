@@ -19,7 +19,6 @@ module.exports = [
                 ...globals.commonjs,  // Equivalent to env.commonjs = true
 		"config": true,
                 "serverConfig": true,
-                "WORKER_ID": true,
                 "APP_PATH": true
             }
         },

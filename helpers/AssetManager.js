@@ -414,7 +414,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	}
 
 	// Inform all clients of the newly added asset.
-	clientManager.announceNewAsset(webstrateId, assetToBeAnnounced, true);
+	clientManager.announceNewAsset(webstrateId, assetToBeAnnounced);
 
 	return assetToBeAnnounced;
 };
