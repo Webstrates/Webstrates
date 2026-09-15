@@ -985,7 +985,31 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 }
 
 function serveTokenList(req, res) {
-	res.json(permissionManager.getAccessTokens(req.params.webstrateId));
+	// P-203 fix: access tokens grant the permissions of the user who generated
+	// them - including admin - so a token listing must never disclose another
+	// user's token. Users with admin permissions on the webstrate may list all
+	// of its tokens; everyone else only gets the tokens they created themselves
+	// (i.e. tokens with a matching username and provider). The generic read
+	// check that got us here is not enough: it would let a read-only (or
+	// anonymous) user harvest a privileged user's token and take over the
+	// document.
+	const tokens = permissionManager.getAccessTokens(req.params.webstrateId);
+
+	// Admins get the full listing.
+	if (req.user.permissions && req.user.permissions.includes('a')) {
+		return res.json(tokens);
+	}
+
+	// Everyone else only gets their own tokens.
+	const ownTokens = {};
+	for (const token in tokens) {
+		if (tokens[token].username === req.user.username &&
+			tokens[token].provider === req.user.provider) {
+			ownTokens[token] = tokens[token];
+		}
+	}
+
+	res.json(ownTokens);
 }
 
 /**
