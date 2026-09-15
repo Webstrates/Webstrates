@@ -46,7 +46,7 @@
     "console-stamp": "3.1.2",
     "csvtojson": "2.0.13",
     "diff-match-patch": "1.0.5",
-    "express": "5.1.0",
+    "express": "5.2.0",
     "express-ws": "5.0.2",
     "globals": "^16.1.0",
     "graceful-fs": "4.2.11",
