@@ -122,7 +122,10 @@ describe('Assets', function () {
 
 		await pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' });
 		await pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' });
-		await browserA.close();
+		await Promise.all([
+			browserA.close(),
+			browserB.close()
+		]);
 	});
 
 	it('Users should be able to upload assets using the API', async () => {
