@@ -5,6 +5,61 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
+// The webstrates client only connects to the webstrate it was loaded from, so to talk to
+// another webstrate id we open a raw ShareDB websocket to that id ourselves. Webstrates
+// notifications ("wa" property) and handshake messages ("a":"hs" or "a":"init") are ignored;
+// the first ShareDB protocol reply settles the promise. Resolves with null if the subscribe
+// succeeded, or a description of the failure otherwise.
+const subscribeOnRawSocket = (page, webstrateId) => page.evaluate((id) => new Promise((resolve) => {
+	const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+	const finish = (error) => {
+		try { socket.close(); } catch (e) {}
+		resolve(error || null);
+	};
+	setTimeout(() => finish('timeout'), 5000);
+	socket.onopen = () => socket.send(JSON.stringify({ a: 's', c: 'webstrates', d: id }));
+	socket.onerror = () => finish('websocket error');
+	socket.onmessage = (event) => {
+		const message = JSON.parse(event.data);
+		if (message.wa || message.a === 'init') return;
+		finish(message.a === 's' && !message.error ? null : 'Subscribe failed: ' +
+			JSON.stringify(message));
+	};
+}), webstrateId);
+
+// Create a webstrate that carries its permissions in the create operation itself, so that no
+// permission-changing op follows. The webstrate is restricted to the given user. When the
+// client is logged in, the server drops the first message on a websocket, so we open with a
+// handshake we don't rely on and let the connection settle before submitting the create op.
+const createWebstrateOnRawSocket = (page, webstrateId, username, provider) =>
+page.evaluate((id, username, provider) => new Promise((resolve) => {
+	const data = ['html', { 'data-auth': JSON.stringify([{
+		username: username,
+		provider: provider,
+		permissions: 'rw'
+	}]) }, ['head', {}], ['body', {}]];
+	const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+	const finish = (error) => {
+		try { socket.close(); } catch (e) {}
+		resolve(error || null);
+	};
+	setTimeout(() => finish('timeout'), 5000);
+	socket.onopen = () => {
+		socket.send(JSON.stringify({ a: 'hs', id: null, protocol: 1, protocolMinor: 2 }));
+		setTimeout(() => socket.send(JSON.stringify({
+			a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
+			create: { type: 'http://sharejs.org/types/JSONv0', data: data }
+		})), 200);
+	};
+	socket.onerror = () => finish('websocket error');
+	socket.onmessage = (event) => {
+		const message = JSON.parse(event.data);
+		if (message.wa || message.a === 'init' || message.a === 'hs') return;
+		finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
+			JSON.stringify(message));
+	};
+}), webstrateId, username, provider);
+
 describe('Permissions', function() {
 	this.timeout(10000);
 
@@ -272,6 +327,70 @@ describe('Permissions', function() {
 		const res = await pageC.goto(url + '?delete', { waitUntil: 'networkidle2' });
 
 		assert.equal(res.status(), 403);
+	});
+
+	// A client subscribing to a webstrate that doesn't exist yet is served the default
+	// permissions. Those permissions must not stick to the webstrate id once the webstrate is
+	// later created with more restrictive permissions of its own.
+	it('should not give anonymous access to a webstrate that was created with permissions ' +
+		'after anonymous subscribed to the not-yet-existing webstrate', async function() {
+		if (!util.credentialsProvided) return this.skip();
+
+		const newWebstrateId = 'test-' + util.randomString();
+		const newUrl = config.server_address + newWebstrateId;
+		const userObject = await pageA.evaluate(() => window.webstrate.user);
+
+		// Subscribe to the webstrate id as an anonymous client while the webstrate doesn't
+		// exist yet. We can't use the webstrates client for this, as it would create the
+		// webstrate.
+		const subscribeError = await subscribeOnRawSocket(pageC, newWebstrateId);
+		assert.isNotOk(subscribeError, 'Anonymous could not subscribe to the webstrate.');
+
+		// Create the webstrate restricted to the logged in user, with the permissions carried
+		// by the create operation, so that no permission-changing operation follows.
+		const createError = await createWebstrateOnRawSocket(pageA, newWebstrateId,
+			userObject.username, userObject.provider);
+		assert.isNotOk(createError, 'The webstrate could not be created.');
+
+		// Anonymous must not be able to subscribe to the webstrate. Serving the stale default
+		// permissions that were cached while the webstrate didn't exist yet would let them.
+		const leakError = await subscribeOnRawSocket(pageC, newWebstrateId);
+		assert.isOk(leakError, 'Anonymous could subscribe to the restricted webstrate.');
+
+		// The restricted user can still delete the webstrate, cleaning up after the test.
+		const deleteRes = await pageA.goto(newUrl + '?delete', { waitUntil: 'networkidle2' });
+		assert.equal(deleteRes.status(), 200);
+
+		// Go back to the shared webstrate for the tests that follow.
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+	});
+
+	it('should not give anonymous access to a webstrate that was created with permissions ' +
+		'when nobody subscribed to the webstrate id before its creation', async function() {
+		if (!util.credentialsProvided) return this.skip();
+
+		const newWebstrateId = 'test-' + util.randomString();
+		const newUrl = config.server_address + newWebstrateId;
+		const userObject = await pageA.evaluate(() => window.webstrate.user);
+
+		// Create the webstrate restricted to the logged in user, with no client having
+		// subscribed to the webstrate id before.
+		const createError = await createWebstrateOnRawSocket(pageA, newWebstrateId,
+			userObject.username, userObject.provider);
+		assert.isNotOk(createError, 'The webstrate could not be created.');
+
+		// Anonymous must not be able to subscribe to the webstrate.
+		const leakError = await subscribeOnRawSocket(pageC, newWebstrateId);
+		assert.isOk(leakError, 'Anonymous could subscribe to the restricted webstrate.');
+
+		// The restricted user can still delete the webstrate, cleaning up after the test.
+		const deleteRes = await pageA.goto(newUrl + '?delete', { waitUntil: 'networkidle2' });
+		assert.equal(deleteRes.status(), 200);
+
+		// Go back to the shared webstrate for the tests that follow.
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 	});
 
 	it('should be able to update permissions again', async function() {
