@@ -4,7 +4,7 @@ const execSync = require('child_process').execSync;
 const webpack = require('webpack');
 const ESLintPlugin = require('eslint-webpack-plugin'); 
 const configHelper = require('./helpers/ConfigHelper.js');
-const TerserPlugin = require('terser-webpack-plugin');
+const MinimizerPlugin = require('minimizer-webpack-plugin');
 
 
 global.APP_PATH = __dirname;
@@ -84,10 +84,13 @@ const config = {
 if (process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production') {
         // Minify the code.
         config.plugins.push(
-            new TerserPlugin({
-                terserOptions: {
-                    compress: {
-                        drop_console: true,
+            new MinimizerPlugin({
+                minify: {
+                    implementation: MinimizerPlugin.terserMinify,
+                    options: {
+                        compress: {
+                            drop_console: true,
+                        },
                     },
                 },
             })

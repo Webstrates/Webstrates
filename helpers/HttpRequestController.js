@@ -1,6 +1,7 @@
 'use strict';
 
-const archiver = require('archiver');
+const { ZipArchive, TarArchive } = require('archiver');
+const ARCHIVE_FORMATS = { zip: ZipArchive, tar: TarArchive };
 const crypto = require('crypto');
 const dns = require('dns');
 const fs = require('graceful-fs');
@@ -958,7 +959,7 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 		// assets that were alive back then, rather than the ones that exist right now.
 		let assets = await assetManager.getCurrentAssets(req.params.webstrateId, snapshot.v);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
-		const archive = archiver(format, { store: true });
+		const archive = new ARCHIVE_FORMATS[format]({ store: true });
 		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
 			{ name: `${req.params.webstrateId}/index.html` });
 

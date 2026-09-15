@@ -1,5 +1,5 @@
 # Start from a small Alpine Linux base image
-FROM node:20-alpine
+FROM node:24-alpine
 
 # The 'git' dependency is needed for some npm packages
 RUN apk add --no-cache git
