@@ -356,5 +356,19 @@ app.use((err, req, res, next) => {
 
 const port = argv.p || config.listeningPort || 7007;
 const address = argv.h || config.listeningAddress || 'localhost';
-app.listen(port, address);
-if (WORKER_ID === 1) console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
+
+if (config.tls && config.tls.key && config.tls.cert) {
+	const https = require('https');
+	const fs = require('fs');
+	const tlsOptions = {
+		key: fs.readFileSync(config.tls.key),
+		cert: fs.readFileSync(config.tls.cert)
+	};
+	https.createServer(tlsOptions, app).listen(port, address);
+	if (WORKER_ID === 1) console.log(`Listening on https://${address}:${port}/ in ${threadCount} thread(s)`);
+} else {
+	if (WORKER_ID === 1) console.warn('No TLS configuration found (config.tls.key/cert). ' +
+		'Serving over plain HTTP. This is insecure unless TLS is terminated by a reverse proxy.');
+	app.listen(port, address);
+	if (WORKER_ID === 1) console.log(`Listening on http://${address}:${port}/ in ${threadCount} thread(s)`);
+}
