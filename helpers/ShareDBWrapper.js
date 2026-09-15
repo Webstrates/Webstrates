@@ -102,7 +102,13 @@ if (global.config.tagging) {
 
 // Invalidate permissions cache after a permission-changing op has been applied.
 share.use(['afterWrite'], (req, next) => {
+	// A created document may carry a data-auth attribute of its own, and a stale
+	// cache entry may have been left behind by requests against the id before
+	// the document existed — invalidate both caches on creation.
 	if (req.op && req.op.create) {
+		const createdWebstrateId = req.op.d;
+		permissionManager.invalidateCachedPermissions(createdWebstrateId, true);
+		permissionManager.expireAllAccessTokens(createdWebstrateId, true);
 		return next();
 	}
 

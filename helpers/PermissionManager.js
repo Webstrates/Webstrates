@@ -261,7 +261,11 @@ module.exports.getUserPermissions = async function(username, provider, webstrate
 	if (userMustBeLoggedInToWriteAndUserIsAnonymous(username, provider)) {
 		permissions = permissions.replace(/w/g, '');
 	}
-	setCachedPermissions(username, provider, permissions, snapshot.id);
+
+	// Never cache permissions for documents that do not exist yet.
+	if (snapshot.type !== null) {
+		setCachedPermissions(username, provider, permissions, snapshot.id);
+	}
 	return permissions;
 };
 
