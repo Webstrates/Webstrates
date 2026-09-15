@@ -2,17 +2,22 @@
 
 const archiver = require('archiver');
 const crypto = require('crypto');
+const dns = require('dns');
 const fs = require('graceful-fs');
+const http = require('http');
+const https = require('https');
 const jsonmlTools = require('jsonml-tools');
 const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
 const multer = require('multer');
+const net = require('net');
 const os = require('os');
 const shortId = require('shortid');
 const util = require('util');
 const tmp = require('tmp');
 const url = require('url');
 const yauzl = require('yauzl');
+const zlib = require('zlib');
 const SELFCLOSING_TAGS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
 	'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr'];
 
@@ -21,6 +26,427 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
 const invites = require(APP_PATH + '/middleware/userInvites.js');
+
+const DEFAULT_PROTOTYPE_URL_DNS_SERVERS = ['8.8.8.8', '1.1.1.1'];
+const PROTOTYPE_URL_FETCH_TIMEOUT_MS = 30000;
+
+/**
+ * Parse a dotted-quad IPv4 address into its 4 bytes, or null.
+ * @param  {string} address Address to parse.
+ * @return {number[]|null}    [a, b, c, d], or null if malformed.
+ * @private
+ */
+function parseIPv4Address(address) {
+	if (typeof address !== 'string') return null;
+	const parts = address.split('.');
+	if (parts.length !== 4) return null;
+	const bytes = [];
+	for (const part of parts) {
+		if (!/^\d{1,3}$/.test(part) || (part.length > 1 && part.startsWith('0')) || Number(part) > 255) {
+			return null;
+		}
+		bytes.push(Number(part));
+	}
+	return bytes;
+}
+
+/**
+ * Parse an IPv6 literal into its 16 bytes, or null. Handles :: compression
+ * and the optional trailing dotted quad (which occupies the last two
+ * groups), e.g. ::ffff:127.0.0.1.
+ * @param  {string} address Address to parse.
+ * @return {number[]|null}  16 address bytes, or null if malformed.
+ * @private
+ */
+function parseIPv6Address(address) {
+	if (typeof address !== 'string') return null;
+	const halves = address.toLowerCase().split('::');
+	if (halves.length > 2) return null;
+	const leftGroups = halves[0] === '' ? [] : halves[0].split(':');
+	const rightGroups = halves.length === 2 ? (halves[1] === '' ? [] : halves[1].split(':')) : [];
+	// An optional dotted quad ends the address, so it can only be the last
+	// group of whichever side terminates it.
+	const endGroups = halves.length === 2 ? rightGroups : leftGroups;
+	let tailBytes = null;
+	if (endGroups.length > 0 && endGroups[endGroups.length - 1].includes('.')) {
+		tailBytes = parseIPv4Address(endGroups.pop());
+		if (!tailBytes) return null;
+	}
+	for (const group of [...leftGroups, ...rightGroups]) {
+		if (!/^[0-9a-f]{1,4}$/.test(group)) return null;
+	}
+	const groupCount = leftGroups.length + rightGroups.length + (tailBytes ? 2 : 0);
+	// With :: present it must stand for at least one zero group.
+	if (halves.length === 2 ? groupCount > 7 : groupCount !== 8) return null;
+	const groups = new Array(8).fill(0);
+	leftGroups.forEach((group, index) => { groups[index] = parseInt(group, 16); });
+	rightGroups.forEach((group, index) => {
+		groups[8 - rightGroups.length - (tailBytes ? 2 : 0) + index] = parseInt(group, 16);
+	});
+	if (tailBytes) {
+		groups[6] = (tailBytes[0] << 8) | tailBytes[1];
+		groups[7] = (tailBytes[2] << 8) | tailBytes[3];
+	}
+	return groups.reduce((bytes, group) => bytes.concat([(group >> 8) & 0xff, group & 0xff]), []);
+}
+
+/**
+ * Whether a 4-byte IPv4 address is private/internal/reserved: 0.0.0.0/8,
+ * 10.0.0.0/8, 127.0.0.0/8, 100.64.0.0/10 (CGNAT), 169.254.0.0/16
+ * (link-local / cloud metadata), 172.16.0.0/12, 192.168.0.0/16,
+ * 192.0.0.0/24, 198.18.0.0/15 (benchmarks), 224.0.0.0/4 (multicast) and
+ * 240.0.0.0/4 (reserved / broadcast).
+ * @param  {number} a First address byte.
+ * @param  {number} b Second address byte.
+ * @param  {number} c Third address byte.
+ * @param  {number} d Fourth address byte.
+ * @return {boolean}   True if the address is internal.
+ * @private
+ */
+function isPrivateIPv4Bytes(a, b, c, d) {
+	return a === 0 ||
+		a === 10 ||
+		a === 127 ||
+		(a === 100 && b >= 64 && b <= 127) ||
+		(a === 169 && b === 254) ||
+		(a === 172 && b >= 16 && b <= 31) ||
+		(a === 192 && b === 168) ||
+		(a === 192 && b === 0 && c === 0) ||
+		(a === 198 && (b === 18 || b === 19)) ||
+		a >= 224;
+}
+
+/**
+ * Whether a 16-byte IPv6 address is private/internal/reserved, including
+ * the IPv4 segments embedded in other formats: IPv4-mapped (::ffff:0:0/96),
+ * IPv4-compatible (::/96, incl. ::1), NAT64 (64:ff9b::/96 and the RFC 8215
+ * local-use 64:ff9b:1::/48) and 6to4 (2002::/16) are classified by the
+ * IPv4 they carry. Also ULA (fc00::/7), link-local (fe80::/10), multicast
+ * (ff00::/8), Teredo (2001::/32) and documentation (2001:db8::/32).
+ * @param  {number[]} bytes 16 address bytes.
+ * @return {boolean}        True if the address is internal.
+ * @private
+ */
+function isPrivateIPv6Bytes(bytes) {
+	const rangeIsZero = (from, to) => bytes.slice(from, to).every(byte => byte === 0);
+	if (rangeIsZero(0, 16)) return true; // :: (unspecified)
+	if (rangeIsZero(0, 10) && bytes[10] === 0xff && bytes[11] === 0xff) {
+		return isPrivateIPv4Bytes(bytes[12], bytes[13], bytes[14], bytes[15]); // ::ffff:0:0/96
+	}
+	if (rangeIsZero(0, 12)) {
+		return isPrivateIPv4Bytes(bytes[12], bytes[13], bytes[14], bytes[15]); // ::/96 IPv4-compatible
+	}
+	// NAT64 64:ff9b::/96 (bytes 00 64 ff 9b) — the embedded IPv4 decides.
+	if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b &&
+		rangeIsZero(4, 12)) {
+		return isPrivateIPv4Bytes(bytes[12], bytes[13], bytes[14], bytes[15]);
+	}
+	// RFC 8215 local-use NAT64 64:ff9b:1::/48 — internal by design.
+	if (bytes[0] === 0x00 && bytes[1] === 0x64 && bytes[2] === 0xff && bytes[3] === 0x9b &&
+		bytes[4] === 0x00 && bytes[5] === 0x01) {
+		return true;
+	}
+	if (bytes[0] === 0x20 && bytes[1] === 0x02) {
+		return isPrivateIPv4Bytes(bytes[2], bytes[3], bytes[4], bytes[5]); // 2002::/16 (6to4)
+	}
+	if (bytes[0] === 0x20 && bytes[1] === 0x01 && bytes[2] === 0 && bytes[3] === 0) return true;
+	if (bytes[0] === 0x20 && bytes[1] === 0x01 && bytes[2] === 0x0d && bytes[3] === 0xb8) return true;
+	if ((bytes[0] & 0xfe) === 0xfc) return true; // fc00::/7
+	if (bytes[0] === 0xfe && (bytes[1] & 0xc0) === 0x80) return true; // fe80::/10
+	if (bytes[0] === 0xff) return true; // ff00::/8
+	return false;
+}
+
+/**
+ * Whether an IP address of either family is private/internal. Unknown
+ * formats are treated as private (fail closed).
+ * @param  {string} address Address to check.
+ * @return {boolean}        True if the address is internal.
+ * @private
+ */
+function isPrivateAddress(address) {
+	const ipv4 = parseIPv4Address(address);
+	if (ipv4) return isPrivateIPv4Bytes(ipv4[0], ipv4[1], ipv4[2], ipv4[3]);
+	const ipv6 = parseIPv6Address(address);
+	if (ipv6) return isPrivateIPv6Bytes(ipv6);
+	return true; // fail closed
+}
+
+/**
+ * Validate one prototypeUrlDNS entry: a bare IP, an ip:port pair, or an
+ * IPv6 in [v6]:port form, as accepted by dns.setServers. Server names are
+ * rejected on purpose — resolving the resolver would need a resolver.
+ * @param  {string} entry Configured entry.
+ * @return {string|null}  Normalized entry, or null if invalid.
+ * @private
+ */
+function parseDnsServerEntry(entry) {
+	if (typeof entry !== 'string') return null;
+	let server = entry.trim();
+	let port = '';
+	if (server.startsWith('[')) {
+		const close = server.indexOf(']');
+		if (close === -1) return null;
+		port = server.slice(close + 1);
+		server = server.slice(1, close);
+		if (port !== '' && !port.startsWith(':')) return null;
+		if (port.startsWith(':')) port = port.slice(1);
+	} else {
+		const firstColon = server.indexOf(':');
+		if (firstColon !== -1 && firstColon === server.lastIndexOf(':')) {
+			// Exactly one colon: "ip:port". (A bare IPv6 has several.)
+			port = server.slice(firstColon + 1);
+			server = server.slice(0, firstColon);
+		}
+	}
+	if (port !== '' && (!/^\d+$/.test(port) || Number(port) < 1 || Number(port) > 65535)) return null;
+	if (net.isIP(server) === 0) return null;
+	return port === '' ? server : (server.includes(':') ? `[${server}]:${port}` : `${server}:${port}`);
+}
+
+let prototypeUrlDnsServersCache = null;
+
+/**
+ * The external DNS servers prototypeUrl hostnames are resolved through:
+ * the valid entries of config.prototypeUrlDNS, defaulting to Google
+ * (8.8.8.8) and Cloudflare (1.1.1.1) DNS when none are configured.
+ * @return {string[]} Normalized dns.setServers entries.
+ * @private
+ */
+function getPrototypeUrlDnsServers() {
+	if (prototypeUrlDnsServersCache) return prototypeUrlDnsServersCache;
+	const servers = [];
+	const configured = Array.isArray(config.prototypeUrlDNS) ? config.prototypeUrlDNS : [];
+	for (const entry of configured) {
+		const server = parseDnsServerEntry(entry);
+		if (server) {
+			servers.push(server);
+		} else {
+			console.warn('Ignoring invalid prototypeUrlDNS entry:', entry);
+		}
+	}
+	prototypeUrlDnsServersCache = servers.length > 0 ? servers : DEFAULT_PROTOTYPE_URL_DNS_SERVERS.slice();
+	return prototypeUrlDnsServersCache;
+}
+
+/**
+ * Resolve a prototypeUrl hostname over EXTERNAL DNS only — one of the
+ * servers from getPrototypeUrlDnsServers — and refuse if any of the
+ * returned addresses (A or AAAA) is internal. The addresses returned
+ * here are the only ones the fetch may ever connect to.
+ * @param  {string} hostname Hostname to resolve.
+ * @return {Object[]}        [{address, family}] public addresses.
+ * @throws {Error}           If nothing resolves or any address is internal.
+ * @private
+ */
+async function resolvePrototypeUrlHostname(hostname) {
+	const resolver = new dns.promises.Resolver({ timeout: 4000, tries: 2 });
+	resolver.setServers(getPrototypeUrlDnsServers());
+	const [ipv4Results, ipv6Results] = await Promise.all([
+		resolver.resolve4(hostname).catch(() => []),
+		resolver.resolve6(hostname).catch(() => [])
+	]);
+	const addresses = [...ipv4Results, ...ipv6Results];
+	if (addresses.length === 0) {
+		throw new Error('Could not resolve prototypeUrl host.');
+	}
+	if (addresses.some(address => isPrivateAddress(address))) {
+		throw new Error('Refusing to fetch internal addresses via prototypeUrl.');
+	}
+	return addresses.map(address => ({ address, family: net.isIPv4(address) ? 4 : 6 }));
+}
+
+/**
+ * Validate a prototypeUrl request parameter (P-101 fix: SSRF). Only
+ * http(s) URLs are allowed, and the host must either be operator-allowlisted
+ * (config.prototypeUrlAllowlist) or resolve — through external DNS — to
+ * public addresses only. Returns the parsed URL together with the pinned
+ * addresses the connection must use (null for allowlisted hosts, which are
+ * fetched with the default resolver by operator decision).
+ * @param  {string} requestedUrl URL requested by the user.
+ * @return {Object}              {url: URL, addresses: [{address, family}] | null}
+ * @throws {Error}               If the URL or its host is not fetchable.
+ * @private
+ */
+async function validatePrototypeUrl(requestedUrl) {
+	const allowlist = (Array.isArray(config.prototypeUrlAllowlist) ? config.prototypeUrlAllowlist : [])
+		.map(host => String(host).toLowerCase());
+
+	let parsedUrl;
+	try {
+		parsedUrl = new URL(requestedUrl);
+	} catch (err) {
+		throw new Error('Invalid prototypeUrl.');
+	}
+
+	if (!['http:', 'https:'].includes(parsedUrl.protocol)) {
+		throw new Error('prototypeUrl must be an http(s) URL.');
+	}
+
+	// URL hostnames keep their brackets for IPv6 literals.
+	const hostname = parsedUrl.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+
+	if (allowlist.includes(hostname)) {
+		return { url: parsedUrl, addresses: null };
+	}
+
+	if (net.isIP(hostname)) {
+		if (isPrivateAddress(hostname)) {
+			throw new Error('Refusing to fetch internal addresses via prototypeUrl.');
+		}
+		return { url: parsedUrl, addresses: [{ address: hostname, family: net.isIPv4(hostname) ? 4 : 6 }] };
+	}
+
+	return { url: parsedUrl, addresses: await resolvePrototypeUrlHostname(hostname) };
+}
+
+/**
+ * A dns.lookup-compatible lookup callback that pins the connection to the
+ * externally-resolved addresses: the server's own resolver — and the
+ * internal mapping it holds — is never consulted for the fetch.
+ * @param  {string}   hostname  Hostname the fetch will ask about.
+ * @param  {Object[]} addresses Pinned [{address, family}] answers.
+ * @return {Function}           lookup(hostname, options, callback).
+ * @private
+ */
+function makePinnedLookup(hostname, addresses) {
+	const expected = hostname.toLowerCase();
+	return (lookupHostname, options, callback) => {
+		if (String(lookupHostname).toLowerCase() !== expected) {
+			return callback(new Error('prototypeUrl host mismatch.'));
+		}
+		if (options && options.all) {
+			return callback(null, addresses.map(({ address, family }) => ({ address, family })));
+		}
+		const { address, family } = addresses[0];
+		return callback(null, address, family);
+	};
+}
+
+/**
+ * Decode a prototypeUrl response body the way fetch() does for the
+ * encodings we request (gzip, deflate). Anything else passes through.
+ * @param  {Buffer} buffer  Raw body bytes.
+ * @param  {string} encoding Content-Encoding header value.
+ * @return {Buffer}         Decoded body.
+ * @throws {Error}          If the body cannot be decoded.
+ * @private
+ */
+function decodePrototypeUrlBody(buffer, encoding) {
+	const enc = String(encoding || '').trim().toLowerCase();
+	if (enc === 'gzip') return zlib.gunzipSync(buffer);
+	if (enc === 'deflate') {
+		try {
+			return zlib.inflateSync(buffer);
+		} catch (err) {
+			return zlib.inflateRawSync(buffer);
+		}
+	}
+	return buffer;
+}
+
+/**
+ * fetch()-compatible response over an http(s) response: status/statusText/
+ * ok, case-insensitive header lookup, arrayBuffer() and text().
+ * @param  {http.IncomingMessage} response Node response object.
+ * @param  {Buffer}                buffer   Decoded body bytes.
+ * @private
+ */
+class PrototypeUrlResponse {
+	constructor(response, buffer) {
+		this.status = response.statusCode;
+		this.statusText = response.statusMessage || http.STATUS_CODES[response.statusCode] || '';
+		this.ok = this.status >= 200 && this.status < 300;
+		const headers = response.headers;
+		this.headers = {
+			get: (name) => {
+				if (!name) return null;
+				const value = headers[name.toLowerCase()];
+				return value === undefined ? null : (Array.isArray(value) ? value.join(', ') : value);
+			}
+		};
+		this.body = buffer;
+	}
+
+	arrayBuffer() {
+		return Promise.resolve(new Uint8Array(this.body).buffer);
+	}
+
+	text() {
+		return Promise.resolve(this.body.toString('utf8'));
+	}
+}
+
+/**
+ * Fetch one validated prototypeUrl hop over http(s).request with the
+ * connection pinned to the externally-resolved addresses, gzip/deflate
+ * decoding and a hard timeout. Connections are not pooled (agent: false),
+ * so no prototypeUrl socket is ever reused by anything else.
+ * @param  {Object} validated {url, addresses} from validatePrototypeUrl.
+ * @return {Promise<PrototypeUrlResponse>}
+ * @private
+ */
+function requestPrototypeUrl(validated) {
+	const transport = validated.url.protocol === 'https:' ? https : http;
+	// URL hostnames keep their brackets for IPv6 literals.
+	const hostname = validated.url.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+	return new Promise((resolve, reject) => {
+		const options = {
+			agent: false,
+			headers: { 'accept-encoding': 'gzip, deflate' }
+		};
+		if (validated.addresses) {
+			options.lookup = makePinnedLookup(hostname, validated.addresses);
+		}
+		const request = transport.request(validated.url, options, (response) => {
+			const chunks = [];
+			response.on('data', (chunk) => chunks.push(chunk));
+			response.on('error', reject);
+			response.on('aborted', () => reject(new Error('prototypeUrl fetch aborted.')));
+			response.on('end', () => {
+				clearTimeout(timer);
+				try {
+					resolve(new PrototypeUrlResponse(response,
+						decodePrototypeUrlBody(Buffer.concat(chunks), response.headers['content-encoding'])));
+				} catch (err) {
+					reject(err);
+				}
+			});
+		});
+		const timer = setTimeout(() => {
+			request.destroy(new Error('prototypeUrl fetch timed out.'));
+		}, PROTOTYPE_URL_FETCH_TIMEOUT_MS);
+		request.on('error', reject);
+		request.end();
+	});
+}
+
+/**
+ * Fetch a prototypeUrl after validating and pinning every hop (P-101
+ * fix): redirects are followed manually, and each redirect target is
+ * validated (and pinned) the same way as the original URL.
+ * @param  {string} requestedUrl URL requested by the user.
+ * @return {PrototypeUrlResponse} Fetched response (a non-2xx response is an error).
+ * @throws {Error}                On invalid destinations or failed fetches.
+ * @private
+ */
+async function fetchPrototypeUrl(requestedUrl) {
+	let current = await validatePrototypeUrl(requestedUrl);
+
+	for (let redirects = 0; redirects < 5; redirects++) {
+		const response = await requestPrototypeUrl(current);
+		const location = response.headers.get('location');
+		if (response.status >= 300 && response.status < 400 && location) {
+			current = await validatePrototypeUrl(new URL(location, current.url).href);
+			continue;
+		}
+		if (!response.ok) {
+			throw new Error('Invalid request. Received: ' + response.status + ' ' + response.statusText);
+		}
+		return response;
+	}
+	throw new Error('Too many redirects for prototypeUrl.');
+}
 
 async function generateWebstrateId(req) {
 	if (config.niceWebstrateIds) {
@@ -755,12 +1181,28 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 	}
 
     if ('prototypeUrl' in req.query) {
+		// --- ?prototypeUrl SSRF guard ------------------------------------------
+		//
+		// prototypeUrl lets an unauthenticated client make the server fetch a URL,
+		// so the fetch is wrapped in three defenses:
+		//   1. Only http(s) URLs, and only hosts that are either operator-allowlisted
+		//      (config.prototypeUrlAllowlist) or resolve to public addresses.
+		//   2. Hostnames are resolved over EXTERNAL DNS only — one of the servers in
+		//      config.prototypeUrlDNS (defaulting to Google/Cloudflare), never the
+		//      server's own resolver: /etc/hosts, /etc/resolv.conf and any
+		//      split-horizon view describe the internal network, and neither the
+		//      validation nor the fetch may use or expose that internal mapping.
+		//   3. The connection is pinned to the addresses the external resolver
+		//      returned, so the hostname is never resolved (or re-resolved) on the
+		//      way to connect. Redirects are followed manually and every hop is
+		//      validated and pinned the same way.
+		// Address checks are byte-level so the IPv4 segments embedded in IPv6
+		// literals (IPv4-mapped ::ffff:0:0/96, IPv4-compatible ::/96, NAT64
+		// 64:ff9b::/96 and 6to4 2002::/16) are classified by the IPv4 they carry:
+		// ::ffff:127.0.0.1 and its hex twin ::ffff:7f00:1 are both loopback.
         try {
-			// Fetch remote data
-            const response = await fetch(req.query.prototypeUrl);
-            if (!response.ok) {
-                throw new Error('Invalid request. Received: ' + response.status + ' ' + response.statusText);
-            }
+			// Fetch remote data (validated, resolved externally and pinned — P-101 fix).
+            const response = await fetchPrototypeUrl(req.query.prototypeUrl);
             const contentType = response.headers.get('content-type');
             const contentDisposition = response.headers.get('content-disposition');
 
