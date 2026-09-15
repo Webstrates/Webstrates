@@ -35,7 +35,7 @@
     }
   ],
   "dependencies": {
-    "@babel/core": "7.27.4",
+    "@babel/core": "7.29.6",
     "@babel/plugin-transform-template-literals": "^7.27.1",
     "@babel/preset-env": "7.27.2",
     "archiver": "7.0.1",
