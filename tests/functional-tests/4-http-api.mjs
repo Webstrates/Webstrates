@@ -7,6 +7,31 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
+// A plain text asset (not a ZIP) and a ZIP asset containing hello.txt and
+// sub/file.txt, for testing the asset directory listing (?dir).
+const NOT_A_ZIP_FILE = 'data:text/plain;base64,' + btoa('This is not a ZIP file.');
+const REAL_ZIP_FILE = 'data:application/zip;base64,' +
+	'UEsDBBQAAAAIAK5qL112hwFmEgAAABAAAAAJAAAAaGVsbG8udHh0y0jNyclXKE9NKi4pSixJLQYAUEsDBBQ' +
+	'AAAAIAK5qL10AAAAAAgAAAAAAAAAEAAAAc3ViLwMAUEsDBBQAAAAIAK5qL13N82tGGgAAABgAAAAMAAAAc3Vi' +
+	'L2ZpbGUudHh0S8vMSVXIzCvOTElVKC5NSsksSk0uyS+qBABQSwECFAMUAAAACACuai9ddocBZhIAAAAQAAAACQ' +
+	'AAAAAAAAAAAAAAgAEAAAAAaGVsbG8udHh0UEsBAhQDFAAAAAgArmovXQAAAAACAAAAAAAAAAQAAAAAAAAAAAAQ' +
+	'AP1BOQAAAHN1Yi9QSwECFAMUAAAACACuai9dzfNrRhoAAAAYAAAADAAAAAAAAAAAAAAAgAFdAAAAc3ViL2Zpb' +
+	'GUudHh0UEsFBgAAAAADAAMAowAAAKEAAAAAAA==';
+
+// Uploads an asset to the current webstrate through the HTTP API.
+const uploadAssetByFetch = async (page, fileName, mimeType, base64Data) => {
+	return await page.evaluate(async (fileName, mimeType, base64Data) => {
+		const file = new File(
+			[Uint8Array.from(atob(base64Data.split(',')[1]), char => char.charCodeAt(0))],
+			fileName, { type: mimeType });
+		const formData = new FormData();
+		formData.append('file[]', file);
+		const response = await fetch(location.pathname,
+			{ method: 'POST', body: formData, credentials: 'include' });
+		return await response.json();
+	}, fileName, mimeType, base64Data);
+};
+
 describe('HTTP API', function() {
 	this.timeout(10000);
 
@@ -112,8 +137,53 @@ describe('HTTP API', function() {
 		assert.propertyVal(jsonObject, 'subdirectory', true, 'Could not find the subdirectory property in test zip json in a subdir');
 	});
 
-});
+	it('?dir on a non-ZIP asset should return an error instead of crashing the server', async () => {
+		const dirWebstrateId = 'test-' + util.randomString();
+		const dirUrl = config.server_address + dirWebstrateId;
 
+		pageA = await browser.newPage();
+		await pageA.goto(dirUrl, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 5);
+
+		const notAZipAsset = await uploadAssetByFetch(pageA, 'notazip.txt', 'text/plain', NOT_A_ZIP_FILE);
+		assert.equal(notAZipAsset.fileName, 'notazip.txt', 'Uploading the non-ZIP asset failed');
+
+		const zipAsset = await uploadAssetByFetch(pageA, 'realzip.zip', 'application/zip', REAL_ZIP_FILE);
+		assert.equal(zipAsset.fileName, 'realzip.zip', 'Uploading the ZIP asset failed');
+
+		await pageA.goto(dirUrl + '/realzip.zip/?dir', { waitUntil: 'domcontentloaded' });
+		let content = await pageA.evaluate(() => document.body.textContent);
+		const zipStructure = JSON.parse(content);
+		assert.isArray(zipStructure, '?dir on a ZIP asset should return a JSON array');
+		assert.include(zipStructure, 'hello.txt', 'ZIP listing does not include hello.txt');
+		assert.include(zipStructure, 'sub/file.txt', 'ZIP listing does not include sub/file.txt');
+
+		await pageA.goto(dirUrl + '/realzip.zip/sub/', { waitUntil: 'domcontentloaded' });
+		content = await pageA.evaluate(() => document.body.textContent);
+		const subStructure = JSON.parse(content);
+		assert.isArray(subStructure, 'Listing a ZIP subdirectory should return a JSON array');
+		assert.include(subStructure, 'sub/file.txt', 'Subdirectory listing does not include sub/file.txt');
+
+		// Used to kill the whole server process: the yauzl.open callback in
+		// getZipStructure ignores its error and dereferences zipFile anyway.
+		const response = await pageA.goto(dirUrl + '/notazip.txt/?dir', { waitUntil: 'domcontentloaded' });
+
+		assert.isNotNull(response, 'Server did not respond to ?dir on a non-ZIP asset');
+		assert.equal(response.status(), 409, '?dir on a non-ZIP asset should be rejected with 409');
+		content = await pageA.evaluate(() => document.body.innerText);
+		assert.include(content, 'is not a valid ZIP file',
+			'Error response should state that the asset is not a valid ZIP file');
+
+		await pageA.goto(dirUrl + '/notazip.txt', { waitUntil: 'domcontentloaded' });
+		content = await pageA.evaluate(() => document.body.textContent);
+		assert.equal(content, 'This is not a ZIP file.',
+			'Server did not keep serving the non-ZIP asset after the ?dir request');
+
+		// Cleanup
+		await pageA.goto(dirUrl + '?delete', { waitUntil: 'domcontentloaded' });
+	});
+
+});
 describe('HTTP API: /new?prototypeUrl= refuses internal addresses', function() {
 	this.timeout(30000);
 

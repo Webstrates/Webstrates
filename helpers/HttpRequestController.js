@@ -558,6 +558,9 @@ function setCorsHeaders(req, res, snapshot) {
  */
 const getZipStructure = async (fileName) => new Promise((accept, reject) => {
 	yauzl.open(APP_PATH + '/uploads/' + fileName, { lazyEntries: true }, (err, zipFile) => {
+		if (err || !zipFile) {
+			return reject(new Error(`"${fileName}" is not a valid ZIP file.`));
+		}
 		const fileList = [];
 		zipFile.on('entry', entry => {
 			fileList.push(entry.fileName);
@@ -689,10 +692,15 @@ module.exports.requestHandler = async function(req, res) {
 
 								// If requested file is a directory, list directory files.
 								if (entry.fileName.endsWith('/')) {
-									const zipStructure = await getZipStructure(asset.fileName);
-									const filteredZipStructure = zipStructure.filter(path =>
-										path.startsWith(entry.fileName));
-									return res.json(filteredZipStructure);
+									try {
+										const zipStructure = await getZipStructure(asset.fileName);
+										const filteredZipStructure = zipStructure.filter(path =>
+											path.startsWith(entry.fileName));
+										return res.json(filteredZipStructure);
+									} catch (err) {
+										return res.status(400).send(`"${req.params.assetName}" is not a ` +
+											'valid ZIP file.');
+									}
 								}
 
 								zipFile.openReadStream(entry, (err, readStream) => {
