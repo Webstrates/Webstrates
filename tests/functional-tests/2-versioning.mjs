@@ -122,6 +122,8 @@ describe('Versioning', function () {
 	});
 
 	it('restoring should also work using the HTTP API', async () => {
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await page.setCacheEnabled(false);
 		await page.goto(url + '?restore=2', { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
 		assert.equal(page.url(), url + '/');

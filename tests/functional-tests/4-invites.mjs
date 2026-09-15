@@ -9,7 +9,7 @@ describe('Invites', function () {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
+	const url = config.server_address + webstrateId + '/';
 
 	let browserA, browserB, browserC, pageA, pageB, pageC;
 	let currentInvitation;
@@ -40,6 +40,8 @@ describe('Invites', function () {
 			return;
 		}
 
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 
 		await Promise.all([
@@ -103,7 +105,7 @@ describe('Invites', function () {
 	it('User B should be able to use the invitation to access the webstrate', async function () {
 		if (config.authType !== 'test') return this.skip();
 
-		await pageB.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
+		await pageB.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 
 		const invitePermission = await pageB.evaluate(async (key, webstrateId) => {
 			return await window.webstrate.user.invites.accept(key, webstrateId);
@@ -296,7 +298,7 @@ describe('Invites', function () {
 	});
 
 	it('Invite API should be available for logged-in users only', async function () {
-		await pageC.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
+		await pageC.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 
 		// Try to create an invitation without being logged in - should fail
 		let error;

@@ -25,7 +25,7 @@ describe('Authentication and Login', function() {
 	});
 
 	it('user object should be anonymous before logging in', async () => {
-		await pageA.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
+		await pageA.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		userObject = await pageA.evaluate(() => window.webstrate.user);
@@ -60,7 +60,7 @@ describe('Authentication and Login', function() {
 		if (!util.credentialsProvided) {
 			// We won't get redirected when we're not logging in, so we redirect manually to be in the
 			// right state for the next tests.
-			await pageA.goto(config.server_address + 'frontpage', { waitUntil: 'networkidle2' });
+			await pageA.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 			this.skip();
 			return;
 		}
@@ -104,7 +104,7 @@ describe('Authentication and Login', function() {
 		if (!util.credentialsProvided) return this.skip();
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address);
+		await pageB.goto(config.server_address + 'frontpage/');
 
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
 		userObject = await pageA.evaluate(() => window.webstrate.user);
@@ -118,6 +118,8 @@ describe('Authentication and Login', function() {
 	it('after logout user should be redirected to the frontpage and be logged out', async function () {
 		if (!util.credentialsProvided) return this.skip();
 
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(config.server_address + 'auth/logout', { waitUntil: 'networkidle2' });
 
 		const url = await pageA.url();

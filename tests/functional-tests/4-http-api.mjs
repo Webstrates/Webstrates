@@ -59,6 +59,8 @@ describe('HTTP API', function() {
 		await pageB.goto(config.server_address + 'new', { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
 		assert.match(redirectedUrl, new RegExp(regex));
@@ -79,6 +81,8 @@ describe('HTTP API', function() {
 		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL, { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		await pageB.waitForFunction(() => window.test, {
 			timeout: 10000, // Maximum time to wait in milliseconds (adjust as needed)
@@ -131,6 +135,8 @@ describe('HTTP API', function() {
 
 		// Cleanup
 		const redirectedUrl = pageB.url();
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 
 		const jsonObject = JSON.parse(pageContent);
@@ -180,6 +186,8 @@ describe('HTTP API', function() {
 			'Server did not keep serving the non-ZIP asset after the ?dir request');
 
 		// Cleanup
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(dirUrl + '?delete', { waitUntil: 'domcontentloaded' });
 	});
 

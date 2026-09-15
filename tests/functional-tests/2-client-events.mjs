@@ -10,7 +10,7 @@ describe('Client Events', function() {
 	//this.retries(3);
 
 	const webstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
+	const url = config.server_address + webstrateId + '/';
 	let browser, pageA, pageB;
 
 	before(async () => {

@@ -10,8 +10,8 @@ describe('Cookies', function() {
 
 	const webstrateIdA = 'test-' + util.randomString();
 	const WebstrateIdB = 'test-' + util.randomString();
-	const urlA = config.server_address + webstrateIdA;
-	const urlB = config.server_address + WebstrateIdB;
+	const urlA = config.server_address + webstrateIdA + '/';
+	const urlB = config.server_address + WebstrateIdB + '/';
 
 	const cookieValue1 = util.randomString();
 	const cookieValue2 = util.randomString();
@@ -48,6 +48,9 @@ describe('Cookies', function() {
 	});
 
 	after(async () => {
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
+		await pageB.setCacheEnabled(false);
 		await Promise.all([
 			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
 			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })

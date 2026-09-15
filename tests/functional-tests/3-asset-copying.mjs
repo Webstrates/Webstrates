@@ -156,11 +156,13 @@ describe('Asset copying', function () {
 		keptFile = path.join(testDir, 'copy-keep.txt');
 		fs.writeFileSync(keptFile, keptFileContent);
 
-		await page.goto(url, { waitUntil: 'networkidle2' });
+		await page.goto(url + '/', { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
 	});
 
 	after(async () => {
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await page.setCacheEnabled(false);
 		for (const copyUrl of copyUrls) {
 			await page.goto(copyUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		}
@@ -268,7 +270,7 @@ describe('Asset copying', function () {
 	});
 
 	it('downloading a tagged version should archive the assets from that version', async () => {
-		await page.goto(url, { waitUntil: 'networkidle2' });
+		await page.goto(url + '/', { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
 
 		const taggedEntries = await listArchiveEntries(
@@ -286,7 +288,7 @@ describe('Asset copying', function () {
 	});
 
 	it('copying a webstrate whose only asset has been deleted should still work', async () => {
-		await page.goto(emptyUrl, { waitUntil: 'networkidle2' });
+		await page.goto(emptyUrl + '/', { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
 
 		await uploadAssetHelper(page, deletedFile);

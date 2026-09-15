@@ -23,7 +23,7 @@ describe('Access tokens', function() {
 	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
+	const url = config.server_address + webstrateId + '/';
 
 	// Three identities with separate cookie jars: the document admin, a
 	// read-only user, and an anonymous client (separate browser contexts).
@@ -84,6 +84,8 @@ describe('Access tokens', function() {
 	after(async () => {
 		if (browser) {
 			// Clean up after ourselves (requires write permissions, i.e. the admin).
+			// Avoid puppeteer's goto hang on redirects to cached documents.
+			await pageAdmin.setCacheEnabled(false);
 			const response = await pageAdmin.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 			if (!response || response.status() !== 200) {
 				util.warn('Unable to clean up after ourselves, left webstrate', webstrateId,

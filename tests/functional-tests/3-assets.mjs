@@ -63,8 +63,8 @@ describe('Assets', function () {
 		browserB = await puppeteer.launch();
 		pageA = await browserA.newPage();
 		pageB = await browserB.newPage();
-		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
-		await pageB.goto(urlB, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		await pageB.goto(urlB + '/', { waitUntil: 'networkidle2' });
 
 		// Create test folder and files
 		testDir = path.join(process.cwd(), 'tests', 'test-assets');
@@ -165,7 +165,7 @@ describe('Assets', function () {
 	});
 
 	it('All assets should be listed in the API and HTTP API', async () => {
-		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
 
 		await uploadAssetHelper(pageA, testCsvFile, true);
 		await uploadAssetHelper(pageA, testImageFile);
@@ -194,7 +194,7 @@ describe('Assets', function () {
 	});
 
 	it('The same asset should have the same identifier across different webstrates', async () => {
-		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
 
 		await uploadAssetHelper(pageB, testTextFile);
 
@@ -256,7 +256,7 @@ describe('Assets', function () {
 	});
 
 	it('Searchable CSV assets should be searchable', async () => {
-		await pageA.goto(urlA, { waitUntil: 'networkidle2' });
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
 
 		const { err, result, count } = await pageA.evaluate(async () => {
 			return new Promise((resolve, reject) => {
@@ -311,6 +311,8 @@ describe('Assets', function () {
 		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.txt').deletedAt, 'Text asset should be deleted before restore');
 
 		// Restore to version 2 where only the text file was there
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(urlA + '?restore=2', { waitUntil: 'networkidle2' });
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 2);
 

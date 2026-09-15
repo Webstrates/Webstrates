@@ -64,7 +64,7 @@ describe('Permissions', function() {
 	this.timeout(10000);
 
 	const webstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
+	const url = config.server_address + webstrateId + '/';
 
 	let browserA, browserB, pageA, pageB, pageC;
 
@@ -358,6 +358,8 @@ describe('Permissions', function() {
 		assert.isOk(leakError, 'Anonymous could subscribe to the restricted webstrate.');
 
 		// The restricted user can still delete the webstrate, cleaning up after the test.
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		const deleteRes = await pageA.goto(newUrl + '?delete', { waitUntil: 'networkidle2' });
 		assert.equal(deleteRes.status(), 200);
 
@@ -385,6 +387,8 @@ describe('Permissions', function() {
 		assert.isOk(leakError, 'Anonymous could subscribe to the restricted webstrate.');
 
 		// The restricted user can still delete the webstrate, cleaning up after the test.
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		const deleteRes = await pageA.goto(newUrl + '?delete', { waitUntil: 'networkidle2' });
 		assert.equal(deleteRes.status(), 200);
 

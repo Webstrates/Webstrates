@@ -9,7 +9,7 @@ describe('DOM Stress Test', function() {
 	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
-	const url = config.server_address + webstrateId;
+	const url = config.server_address + webstrateId + '/';
 
 	let browserA, browserB, pages, pageA;
 
