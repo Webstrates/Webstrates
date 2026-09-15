@@ -277,7 +277,7 @@ async function validatePrototypeUrl(requestedUrl) {
 	try {
 		parsedUrl = new URL(requestedUrl);
 	} catch (err) {
-		throw new Error('Invalid prototypeUrl.');
+		throw new Error('Invalid prototypeUrl.', { cause: err });
 	}
 
 	if (!['http:', 'https:'].includes(parsedUrl.protocol)) {

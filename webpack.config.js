@@ -71,7 +71,7 @@ const config = {
                                 });
                         }
                 },
-                new ESLintPlugin({ extensions: ['js'] })  
+		new ESLintPlugin()
         ], performance: {
                 // Set a recommended size limit to maky sure we don't grow too much
                 maxAssetSize: 1024 * 1024, // 1 MiB

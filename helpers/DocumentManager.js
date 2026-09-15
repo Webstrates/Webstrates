@@ -48,8 +48,8 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	try {
 		await ShareDbWrapper.submit(webstrateId, { v: 0, create: { type: snapshot.type, data: snapshot.data } });
 	} catch (err){
-		if (err.message == 'Document was created remotely') throw new Error('Webstrate already exists.');
-		if (err.message === 'Missing create type') throw new Error('Prototype webstrate doesn\'t exist.');
+		if (err.message == 'Document was created remotely') throw new Error('Webstrate already exists.', { cause: err });
+		if (err.message === 'Missing create type') throw new Error('Prototype webstrate doesn\'t exist.', { cause: err });
 		throw err;
 	}
 

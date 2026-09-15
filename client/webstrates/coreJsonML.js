@@ -157,8 +157,7 @@ function fromHTML(elem, filter) {
 	// If an element doesn't have a PathTree, we don't want it in the JsonML. This will be the case
 	// for <transient> elements.
 	if (!elem || !elem.nodeType || !elem.__pathNodes || elem.__pathNodes.length === 0) {
-		// free references
-		return (elem = null);
+		return null;
 	}
 
 	let i, jml;
@@ -249,15 +248,11 @@ function fromHTML(elem, filter) {
 				jml = filter(jml, elem);
 			}
 
-			// free references
-			elem = null;
 			return jml;
 		}
 		case Node.TEXT_NODE: // text node
 		case Node.CDATA_SECTION_NODE: { // CDATA node
 			const str = String(elem.nodeValue);
-			// free references
-			elem = null;
 			return str;
 		}
 		case Node.DOCUMENT_TYPE_NODE: { // doctype
@@ -279,14 +274,10 @@ function fromHTML(elem, filter) {
 			if ('function' === typeof filter) {
 				jml = filter(jml, elem);
 			}
-			// free references
-			elem = null;
 			return jml;
 		}
 		case Node.COMMENT_NODE: { // comment node
 			if ((elem.nodeValue||'').indexOf('DOCTYPE') !== -1) {
-			// free references
-				elem = null;
 				return null;
 			}
 
@@ -298,13 +289,10 @@ function fromHTML(elem, filter) {
 				jml = filter(jml, elem);
 			}
 
-			// free references
-			elem = null;
 			return jml;
 		}
 		default: { // etc.
-			// free references
-			return (elem = null);
+			return null;
 		}
 	}
 }

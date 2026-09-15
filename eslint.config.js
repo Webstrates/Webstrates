@@ -2,6 +2,17 @@ const js = require("@eslint/js");
 const globals = require("globals");
 
 module.exports = [
+    // Standalone `ignores` block — the ONLY way to exclude files from linting
+    // entirely. (An `ignores` key inside a config object with other keys only
+    // limits that object's application; the files are still linted by other
+    // config objects)
+    {
+        // static/webstrates.js is the generated webpack bundle.
+        // wrapper-header/footer.js are IIFE halves injected via BannerPlugin —
+        // syntactic fragments, not valid standalone JavaScript.
+        ignores: ['static/webstrates.js', 'client/wrapper-header.js', 'client/wrapper-footer.js']
+    },
+
     // Start with ESLint's recommended rules.
     // This applies all the rules from 'eslint:recommended'.
     js.configs.recommended,
@@ -10,7 +21,7 @@ module.exports = [
     {
         // languageOptions replaces 'env' and 'parserOptions'
         languageOptions: {
-            ecmaVersion: 2017,
+            ecmaVersion: "latest",
             sourceType: "commonjs",
 
             globals: {
@@ -59,9 +70,19 @@ module.exports = [
 
             // Do allow the use of console.log().
             'no-console': 'off'
-        },
-
-        // Note: `ignorePatterns` from .eslintrc maps to `ignores` in flat config.
-        ignores: ['static/webstrates.js']
+        }
+    },
+    {
+        // .mjs files are ES modules (tests/). With the global sourceType
+        // "commonjs" they all died at the first `import` and were never linted.
+        files: ['**/*.mjs'],
+        languageOptions: {
+            sourceType: "module",
+            globals: {
+                ...globals.browser,   // puppeteer page.evaluate() runs in browser context
+                ...globals.node,
+                ...globals.mocha      // describe/it/beforeEach/afterEach
+            }
+        }
     }
 ];
