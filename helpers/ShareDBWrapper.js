@@ -51,7 +51,9 @@ share.use(['connect'], (req, next) => {
  * @return {bool}      Whether any of the ops modify the permission property on the HTML element.
  * @private
  */
-const changesPermissions = (ops) => ops.some(op =>
+// Del ops (and create ops) carry no op components, so callers must never assume `ops` is an
+// array. This guard makes the check safe on undefined rather than throwing.
+const changesPermissions = (ops) => Array.isArray(ops) && ops.some(op =>
 	op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
 
 if (global.config.tagging) {
@@ -103,10 +105,15 @@ share.use(['afterWrite'], (req, next) => {
 	// A created document may carry a data-auth attribute of its own, and a stale
 	// cache entry may have been left behind by requests against the id before
 	// the document existed — invalidate both caches on creation.
-	if (req.op && req.op.create) {
-		const createdWebstrateId = req.op.d;
-		permissionManager.invalidateCachedPermissions(createdWebstrateId);
-		permissionManager.expireAllAccessTokens(createdWebstrateId);
+	// A deleted document carries no op components (req.op.op is undefined), so
+	// feeding it to changesPermissions would throw inside this hook — after the
+	// delete has already been committed, leaving the client's acknowledgement
+	// hanging. Its cached permissions and access tokens must not outlive the
+	// document either, so invalidate both caches on deletion, too.
+	if (req.op && (req.op.create || req.op.del)) {
+		const webstrateId = req.op.d;
+		permissionManager.invalidateCachedPermissions(webstrateId);
+		permissionManager.expireAllAccessTokens(webstrateId);
 		return next();
 	}
 

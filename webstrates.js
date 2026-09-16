@@ -20,8 +20,40 @@ require('console-stamp')(console, {
 	}
 });
 
-process.on('unhandledRejection', (reason, p) => {
-	console.error('Unhandled Rejection at:', p, 'reason:', reason);
+// Telemetry counters for unhandled errors, exposed for inspection (e.g. from
+// monitoring/debug endpoints).
+global.errorTelemetry = { unhandledRejections: 0, uncaughtExceptions: 0 };
+
+/**
+ * Format an error-like value for logging: use the (shortened) stack for Errors,
+ * and a plain stringification for anything else. Never dumps whole objects.
+ * @param  {mixed} err Error or rejection reason.
+ * @return {string}    Compact, loggable representation.
+ */
+const formatError = (err) => {
+	if (err instanceof Error) {
+		const stack = err.stack || String(err);
+		return stack.split('\n').slice(0, 6).join('\n');
+	}
+	return String(err);
+};
+
+process.on('unhandledRejection', (reason) => {
+	global.errorTelemetry.unhandledRejections++;
+	// Log the rejection reason (with a stack excerpt), not the Promise object,
+	// which prints as a multi-line blob that buries the useful information.
+	console.error(`Unhandled rejection (#${global.errorTelemetry.unhandledRejections}):`,
+		formatError(reason));
+});
+
+process.on('uncaughtException', (err, origin) => {
+	global.errorTelemetry.uncaughtExceptions++;
+	// The process may be in an inconsistent state after an uncaught exception,
+	// so we log the context and then exit deliberately rather than keep running.
+	const at = global.errorTelemetry.uncaughtExceptions;
+	const originSuffix = origin ? ` (origin: ${origin})` : '';
+	console.error(`Uncaught exception (#${at})${originSuffix}:`, formatError(err));
+	process.exit(1);
 });
 
 const configHelper = require(APP_PATH + '/helpers/ConfigHelper.js');
