@@ -137,6 +137,14 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Mark asset as deleted.
 		case 'deleteAsset': {
+			if (!permissions.includes('w')) {
+				console.error('Insufficient write permissions in', data.wa, 'call');
+				if (data.token) {
+					ws.send(JSON.stringify({ wa: 'reply', token: data.token,
+						error: 'Write permissions are required to delete assets.' }));
+				}
+				return;
+			}
 			let databaseResponse;
 			const returnObject = { wa: 'reply', token: data.token };
 			try {

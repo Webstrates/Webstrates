@@ -326,6 +326,53 @@ describe('Assets', function () {
 		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).deletedAt, undefined, 'Text asset should not be deleted after restore');
 		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).restoredFrom, 2, 'Text asset should have a restoredFrom property pointing to version 2');
 	});
+
+	it('Deleting an asset should require write permissions', async function() {
+		if (config.authType !== 'test') return this.skip();
+		this.timeout(20000);
+
+		// Log in so we can grant ourselves write access, while restricting anonymous users to
+		// read-only access.
+		await util.logInToTest(pageA);
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 3);
+		const userObject = await pageA.evaluate(() => window.webstrate.user);
+
+		await pageA.evaluate((user) => {
+			document.documentElement.setAttribute('data-auth', JSON.stringify([
+				{ username: user.username, provider: user.provider, permissions: 'rw' },
+				{ username: 'anonymous', provider: '', permissions: 'r' }
+			]));
+		}, userObject);
+
+		// pageB connects anonymously and only gets read permissions.
+		await pageB.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		const gotReadOnlyPermissions = await util.waitForFunction(pageB,
+			() => window.webstrate && window.webstrate.user.permissions === 'r', 5);
+		assert.isTrue(gotReadOnlyPermissions, 'Anonymous client should only have read permissions');
+
+		// A read-only client should not be able to delete assets, and the asset list should be
+		// left unchanged.
+		const fetchAssets = () => pageB.evaluate(async (assetsUrl) => {
+			const response = await fetch(assetsUrl);
+			return await response.json();
+		}, urlA + '?assets');
+		const assetsBefore = await fetchAssets();
+
+		const deleteError = await pageB.evaluate(() => new Promise((resolve) =>
+			window.webstrate.deleteAsset('test.txt', resolve)));
+		assert.isDefined(deleteError, 'Read-only client should not be able to delete an asset');
+
+		const assetsAfter = await fetchAssets();
+		assert.deepEqual(assetsAfter, assetsBefore,
+			'Read-only client should not be able to modify the asset list');
+
+		// A client with write permissions can still delete the asset.
+		const writeDeleteError = await pageA.evaluate(() => new Promise((resolve) =>
+			window.webstrate.deleteAsset('test.txt', resolve)));
+		assert.isUndefined(writeDeleteError,
+			'Client with write permissions should be able to delete an asset');
+	});
 });
 
 // Creates a ZIP archive in memory from a list of [name, data] entries. Entries
