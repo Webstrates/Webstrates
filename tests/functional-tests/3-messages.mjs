@@ -1,6 +1,8 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
 import puppeteer from 'puppeteer';
+import WebSocket from 'ws';
+import { MongoClient } from 'mongodb';
 import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
@@ -362,5 +364,292 @@ describe('Messages', function() {
 			assert.isObject(reply, 'message was silently dropped, no reply ever arrived');
 			assert.isOk(reply.error, 'cross-document message should be rejected with an error');
 		});
+
+});
+
+describe('Messages', function() {
+	this.timeout(30000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const otherWebstrateId = 'test-' + util.randomString();
+	const floodWebstrateId = 'test-' + util.randomString();
+	const restrictedWebstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId;
+	const otherUrl = config.server_address + otherWebstrateId;
+	const floodUrl = config.server_address + floodWebstrateId;
+	const restrictedUrl = config.server_address + restrictedWebstrateId;
+
+	const userId = 'testuser:' + config.authType;
+	const intruderId = 'intruder:' + config.authType;
+	const floodUserId = 'flooduser:' + config.authType;
+
+	// The marker messages are unique per run, so only this suite's own messages are counted.
+	const legitMarker = 'legit-' + util.randomString();
+	const anonymousMarker = 'anonymous-' + util.randomString();
+	const noReadMarker = 'no-read-' + util.randomString();
+	const crossMarker = 'cross-' + util.randomString();
+
+	const messageRateLimit = config.server.messageRateLimit;
+
+	let browserA, browserB, browserC, pageA, pageD, pageE;
+	const sockets = [];
+
+	// Send a webstrates action on a raw websocket opened from within the page, carrying the
+	// page's login session. The server accepts websocket connections without any permission
+	// check, which is exactly the surface the pre-fix sendMessage handler was exposed on.
+	// The server drops messages that arrive before the connection has settled (session
+	// deserialization is asynchronous), so we wait a moment after opening before sending.
+	const sendOnRawSocket = (page, webstrateId, action) => page.evaluate((id, action) => {
+		const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+		socket.onopen = () => setTimeout(() => socket.send(JSON.stringify(action)), 300);
+		socket.onerror = () => {};
+		setTimeout(() => socket.close(), 2000);
+	}, webstrateId, action);
+
+	// Send a webstrates action on a raw websocket from the test process, i.e. anonymously (no
+	// session cookies).
+	const sendAnonymously = (webstrateId, action) => new Promise((resolve, reject) => {
+		const socket = new WebSocket(config.server_address.replace(/^http/, 'ws') + webstrateId);
+		sockets.push(socket);
+		socket.on('error', reject);
+		socket.on('open', () => {
+			// See sendOnRawSocket: let the connection settle before sending.
+			setTimeout(() => {
+				socket.send(JSON.stringify(action));
+				setTimeout(resolve, 200);
+			}, 300);
+		});
+	});
+
+	// Whether a message with the given value arrives on the page within the timeout (default
+	// 0.5s). Returns false if it never does, which is what the rejection tests assert.
+	const messageArrived = (page, message, timeout = .5) =>
+		util.waitForFunction(page, message =>
+			window.webstrate.messages.some(m => m.message === message), timeout, message);
+
+	// Whether an async predicate turns true within the given number of seconds.
+	const eventually = async (seconds, predicate) => {
+		const endAt = Date.now() + seconds * 1000;
+		do {
+			await util.sleep(2);
+			if (await predicate()) return true;
+		} while (Date.now() < endAt);
+		return false;
+	};
+
+	before(async function() {
+		if (config.authType !== 'test') {
+			return this.skip();
+		}
+
+		browserA = await puppeteer.launch();
+		browserB = await puppeteer.launch();
+		browserC = await puppeteer.launch();
+
+		// pageA: testuser, observing its own inbox. pageD: intruder, a second account.
+		// pageE: flooduser, the sender for the rate limit test.
+		pageA = await browserA.newPage();
+		await util.logInToTest(pageA, 'testuser');
+		pageD = await browserB.newPage();
+		await util.logInToTest(pageD, 'intruder');
+		pageE = await browserC.newPage();
+		await util.logInToTest(pageE, 'flooduser');
+
+		await Promise.all([
+			(pageA.goto(url, { waitUntil: 'networkidle2' })),
+			(pageD.goto(otherUrl, { waitUntil: 'networkidle2' })),
+			(pageE.goto(floodUrl, { waitUntil: 'networkidle2' }))
+		]);
+
+		await Promise.all([
+			util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded),
+			util.waitForFunction(pageD, () => window.webstrate && window.webstrate.loaded),
+			util.waitForFunction(pageE, () => window.webstrate && window.webstrate.loaded)
+		]);
+
+		// Create a webstrate that only testuser has access to.
+		await pageA.goto(restrictedUrl, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		const version = await pageA.evaluate(() => window.webstrate.version);
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('data-auth', JSON.stringify([{
+				username: window.webstrate.user.username,
+				provider: window.webstrate.user.provider,
+				permissions: 'rw'
+			}]));
+		});
+		await util.waitForFunction(pageA, v => window.webstrate.version > v, 5, version);
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+	});
+
+	after(async function() {
+		if (config.authType !== 'test') {
+			return util.warn('Skipping messages security tests as they need the test auth ' +
+				'provider (multiple accounts).');
+		}
+
+		sockets.forEach(socket => socket.close());
+
+		// Deletes have to be sequential per page, so delete testuser's two webstrates one
+		// after the other.
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(restrictedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+
+		await Promise.all([
+			pageD.goto(otherUrl + '?delete', { waitUntil: 'domcontentloaded' }),
+			pageE.goto(floodUrl + '?delete', { waitUntil: 'domcontentloaded' })
+		]);
+
+		await Promise.all([
+			browserA.close(),
+			browserB.close(),
+			browserC.close()
+		]);
+
+		if (!messageRateLimit) {
+			util.warn('Skipping the message rate limit test as no messageRateLimit block is ' +
+				'configured for the server.');
+		}
+	});
+
+	// Sending from a webstrate the sender can read must still work (here to the sender
+	// themself, an obviously entitled recipient).
+	it('should deliver messages sent from a readable webstrate', async function() {
+		await sendOnRawSocket(pageA, restrictedWebstrateId,
+			{ wa: 'sendMessage', m: legitMarker, recipients: userId });
+
+		assert.isTrue(await messageArrived(pageA, legitMarker, 5),
+			'message to a user with access should be delivered');
+	});
+
+	it('should not deliver messages from anonymous clients', async function() {
+		// Anonymous has read access to webstrateId (default permissions), so it is the missing
+		// authentication, not the missing document access, that must stop this message.
+		await sendAnonymously(webstrateId,
+			{ wa: 'sendMessage', m: anonymousMarker, recipients: userId });
+
+		assert.isFalse(await messageArrived(pageA, anonymousMarker),
+			'message from anonymous client should not be delivered');
+	});
+
+	it('should not deliver messages from users without read permission', async function() {
+		// intruder has no access at all to the restricted webstrate.
+		await sendOnRawSocket(pageD, restrictedWebstrateId,
+			{ wa: 'sendMessage', m: noReadMarker, recipients: userId });
+
+		assert.isFalse(await messageArrived(pageA, noReadMarker),
+			'message from a user without read permission should not be delivered');
+	});
+
+	it('should deliver messages to recipients regardless of webstrate access', async function() {
+		// Messaging crosses webstrates: intruder has no access to the restricted webstrate, but
+		// testuser may still message them through it.
+		await sendOnRawSocket(pageA, restrictedWebstrateId,
+			{ wa: 'sendMessage', m: crossMarker, recipients: intruderId });
+
+		assert.isTrue(await messageArrived(pageD, crossMarker, 5),
+			'message should cross webstrates to any recipient');
+	});
+
+	it('should rate limit sendMessage per sender', async function() {
+		// A limit too high to flood within one interval can't be tested here, and a burst
+		// spanning more than one interval can't be counted on precisely.
+		if (!messageRateLimit || !Number.isFinite(messageRateLimit.messagesPerInterval)
+			|| !Number.isFinite(messageRateLimit.intervalLength)
+			|| messageRateLimit.intervalLength < 5000) {
+			return this.skip();
+		}
+
+		const limit = messageRateLimit.messagesPerInterval;
+		// The flood marker is unique per run: delivered messages are persisted to the
+		// recipient's inbox for 30 days, so a reused prefix would count earlier runs' floods.
+		const floodPrefix = 'flood-' + util.randomString() + '-';
+		// Send three times the limit in one fast burst. Wherever the interval boundary falls,
+		// at most two intervals can contribute, so at most 2 * limit messages are delivered —
+		// and the first `limit` always are.
+		await pageE.evaluate((id, recipient, count, prefix) => {
+			const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+			// Wait for the connection to settle (see sendOnRawSocket) before the burst.
+			socket.onopen = () => setTimeout(() => {
+				for (let i = 0; i < count; i++) {
+					socket.send(JSON.stringify(
+						{ wa: 'sendMessage', m: prefix + i, recipients: recipient }));
+				}
+			}, 300);
+			socket.onerror = () => {};
+			setTimeout(() => socket.close(), 5000);
+		}, floodWebstrateId, floodUserId, 3 * limit, floodPrefix);
+
+		assert.isTrue(await util.waitForFunction(pageE, (prefix, count) =>
+			window.webstrate.messages.filter(m => m.message &&
+				m.message.startsWith(prefix)).length >= count, 10, floodPrefix, limit),
+		'messages up to the limit should be delivered');
+
+		await util.sleep(1);
+
+		const delivered = await pageE.evaluate(prefix =>
+			window.webstrate.messages.filter(m => m.message && m.message.startsWith(prefix)).length,
+		floodPrefix);
+
+		assert.isAtLeast(delivered, limit, 'messages up to the rate limit are delivered');
+		assert.isAtMost(delivered, 2 * limit, 'messages beyond the rate limit are dropped');
+	});
+
+	it('should expire messages through a TTL index', async function() {
+		this.timeout(200000);
+
+		const client = new MongoClient(config.server.db);
+		await client.connect();
+		const messages = client.db().collection('messages');
+		try {
+			// A TTL index is single-field with expireAfterSeconds as an option. Pre-fix
+			// releases misplaced expireAfterSeconds into the key spec, creating a plain
+			// compound index, so nothing ever expired.
+			const ttlIndexes = (await messages.indexes()).filter(index => index.expireAfterSeconds);
+			const messageTtl = ttlIndexes.find(index =>
+				JSON.stringify(index.key) === JSON.stringify({ createdAt: 1 }));
+			assert.exists(messageTtl, 'messages has a TTL index on createdAt');
+			assert.strictEqual(messageTtl.expireAfterSeconds, 60 * 60 * 24 * 30,
+				'messages expire after 30 days');
+			assert.isUndefined(ttlIndexes.find(index => 'expireAfterSeconds' in index.key),
+				'no pre-fix compound index with expireAfterSeconds as a key remains');
+
+			// MongoDB's TTL monitor (runs about once a minute) should delete a 31-day-old
+			// message, but keep a fresh one.
+			const staleMarker = 'stale-' + util.randomString();
+			const freshMarker = 'fresh-' + util.randomString();
+			await messages.insertMany([
+				{ userId: 'ttl-probe:' + config.authType, messageId: staleMarker,
+					message: staleMarker, senderId: userId,
+					createdAt: new Date(Date.now() - 31 * 24 * 60 * 60 * 1000) },
+				{ userId: 'ttl-probe:' + config.authType, messageId: freshMarker,
+					message: freshMarker, senderId: userId, createdAt: new Date() }
+			]);
+
+			assert.isTrue(await eventually(170, async () =>
+				await messages.countDocuments({ messageId: staleMarker }) === 0),
+			'31-day-old message should be deleted by the TTL monitor');
+			assert.equal(await messages.countDocuments({ messageId: freshMarker }), 1,
+				'fresh message should survive');
+		} finally {
+			await client.close();
+		}
+	});
+
+	it('should carry a TTL index on sessions', async function() {
+		const client = new MongoClient(config.server.db);
+		await client.connect();
+		try {
+			const sessions = client.db().collection('sessions');
+			const ttlIndex = (await sessions.indexes()).find(index =>
+				JSON.stringify(index.key) === JSON.stringify({ createdAt: 1 }));
+			assert.exists(ttlIndex, 'sessions has a TTL index on createdAt');
+			assert.strictEqual(ttlIndex.expireAfterSeconds, 60 * 60 * 24 * 365,
+				'sessions expire 365 days after the last login');
+		} finally {
+			await client.close();
+		}
+	});
 
 });

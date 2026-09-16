@@ -5,6 +5,36 @@ const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const messagingManager = require(APP_PATH + '/helpers/MessagingManager.js');
 const searchableAssets = require(APP_PATH + '/helpers/SearchableAssets.js');
 
+// Per-sender rate limit for sendMessage, so a client gone haywire or a malicious user
+// cannot flood other users' inboxes. Configurable as config.messageRateLimit =
+// { messagesPerInterval, intervalLength }; defaults to 100 messages per minute. All of a user's
+// connections share one budget.
+const DEFAULT_MESSAGE_RATE_LIMIT = { messagesPerInterval: 100, intervalLength: 60 * 1000 };
+const messageRateLimit = Object.assign({}, DEFAULT_MESSAGE_RATE_LIMIT,
+	global.config && global.config.messageRateLimit);
+const validLimit = value => Number.isFinite(value) && value >= 1;
+if (!validLimit(messageRateLimit.messagesPerInterval)
+	|| !validLimit(messageRateLimit.intervalLength)) {
+	console.warn('Invalid messageRateLimit configuration, using defaults.');
+	Object.assign(messageRateLimit, DEFAULT_MESSAGE_RATE_LIMIT);
+}
+
+// Messages sent per sender (userId) in the current interval.
+const messageCounts = new Map();
+setInterval(() => messageCounts.clear(), messageRateLimit.intervalLength);
+
+/**
+ * Whether the sender is within the message rate limit, counting the message being sent.
+ * @param  {string} senderId Sender userId.
+ * @return {bool}            True if the message may be sent, false otherwise.
+ * @private
+ */
+function withinMessageRateLimit(senderId) {
+	const count = (messageCounts.get(senderId) || 0) + 1;
+	messageCounts.set(senderId, count);
+	return count <= messageRateLimit.messagesPerInterval;
+}
+
 exports.onmessage = async (ws, req, data, next) => {
 	if (!data.wa || 'noop' in req.query) return next();
 
@@ -24,10 +54,33 @@ exports.onmessage = async (ws, req, data, next) => {
 			return;
 		}
 		case 'sendMessage': {
-			const message = data.m;
-			const recipients = data.recipients;
-			const senderId = user.userId === 'anonymous:' ? socketId : user.userId;
-			await messagingManager.sendMessage(recipients, message, senderId);
+			// Messaging writes into other users' inboxes, so it is gated: the sender
+			// must be logged in — anonymous clients have no messaging API (see
+			// client/webstrates/messages.js) — and must have read access to the webstrate the
+			// client is connected to, and senders are rate limited. 
+			if (user.userId === 'anonymous:') {
+				return console.error('sendMessage from anonymous client, ignoring.');
+			}
+
+			// The messaging API sends no document id with sendMessage, so the gate is the
+			// webstrate the websocket is connected to — not data.d, which the client controls
+			// and could otherwise use to pick the least protected document to send through.
+			const senderWebstrateId = req.params.webstrateId;
+			if (!senderWebstrateId) {
+				return console.error('sendMessage from client without a webstrate, ignoring.');
+			}
+
+			if (!withinMessageRateLimit(user.userId)) {
+				return console.error('sendMessage rate limit exceeded for', user.userId);
+			}
+
+			const senderPermissions = await permissionManager.getUserPermissions(user.username,
+				user.provider, senderWebstrateId);
+			if (!senderPermissions || !senderPermissions.includes('r')) {
+				return console.error('Insufficient read permissions in', data.wa, 'call');
+			}
+
+			await messagingManager.sendMessage(data.recipients, data.m, user.userId);
 			return;
 		}
 		case 'deleteMessage': {

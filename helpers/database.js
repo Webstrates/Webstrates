@@ -23,10 +23,24 @@ MongoClient.connect(global.config.db).then(client =>{
 	db.assetsCsv.createIndex({ _assetId: 1 });
 
 	db.sessions = _db.collection('sessions');
-	db.sessions.createIndex({ userId: 1, createdAt: 1/*, *expireAfterSeconds: 60 * 60 * 24 * 365 */});
+	db.sessions.createIndex({ userId: 1, createdAt: 1 });
+	// Expire sessions 365 days after the last login, as originally intended. A TTL index must be
+	// single-field with expireAfterSeconds as an option — the value sat commented out in the key
+	// spec above, where it could never have worked (and as a compound key it wouldn't either).
+	db.sessions.createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 365 });
 
 	db.messages = _db.collection('messages');
-	db.messages.createIndex({ createdAt: 1, expireAfterSeconds: 60 * 60 * 24 * 30 });
+	// Messages expire after 30 days. expireAfterSeconds is an index option, not a key —
+	// previous releases misplaced it in the key spec, creating a plain compound index on a
+	// bogus "expireAfterSeconds" field, so messages never expired.
+	db.messages.createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 * 60 * 24 * 30 })
+		// Drop the non-TTL index pre-fix releases left behind (it indexes a nonexistent
+		// expireAfterSeconds field for nothing). Only the TTL index remains.
+		.then(() => db.messages.indexes())
+		.then(indexes => Promise.all(indexes
+			.filter(index => index.name !== '_id_' && !index.expireAfterSeconds)
+			.map(index => db.messages.dropIndex(index.name))))
+		.catch(err => console.error('Failed to ensure the messages TTL index:', err));
 
 	db.cookies = _db.collection('cookies');
 	db.cookies.createIndex({ userId: 1, webstrateId: 1 }, { unique: true });

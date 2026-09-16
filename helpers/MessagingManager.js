@@ -30,16 +30,17 @@ module.exports.clientRemoved = function(socketId) {
 
 /**
  * Send a message to a client (or clients), either by socketId (temporary ID assigned each
- * connection) or userId (username:provider combination).
- * @param  {mixed} recipients Recipient or list of recipients. Either socketIds or userId.
- * @param  {mixed} message    Messages (any type).
- * @param  {[type]} senderId  SenderId
+ * connection) or userId (username:provider combination). The caller
+ * (customActionHandler) is responsible for having verified the sender.
+ * @param  {mixed}  recipients  Recipient or list of recipients. Either socketIds or userId.
+ * @param  {mixed}  message     Message (any type).
+ * @param  {string} senderId    SenderId (userId of a logged-in user).
  * @public
  */
 module.exports.sendMessage = async function(recipients, message, senderId) {
 	if (Array.isArray(recipients)) {
 		return await Promise.all(recipients.map(recipient=>{
-			return module.exports.sendMessage(recipient, message, senderId); // no await here
+			return module.exports.sendMessage(recipient, message, senderId);
 		}));
 	}
 
@@ -48,15 +49,16 @@ module.exports.sendMessage = async function(recipients, message, senderId) {
 	const userId = typeof recipient === 'string' && recipient.includes(':') ? recipient
 		: socketUserMap.get(recipient);
 
-	if (!userId) {
-		console.error('Invalid recipient', recipient, senderId, message);
-		return;
+	// Anonymous clients have no messaging API, so there is no inbox to deliver to.
+	if (!userId || userId === 'anonymous:') {
+		return console.error('Not delivering message from', senderId, 'to invalid recipient',
+			recipient);
 	}
 
 	// Send it
 	const messageId = shortId.generate();
 	broadcastToUserEverywhere(userId, messageId, message, senderId);
-	saveMessage(userId, messageId, message, senderId);
+	await saveMessage(userId, messageId, message, senderId);
 };
 
 /**

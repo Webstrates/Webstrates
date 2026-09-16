@@ -7,6 +7,11 @@
 	"maxAssetSize": 100,
 	"maxZipEntries": 1000,
 	"maxZipUncompressedSize": 250,
+	"messageRateLimit": {
+		"messagesPerInterval": 100,
+		"intervalLength": 60000,
+		"note": "Rate limit for the messaging API (P-213): messagesPerInterval sendMessage requests per sender (userId; all of a user's connections share one budget) per intervalLength (ms). Messages beyond the limit are dropped. Invalid or missing blocks fall back to the values shown here."
+	},
 	"_rateLimit": {
 		"opsPerInterval": 5000,
 		"signalsPerInterval": 5000,
