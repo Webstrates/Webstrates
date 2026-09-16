@@ -206,6 +206,9 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 				if (req.data.a === 'u') {
 					// No userId passed: the client may stay connected after unsubscribing, so
 					// its userClient entry is only cleaned up on disconnect (removeClient).
+					// The call unsubscribes the client from all nodeIds it subscribed to in this
+					// webstrate, removes it from the webstrate's client map and broadcasts the
+					// clientPart.
 					clientManager.removeClientFromWebstrate(socketId, webstrateId);
 					return;
 				}

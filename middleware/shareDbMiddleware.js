@@ -59,6 +59,10 @@ exports.onclose = (ws, req, reason, next) => {
 		stream.emit('close');
 		stream.emit('end');
 		stream.end();
+		// Forget the stream now that the socket is gone. Without this, the streams map (and with it
+		// the Duplex stream and the ShareDB agent attached to it) grows by one entry per connection
+		// and never shrinks.
+		streams.delete(req.socketId);
 	}
 	next();
 };

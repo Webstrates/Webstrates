@@ -101,6 +101,11 @@ const addUserClient = (socketId, userId, userClient) => {
 const removeUserClient = (socketId, userId) => {
 	if (userClients[userId]) {
 		delete userClients[userId][socketId];
+		// Prune the user's entry when their last client disconnects, so userClients doesn't retain
+		// an empty object per user that has ever connected.
+		if (Object.keys(userClients[userId]).length === 0) {
+			delete userClients[userId];
+		}
 	}
 
 	// There is no specific 'userClientPart' command, because we can just try to remove all
@@ -119,6 +124,12 @@ const removeUserClient = (socketId, userId) => {
  * @public
  */
 module.exports.removeClient = function(socketId) {
+	// The client may have been removed already (e.g. by a failing sendToClient), and removeClient
+	// may be invoked multiple times for the same socket (sendToClient failure and later the
+	// socket's close event), so the messaging manager cleanup has to be idempotent and run even
+	// when the client itself is already gone.
+	messagingManager.clientRemoved(socketId);
+
 	if (!clients[socketId]) {
 		return;
 	}
@@ -129,8 +140,27 @@ module.exports.removeClient = function(socketId) {
 		module.exports.removeClientFromWebstrate(socketId, webstrateId, userId);
 	});
 
+	// Clear any pending join timeout, so neither its timer nor its closure (which retains the
+	// join message objects) lingers after the client is gone. (P-207)
+	if (joinTimeouts[socketId]) {
+		clearTimeout(joinTimeouts[socketId].timeout);
+		delete joinTimeouts[socketId];
+	}
+
 	delete clients[socketId];
 	removeUserClient(socketId, userId);
+
+	// Remove the socketId from the userId index. This was never done before, so userIds grew by
+	// one entry per connection (including anonymous ones) and never shrank. (P-207)
+	if (userIds[userId]) {
+		const userIdx = userIds[userId].indexOf(socketId);
+		if (userIdx !== -1) {
+			userIds[userId].splice(userIdx, 1);
+		}
+		if (userIds[userId].length === 0) {
+			delete userIds[userId];
+		}
+	}
 };
 
 module.exports.triggerJoin = function(socketId) {
@@ -140,8 +170,13 @@ module.exports.triggerJoin = function(socketId) {
 		return;
 	}
 
-	clearTimeout(joinTimeouts[socketId].timeout);
-	joinTimeouts[socketId].fn();
+	const { timeout, fn } = joinTimeouts[socketId];
+	clearTimeout(timeout);
+	// The join trigger fn also deletes the entry, but delete defensively in case the entry was
+	// replaced in the meantime (a socket subscribing to multiple webstrates overwrites its
+	// previous entry). (P-207)
+	delete joinTimeouts[socketId];
+	fn();
 };
 
 /**
@@ -151,6 +186,17 @@ module.exports.triggerJoin = function(socketId) {
  * @public
  */
 module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
+	// The client may have disconnected while its ({a:'s'}) subscribe was still in flight. In that
+	// case clients[socketId] is already gone (removeClient ran on close) and continuing would (a)
+	// throw an unhandled rejection when reading clients[socketId].user below, and (b) leak: the
+	// socketId would already be set() into webstrates[webstrateId] below, but nothing would ever
+	// delete it again (the close-time cleanup only iterates webstrates recorded in
+	// clients[socketId].webstrates, which this function never got to populate). Bail out instead.
+	// (P-207)
+	if (!clients[socketId]) {
+		return;
+	}
+
 	if (!webstrates[webstrateId]) {
 		webstrates[webstrateId] = new Map();
 	}
@@ -205,12 +251,26 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
 		}); 
 	}
 
-	clients[socketId].webstrates[webstrateId] = [];
+	// Initialize the client's list of nodeIds subscribed to in this webstrate. Only create it if
+	// it doesn't exist: a re-join (a new {a:'s'} without a prior {a:'u'}) would otherwise wipe
+	// the recorded nodeIds, while the nodeIds entries themselves would keep lingering. (P-207)
+	if (!clients[socketId].webstrates[webstrateId]) {
+		clients[socketId].webstrates[webstrateId] = [];
+	}
 
 	var joinTriggerFn = function() {
+		// Remove the join timeout entry whether or not we end up broadcasting the join, so that
+		// joinTimeouts doesn't retain the entry (and with it the fn closure) forever. The entry
+		// may already have been replaced or removed (see triggerJoin and removeClient), so only
+		// delete it if it still holds this very fn. (P-207)
+		if (joinTimeouts[socketId] && joinTimeouts[socketId].fn === joinTriggerFn) {
+			delete joinTimeouts[socketId];
+		}
+
 		// If the client has already left (i.e. removeClientFromWebstrate was triggered), there's no
-		// reason to broadcast the clientJoin.
-		if (!webstrates[webstrateId].has(socketId)) {
+		// reason to broadcast the clientJoin. The webstrate's client map may also have been pruned
+		// entirely if we were its last client. (P-207)
+		if (!webstrates[webstrateId] || !webstrates[webstrateId].has(socketId)) {
 			return;
 		}
 
@@ -235,17 +295,42 @@ module.exports.removeClientFromWebstrate = function(socketId, webstrateId, userI
 
 	// The client may unsubscribe from a webstrate it never joined (no prior 's'), in which case
 	// there are no node subscriptions to clean up.
+	// Unsubscribe the client from all the nodeIds it subscribed to in this webstrate. subscribe()
+	// records every nodeId in clients[socketId].webstrates[webstrateId], so this loop actually
+	// removes the client's signal subscriptions on disconnect and on ShareDB {a:'u'}
+	// unsubscribes. Before this bookkeeping existed, the loop iterated an always-empty list, so
+	// signal subscriptions survived both. (P-207, P-317)
 	if (clients[socketId] && clients[socketId].webstrates[webstrateId]) {
 		clients[socketId].webstrates[webstrateId].forEach(function(nodeId) {
 			module.exports.unsubscribe(socketId, webstrateId, nodeId);
 		});
+
+		// Forget the client's node subscriptions for this webstrate, so that (a) subscribe retries
+		// still in flight abort instead of re-adding subscriptions after the unsubscribe, and
+		// (b) a disconnecting client is not reprocessed for a webstrate it already left.
+		delete clients[socketId].webstrates[webstrateId];
 	}
 
 	if (userClients[userId]) {
 		delete userClients[userId][socketId];
+		// Prune the user's entry if this was their last client in the webstrate. (P-207)
+		if (Object.keys(userClients[userId]).length === 0) {
+			delete userClients[userId];
+		}
 	}
 
 	var partFn = function() {
+		// When this part action runs delayed (i.e. the unsubscribe arrived before the client had
+		// joined), a late join may have re-created the client's webstrate entry and node
+		// subscriptions in the meantime. Clean those up as well, so the unsubscribe always wins.
+		// (P-207, P-317)
+		if (clients[socketId] && clients[socketId].webstrates[webstrateId]) {
+			clients[socketId].webstrates[webstrateId].forEach(function(nodeId) {
+				module.exports.unsubscribe(socketId, webstrateId, nodeId);
+			});
+			delete clients[socketId].webstrates[webstrateId];
+		}
+
 		// In case webstrates[webstrateId] still doesn't exist, let's just give up in trying to remove
 		// the client.
 		if (!webstrates[webstrateId]) {
@@ -259,6 +344,12 @@ module.exports.removeClientFromWebstrate = function(socketId, webstrateId, userI
 				id: socketId,
 				d: webstrateId
 			});
+		}
+
+		// Prune the webstrate's client map when its last client parts, so webstrates doesn't
+		// retain an empty map for every webstrateId ever visited. (P-207)
+		if (webstrates[webstrateId].size === 0) {
+			delete webstrates[webstrateId];
 		}
 	};
 
@@ -305,7 +396,21 @@ module.exports.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
 		nodeIds[webstrateId][nodeId] = [];
 	}
 
-	nodeIds[webstrateId][nodeId].push(socketId);
+	// Record the nodeId on the client's webstrate entry, so that removeClientFromWebstrate can
+	// unsubscribe the client from all of its nodeIds when it disconnects or unsubscribes from the
+	// webstrate (e.g. through ShareDB's {a:'u'}). Without this bookkeeping, that cleanup iterated
+	// an always-empty list and every signal subscription leaked. (P-207, P-317)
+	const subscribedNodeIds = clients[socketId].webstrates[webstrateId];
+	if (!subscribedNodeIds.includes(nodeId)) {
+		subscribedNodeIds.push(nodeId);
+	}
+
+	// Keep the listener list free of duplicates, so that a single unsubscribe removes the client
+	// again even if it (or its userland) subscribed more than once.
+	const listeners = nodeIds[webstrateId][nodeId];
+	if (!listeners.includes(socketId)) {
+		listeners.push(socketId);
+	}
 };
 
 /**
@@ -321,10 +426,35 @@ module.exports.unsubscribe = function(socketId, webstrateId, nodeId) {
 	}
 
 	var socketIdIdx = nodeIds[webstrateId][nodeId].indexOf(socketId);
+	// The client may not be subscribed to this nodeId, e.g. because it unsubscribed while its
+	// subscribe was still in its (up to 1 second long) retry window — subscribe retries, while
+	// unsubscribe is immediate. Without this check, splice(-1, 1) removes the last (arbitrary)
+	// listener instead, destroying another client's subscription. (P-322)
+	if (socketIdIdx === -1) {
+		return;
+	}
+
 	nodeIds[webstrateId][nodeId].splice(socketIdIdx, 1);
 
-	var nodeIdIdx = clients[socketId].webstrates[webstrateId].indexOf(nodeId);
-	clients[socketId].webstrates[webstrateId].splice(nodeIdIdx, 1);
+	// Remove the nodeId from the client's list of subscribed nodeIds, too. The client may be gone
+	// already (in which case the whole entry goes away with it), and the nodeId may have been
+	// removed already (e.g. by removeClientFromWebstrate unsubscribing all nodeIds at once), so
+	// guard the splice. (P-322, P-207)
+	if (clients[socketId] && clients[socketId].webstrates[webstrateId]) {
+		var nodeIdIdx = clients[socketId].webstrates[webstrateId].indexOf(nodeId);
+		if (nodeIdIdx !== -1) {
+			clients[socketId].webstrates[webstrateId].splice(nodeIdIdx, 1);
+		}
+	}
+
+	// Prune empty listener lists (and empty webstrate entries), so that nodeIds doesn't retain an
+	// empty array for every (webstrateId, nodeId) pair ever subscribed. (P-207)
+	if (nodeIds[webstrateId][nodeId].length === 0) {
+		delete nodeIds[webstrateId][nodeId];
+		if (Object.keys(nodeIds[webstrateId]).length === 0) {
+			delete nodeIds[webstrateId];
+		}
+	}
 };
 
 /**
@@ -350,7 +480,11 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
 	var listeners = new Set([...(nodeIds[webstrateId][nodeId] || []),
 		...(nodeIds[webstrateId]['document'] || [])]);
 
-	(recipients || Array.from(webstrates[webstrateId].keys())).forEach(function(recipientId) {
+	// The webstrate's client map may have been pruned after its last client left, in which case
+	// there are no recipients left to send to. (P-207)
+	var defaultRecipients = webstrates[webstrateId] ? Array.from(webstrates[webstrateId].keys()) : [];
+
+	(recipients || defaultRecipients).forEach(function(recipientId) {
 		// We don't know the client, or it isn't listening.
 		if (!clients[recipientId] || !listeners.has(recipientId)) {
 			return;

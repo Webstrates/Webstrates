@@ -18,6 +18,17 @@ module.exports.clientAdded = function(socketId, userId) {
 };
 
 /**
+ * Removes a mapping from socketId to userId. Called by ClientManager when a client disconnects.
+ * Without this, socketUserMap grew by one entry per connection and never shrank. 
+ * Idempotent, as removeClient may be invoked more than once for the same socketId.
+ * @param  {string} socketId SocketId.
+ * @public
+ */
+module.exports.clientRemoved = function(socketId) {
+	socketUserMap.delete(socketId);
+};
+
+/**
  * Send a message to a client (or clients), either by socketId (temporary ID assigned each
  * connection) or userId (username:provider combination).
  * @param  {mixed} recipients Recipient or list of recipients. Either socketIds or userId.
