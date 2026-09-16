@@ -1,6 +1,7 @@
 'use strict';
 
 const db = require(APP_PATH + '/helpers/database.js');
+const userValidation = require(APP_PATH + '/helpers/UserValidation.js');
 
 /**
  * Serializes user object by saving it in the database and returning the id.
@@ -11,6 +12,8 @@ const db = require(APP_PATH + '/helpers/database.js');
  */
 module.exports.serializeUser = function(user, next) {
 	user.createdAt = new Date();
+	// Store users under the username that would be established for them 	
+	user.username = userValidation.getEffectiveUsername(user);
 	user.userId = user.username + ':' + user.provider;
 	db.sessions.updateOne({ userId: user.userId }, { $set: user }, { upsert: true }).then(result=>{
 		next(null, user.userId);

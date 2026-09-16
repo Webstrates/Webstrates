@@ -62,6 +62,7 @@ const config = global.config = configHelper.getConfig();
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const sessionManager = require(APP_PATH + '/helpers/SessionManager.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
+const userValidation = require(APP_PATH + '/helpers/UserValidation.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
 
@@ -147,6 +148,14 @@ if (config.auth) {
 				usernameField: 'username',
 				passwordField: 'password'
 			}, (username, password, done) => {
+				// Usernames containing apostrophes, quotes or ampersands are not valid usernames
+				// in this system, they corrupt the data-auth permission parsing of every
+				// document they are granted permissions in. 
+				if (!userValidation.isValidUsername(username)) {
+					return done(null, false, {
+						message: 'Usernames may not contain apostrophes, quotes or ampersands.'
+					});
+				}
 				return done(null, {
 					username: username,
 					userUrl: 'none-for-testing',
@@ -272,9 +281,11 @@ const sessionMiddleware = function (req, res, next) {
 		req.user.token = req.query.token;
 	}
 
-	req.user.username = req.user.username || req.user.email || req.user.id || 'anonymous';
+	// Establish the username for this request: the first of the user's username, email or id
+	// that is a valid username in this system, or 'anonymous'. 
+	req.user.username = userValidation.getEffectiveUsername(req.user);
 	req.user.provider = req.user.providerName || req.user.provider || '';
-	req.user.userId = req.user.userId || (req.user.username + ':' + req.user.provider);
+	req.user.userId = req.user.username + ':' + req.user.provider;
 	req.params.webstrateId = webstrateId;
 	next();
 };

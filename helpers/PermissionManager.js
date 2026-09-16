@@ -3,6 +3,7 @@
 const util = require('util');
 const shortId = require('shortid');
 const documentManager = require(global.APP_PATH + '/helpers/DocumentManager.js');
+const userValidation = require(global.APP_PATH + '/helpers/UserValidation.js');
 
 var authConfig = global.config.auth;
 
@@ -51,6 +52,10 @@ module.exports.getUserFromAccessToken = function(webstrateId, token) {
 
 	if (expiration <= Date.now()/1000) {
 		delete accessTokens[webstrateId][token];
+		return;
+	}
+
+	if (!userValidation.canBeUsername(username)) {
 		return;
 	}
 
