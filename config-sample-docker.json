@@ -5,6 +5,13 @@
 	"niceWebstrateIds": false,
 	"maxAge": "1d",
 	"maxAssetSize": 100,
+	"_rateLimit": {
+		"opsPerInterval": 5000,
+		"signalsPerInterval": 5000,
+		"intervalLength": 60000,
+		"banDuration": 10000,
+		"note": "Rate limiting is disabled until a block named \"rateLimit\" (no underscore) with these fields is added to config.json. opsPerInterval: ShareDB messages (ops, subscribes, fetches, keep-alives, unrecognized messages) allowed per address per intervalLength (ms); signalsPerInterval: Webstrates actions (signals, replies, cookies) per address per interval; banDuration (ms): how long an address over either budget is banned — open connections are closed, new ones are terminated, and the budget resets when the ban lifts. Behind nginx/apache, the proxy must set X-Forwarded-For to the client address (overwriting any client-supplied value), or every user shares one budget and one ban. See middleware/dosProtectionMiddleware.js."
+	},
 	"auth": {
 		"cookie": {
 			"secret": "This is a secret",

@@ -18,12 +18,23 @@ const callbacks = new Map();
 
 /**
  * Calculates increasing reconnection delay based on number of reconnection attempts:
- * Starting with: 1s, 1.5s, 2.3s, 3.4s, 5.0s, 7.6s, 11.4s, 17.0s, 25.6s, 38.4s, 57.7s, etc.
- * @return {Number} Next reconnection interval in seconds.
+ * Starting with: 1s, 1.5s, 2.3s, 3.4s, 5.0s, 7.6s, 11.4s, capped at 15s.
+ *
+ * If reconnectAttempts is undefined (the connection never opened, e.g. because the server
+ * was unreachable), we treat this as the first attempt (1s delay) instead of letting it
+ * become NaN, which setTimeout would treat as a 0ms delay, turning an outage into a
+ * rapid-fire reconnect loop.
+ *
+ * The delay is capped, so clients keep retrying at a steady pace instead of eventually
+ * having to wait for minutes between attempts, at which point users start reloading the
+ * page manually (F5) rather than letting the client reconnect on its own.
+ * @return {Number} Next reconnection interval in milliseconds.
  * @private
  */
 function reconnectDelay() {
-	return 1000 * Math.pow(1.5, reconnectAttempts++);
+	const attempts = Number.isFinite(reconnectAttempts) ? reconnectAttempts : 0;
+	reconnectAttempts = attempts + 1;
+	return Math.min(1000 * Math.pow(1.5, attempts), 15 * 1000);
 }
 
 // Having multiple subscriptions to the same webstrate causes ShareDB to behave oddly and cut
@@ -73,7 +84,6 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 			typeof websocket.onclose === 'function' && websocket.onclose(event));
 
 		if (!forceClose) {
-			reconnectAttempts++;
 			setTimeout(() => {
 				coreWebsocketModule.setup(url, protocols);
 			}, reconnectDelay());
