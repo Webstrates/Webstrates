@@ -1393,6 +1393,20 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 };
 
 /**
+ * Limits for importing webstrates from ZIP files (avoid zip bombs).
+ * Importing a webstrate from a ZIP extracts every entry straight to disk, but
+ * maxAssetSize only bounds the *compressed* upload, so a ~100 KB archive could
+ * expand to >100 MB — arbitrarily more, given the right ratio — on disk with a
+ * single request. The extraction itself is therefore capped on two axes,
+ * both configurable in config.json:
+ *   maxZipEntries          — maximum number of entries per archive.
+ *   maxZipUncompressedSize — maximum total uncompressed size, in MB.
+ * @constant
+ */
+const MAX_ZIP_ENTRIES = config.maxZipEntries || 1000;
+const MAX_ZIP_UNCOMPRESSED_SIZE = (config.maxZipUncompressedSize || 250) * 1024 * 1024;
+
+/**
  * Create a webstrate from a ZIP file on disk.
  * @param  {string} filePath    Path to ZIP file.
  * @param  {string} webstrateId Desired webstrateId.
@@ -1403,14 +1417,81 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 	return new Promise((accept, reject) => {
 		yauzl.open(filePath, { lazyEntries: true } , (err, zipFile) => {
-			if (err) {
+			if (err || !zipFile) {
 				console.error(err);
-				reject(err);
+				return reject(err || new Error(`"${filePath}" is not a valid ZIP file.`));
 			}
 
 			let htmlDocumentFound = false, createdWebstrate = false;
 			let assets = [];
+
+			// An archive that violates
+			// any of the MAX_ZIP_* limits — or errors while being read — is aborted:
+			// in-flight streams are destroyed, everything already extracted is removed,
+			// and the import is rejected, instead of letting a tiny archive expand to
+			// hundreds of MBs on disk.
+			let aborted = false;
+			let entryCount = 0;
+			let declaredUncompressedSize = 0;
+			let extractedUncompressedSize = 0;
+			let extractedFiles = [];
+			let currentReadStream, currentWriteStream;
+
+			const abortZipImport = (reason) => {
+				if (aborted) return;
+				aborted = true;
+				if (currentReadStream) {
+					currentReadStream.unpipe();
+					currentReadStream.destroy();
+				}
+				if (currentWriteStream) {
+					currentWriteStream.destroy();
+				}
+				zipFile.close();
+				// Remove whatever the archive managed to extract before we aborted.
+				extractedFiles.forEach(file => fs.unlink(file, () => {}));
+				reject(new Error(reason));
+			};
+
+			// Count uncompressed bytes as they are actually
+			// extracted, in case an entry's declared size in the central directory
+			// lies (yauzl's validateEntrySizes also guards this and makes the entry
+			// stream emit an error — handled below — this is defense in depth).
+			// Attached where the stream is consumed, at pipe() or streamToString(),
+			// so no data is read before a consumer exists.
+			const countExtractedBytes = (readStream) => {
+				readStream.on('data', chunk => {
+					extractedUncompressedSize += chunk.length;
+					if (extractedUncompressedSize > MAX_ZIP_UNCOMPRESSED_SIZE) {
+						abortZipImport('ZIP file expands beyond the maximum uncompressed size of ' +
+							`${MAX_ZIP_UNCOMPRESSED_SIZE / 1024 / 1024} MB.`);
+					}
+				});
+			};
+
+			// Errors on the archive itself (e.g. a corrupt central directory) would
+			// otherwise go unhandled and leave the import hanging.
+			zipFile.on('error', err => {
+				console.error(err);
+				abortZipImport(`ZIP file is corrupt: ${err.message}`);
+			});
+
 			zipFile.on('entry', entry => {
+				if (aborted) return;
+
+				// Before extracting anything, reject archives
+				// declaring too many entries or more uncompressed content than
+				// allowed. yauzl validates the declared sizes while extracting.
+				entryCount++;
+				declaredUncompressedSize += entry.uncompressedSize;
+				if (entryCount > MAX_ZIP_ENTRIES) {
+					return abortZipImport('ZIP file contains too many entries (more than ' +
+						`${MAX_ZIP_ENTRIES}).`);
+				}
+				if (declaredUncompressedSize > MAX_ZIP_UNCOMPRESSED_SIZE) {
+					return abortZipImport('ZIP file expands beyond the maximum uncompressed size ' +
+						`of ${MAX_ZIP_UNCOMPRESSED_SIZE / 1024 / 1024} MB.`);
+				}
 
 				if (/\/$/.test(entry.fileName)) {
 				// Directory file names end with '/'.
@@ -1420,16 +1501,27 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 				} else {
 				// file entry
 					zipFile.openReadStream(entry, (err, readStream) => {
-						if (err) {
+						if (err || !readStream) {
 							console.error(err);
-							reject(err);
+							return abortZipImport(`Could not read "${entry.fileName}" from ZIP file.`);
 						}
+						currentReadStream = readStream;
 						readStream.on('end', function() {
+							currentReadStream = currentWriteStream = null;
 							zipFile.readEntry();
+						});
+						// Errors on the entry stream (e.g. yauzl detecting that an entry's
+						// contents don't match its declared size, or corrupt deflate data)
+						// would otherwise go unhandled.
+						readStream.on('error', err => {
+							console.error(err);
+							abortZipImport(`Could not extract "${entry.fileName}" from ZIP file: ` +
+								`${err.message}`);
 						});
 
 						if (!htmlDocumentFound && entry.fileName.match(/index\.html?$/i)) {
 							htmlDocumentFound = true;
+							countExtractedBytes(readStream);
 							streamToString(readStream, async htmlDoc => {
 								let jsonml = htmlToJsonML(htmlDoc);
 								// MongoDB doesn't accept periods in keys, so we replace them with
@@ -1464,11 +1556,22 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 							});
 						} else {
 							crypto.pseudoRandomBytes(16, (err, raw) => {
+								if (aborted) return;
 								const fileName =  raw.toString('hex');
 								const filePath = assetManager.UPLOAD_DEST + fileName;
 								const writeStream = fs.createWriteStream(filePath);
+								currentWriteStream = writeStream;
+								extractedFiles.push(filePath);
+								// A write error (e.g. the disk filling up) should abort the
+								// import, not crash the server.
+								writeStream.on('error', err => {
+									console.error(err);
+									abortZipImport(`Could not extract "${entry.fileName}" from ` +
+										`ZIP file: ${err.message}`);
+								});
+								countExtractedBytes(readStream);
 								readStream.pipe(writeStream);
-								
+
 								// If the file has no extension and consists only of numbers,
 								// we ignore it as these are not allowed as asset names.
 								if (!entry.fileName.match(/([^/]+)$/)[0].match(/^\d+$/)) {
@@ -1486,6 +1589,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 
 			// Link all the assets ont the webstrate once done unpacking, if it had a webstrate in it
 			zipFile.once('end', async ()=>{
+				if (aborted) return;
 				try {
 					zipFile.close();
 

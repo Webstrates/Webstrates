@@ -5,6 +5,8 @@
 	"niceWebstrateIds": false,
 	"maxAge": "1d",
 	"maxAssetSize": 100,
+	"maxZipEntries": 1000,
+	"maxZipUncompressedSize": 250,
 	"_rateLimit": {
 		"opsPerInterval": 5000,
 		"signalsPerInterval": 5000,

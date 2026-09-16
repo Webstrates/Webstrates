@@ -327,3 +327,87 @@ describe('Assets', function () {
 		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).restoredFrom, 2, 'Text asset should have a restoredFrom property pointing to version 2');
 	});
 });
+
+// Creates a ZIP archive in memory from a list of [name, data] entries. Entries
+// are deflated, so redundant data (e.g. a buffer of zeros) compresses extremely
+// well — which is exactly what a zip bomb is.
+const makeZip = (entries) => new Promise((resolve, reject) => {
+	const archive = new ZipArchive();
+	const chunks = [];
+	archive.on('data', chunk => chunks.push(chunk));
+	archive.on('warning', reject);
+	archive.on('end', () => resolve(Buffer.concat(chunks)));
+	archive.on('error', reject);
+	entries.forEach(([name, data]) => archive.append(data, { name }));
+	archive.finalize();
+});
+
+// Uploads a ZIP file to /new, creating (or trying to create) webstrateId.
+const importZip = (zip, webstrateId) => {
+	const form = new FormData();
+	form.append('file', new Blob([zip]), 'import.zip');
+	return fetch(`${config.server_address}new?apiCall&id=${webstrateId}`, { method: 'POST', body: form });
+};
+
+describe('ZIP import', function () {
+	this.timeout(30000);
+
+	const createdWebstrateIds = [];
+
+	after(async () => {
+		// Delete webstrates created by the tests below.
+		await Promise.all(createdWebstrateIds.map(webstrateId =>
+			fetch(`${config.server_address}${webstrateId}?delete`)));
+	});
+
+	it('A webstrate should be creatable from a ZIP file', async () => {
+		const webstrateId = 'test-' + util.randomString();
+		const zip = await makeZip([
+			['index.html', '<html><body>zip import test</body></html>'],
+			['test.txt', 'This is a test file inside a zip.']
+		]);
+
+		const response = await importZip(zip, webstrateId);
+		assert.equal(response.status, 200, 'Importing a valid ZIP file should succeed');
+		createdWebstrateIds.push(webstrateId);
+
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		assert.equal(docResponse.status, 200, 'The imported webstrate should exist');
+		assert.include(JSON.stringify(await docResponse.json()), 'zip import test',
+			'The imported webstrate should contain the index.html document');
+	});
+
+	it('ZIP files expanding beyond the uncompressed size limit should be rejected (zip bombs)', async () => {
+		const webstrateId = 'test-' + util.randomString();
+		// 300 MB of zeros deflates to ~1.3 MB — a ~230:1 zip bomb in a small archive.
+		const zip = await makeZip([
+			['bomb.bin', Buffer.alloc(300 * 1024 * 1024)],
+			['index.html', '<html><body>zip bomb test</body></html>']
+		]);
+
+		const response = await importZip(zip, webstrateId);
+		assert.equal(response.status, 409, 'Importing a zip bomb should be rejected');
+		assert.include((await response.json()).error, 'uncompressed size',
+			'The rejection should explain the uncompressed size limit');
+
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		assert.equal(docResponse.status, 404, 'No webstrate should be created from a zip bomb');
+	});
+
+	it('ZIP files containing too many entries should be rejected', async () => {
+		const webstrateId = 'test-' + util.randomString();
+		// The entry limit is 1000 (maxZipEntries); 1001 files is one too many.
+		const files = Array.from({ length: 1001 }, (_, i) => [`file${i}.txt`, 'x']);
+		const zip = await makeZip(files.concat([
+			['index.html', '<html><body>entry count test</body></html>']
+		]));
+
+		const response = await importZip(zip, webstrateId);
+		assert.equal(response.status, 409, 'Importing an archive with too many entries should be rejected');
+		assert.include((await response.json()).error, 'too many entries',
+			'The rejection should explain the entry limit');
+
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		assert.equal(docResponse.status, 404, 'No webstrate should be created from an archive with too many entries');
+	});
+});
