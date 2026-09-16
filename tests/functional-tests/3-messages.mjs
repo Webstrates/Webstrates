@@ -336,4 +336,31 @@ describe('Messages', function() {
 		assert.equal(message2.messageId, messageId2B);
 	});
 
+	// A websocket message naming a webstrate the socket never joined (and holds no
+	// access token for) used to crash the server middleware with an unhandled TypeError,
+	// silently dropping the message, so the sender never got a reply. The server should
+	// instead reply with a proper error.
+	it('should get an error reply when sending a message naming a webstrate the socket never joined',
+		async function() {
+			// Send a document fetch over a raw websocket connected to webstrateId, naming
+			// otherWebstrateId which the socket never joins (subscribes to).
+			const reply = await pageC.evaluate((wsUrl, otherWebstrateId) => new Promise((resolve) => {
+				const ws = new WebSocket(wsUrl);
+				const timeout = setTimeout(() => resolve(undefined), 2000);
+				ws.onopen = () => ws.send(JSON.stringify({ a: 'f', c: 'webstrates', d: otherWebstrateId }));
+				ws.onmessage = (event) => {
+					const msg = JSON.parse(event.data);
+					if (msg.d === otherWebstrateId) {
+						clearTimeout(timeout);
+						ws.close();
+						resolve(msg);
+					}
+				};
+				ws.onerror = () => resolve(undefined);
+			}), urlA.replace('http', 'ws') + '/', otherWebstrateId);
+
+			assert.isObject(reply, 'message was silently dropped, no reply ever arrived');
+			assert.isOk(reply.error, 'cross-document message should be rejected with an error');
+		});
+
 });

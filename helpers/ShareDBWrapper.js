@@ -145,6 +145,14 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		if (req.agent.req.params.webstrateId !== webstrateId) {
 			const token = req.agent.req.query.token;
 			user = permissionManager.getUserFromAccessToken(webstrateId, token);
+
+			// The message names a webstrate other than the one the socket connected to, so the
+			// user can only be resolved through an access token for that webstrate. If no valid
+			// token exists, we have no user to check permissions against and must reject the
+			// request with an error reply rather than dereferencing an undefined user.
+			if (!user) {
+				return next('Forbidden');
+			}
 		}
 
 		if (!config.disableSessionLog && !req.agent.sessionLogged) {
