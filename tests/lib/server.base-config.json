@@ -1,0 +1,29 @@
+{
+	"listeningAddress": "127.0.0.1",
+	"listeningPort": 7107,
+	"db": "mongodb://127.0.0.1:27017/webstrate-test",
+	"niceWebstrateIds": false,
+	"maxAge": "1d",
+	"maxAssetSize": 100,
+	"auth": {
+		"cookie": {
+			"secret": "xVxE+V6o4bl0OoTvCCL6Ag==",
+			"duration": 31536000000
+		},
+		"permissionTimeout": 300,
+		"defaultPermissions": [
+			{
+				"username": "anonymous",
+				"provider": "",
+				"permissions": "arw"
+			}
+		],
+		"providers": {
+			"test": {}
+		}
+	},
+	"tagging": {
+		"autotagInterval": 3600,
+		"tagPrefix": "Session of "
+	}
+}

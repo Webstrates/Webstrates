@@ -1,0 +1,31 @@
+#!/bin/bash
+# Chromium launcher for the puppeteer-driven functional tests.
+#
+# Chromium refuses to run as root without --no-sandbox, and root containers (upstream CI,
+# development jails) typically have no unprivileged user namespaces for the sandbox anyway.
+# Puppeteer honors the PUPPETEER_EXECUTABLE_PATH environment variable, which the test
+# runner (tests/lib/run-tests.mjs) sets to this script when it detects a root environment,
+# so `puppeteer.launch()` in the spec files stays unmodified.
+#
+# Resolution order: chrome builds puppeteer downloaded into ~/.cache/puppeteer (newest
+# first, and only ones that actually execute — stale/broken extractions are skipped), then
+# a system chromium/chrome on PATH.
+candidates=($(ls -t "$HOME"/.cache/puppeteer/chrome/*/chrome-linux*/chrome 2>/dev/null))
+for candidate in chromium chromium-browser google-chrome google-chrome-stable; do
+	if command -v "$candidate" >/dev/null 2>&1; then candidates+=("$(command -v "$candidate")"); fi
+done
+
+CHROME=""
+for candidate in "${candidates[@]}"; do
+	if [ -x "$candidate" ] && "$candidate" --version >/dev/null 2>&1; then
+		CHROME="$candidate"
+		break
+	fi
+done
+
+if [ -z "$CHROME" ]; then
+	echo "chrome-wrapper: no runnable chromium found (tried ~/.cache/puppeteer/chrome and PATH)" >&2
+	exit 1
+fi
+
+exec "$CHROME" --no-sandbox --disable-gpu --disable-setuid-sandbox --disable-dev-shm-usage "$@"

@@ -12,19 +12,55 @@ import util from '../util.js';
 // flood thereby gets a budget and a ban of its own: it can neither spend the shared budget of
 // the other test cases nor ban their address, and a still active ban from a previous run
 // cannot leak in either.
+// Rate limiting is disabled by default (config-sample.json ships an inert _rateLimit block),
+// so under the test harness (tests/lib/run-tests.mjs) this suite starts its own server
+// instance with an active rateLimit block; the ban duration is short enough that the
+// ban-lift test's wait fits inside mocha's per-test timeout. Without the harness (mocha
+// invoked directly against an externally started server) the block below reads whatever
+// rateLimit that server's config carries, and the tests skip when there is none.
 describe('Rate limiting', function() {
 	this.timeout(60000);
 
-	const rateLimit = config.server.rateLimit;
 	const webstrateId = 'test-' + util.randomString();
 	const nodeId = 'node-' + util.randomString();
 	const address = `198.51.100.${1 + Math.floor(Math.random() * 254)}`;
-	const webstrateUrl = config.server_address.replace(/^http/, 'ws') + webstrateId;
 
 	const sockets = [];
 
-	after(async () => {
+	// Assigned in before(): from this suite's own server instance under the harness, or
+	// from the external server's config.
+	let rateLimit = null;
+	let webstrateUrl;
+
+	let ownServer;
+	const baseServerAddress = config.server_address;
+
+	before(async function() {
+		if (process.env.WEBSTRATES_HARNESS_STATE) {
+			const harness = await import('../lib/server-harness.mjs');
+			ownServer = await harness.startServer({
+				label: 'ratelimit',
+				config: {
+					rateLimit: {
+						opsPerInterval: 200,
+						signalsPerInterval: 200,
+						intervalLength: 60000,
+						banDuration: 20000
+					}
+				}
+			});
+			config.server_address = ownServer.address;
+			rateLimit = ownServer.config.rateLimit;
+		} else {
+			rateLimit = config.server.rateLimit;
+		}
+		webstrateUrl = config.server_address.replace(/^http/, 'ws') + webstrateId;
+	});
+
+	after(async function() {
 		sockets.forEach(({ ws }) => { if (ws.readyState === WebSocket.OPEN) ws.close(); });
+		config.server_address = baseServerAddress;
+		if (ownServer) await ownServer.stop();
 
 		if (!rateLimit) {
 			util.warn('Skipping rate limiting tests as no rateLimit block is configured for the ' +
@@ -99,6 +135,12 @@ describe('Rate limiting', function() {
 		send(flooder, { a: 's', c: 'webstrates', d: webstrateId });
 		await nextMessage(flooder, message => message.a === 's');
 		send(flooder, { wa: 'subscribe', d: webstrateId, id: nodeId });
+		// Prove the subscription is in effect before flooding, with one signal round trip:
+		// the subscribe registration is asynchronous (it passes a permission check), and
+		// the burst below can be processed before that completes — its publishes then echo
+		// to nobody, and the disconnect races the first echo instead of following it.
+		send(flooder, { wa: 'publish', d: webstrateId, id: nodeId, m: 'warmup' });
+		await nextMessage(flooder, message => message.wa === 'publish' && message.m === 'warmup');
 
 		// Publish until the server cuts the connection. The burst is sent in well under one
 		// intervalLength and overshoots the limit up to 3x, so it crosses the limit no matter

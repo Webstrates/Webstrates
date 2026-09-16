@@ -1,12 +1,31 @@
 'use strict';
 
 const fs = require('fs');
+const path = require('path');
 const crypto = require('crypto');
+// By default the server reads its config from <repo>/config.json. Setting the
+// WEBSTRATES_CONFIG environment variable (absolute path, or relative to the repo root)
+// overrides this; the test harness uses it to run server instances against generated
+// configurations (see tests/lib/server-harness.mjs).
+const envConfigPath = process.env.WEBSTRATES_CONFIG;
 const configPath = '/config.json';
 const sampleConfigPath = '/config-sample.json';
 
+const resolveConfigPath = () => envConfigPath
+	? (path.isAbsolute(envConfigPath) ? envConfigPath : path.resolve(APP_PATH, envConfigPath))
+	: APP_PATH + configPath;
+
 /** Create config file if it doesn't already exist by copying config-sample. */
 const createConfig = () => {
+    // The env-provided config is expected to exist (the harness always writes it before
+    // starting a server); only the default repo-root config is auto-created from the sample.
+    if (envConfigPath) {
+        if (!fs.existsSync(resolveConfigPath())) {
+            console.error(`Config file "${resolveConfigPath()}" (from WEBSTRATES_CONFIG) not found, terminating`);
+            process.exit(1);
+        }
+        return;
+    }
     if (!fs.existsSync(APP_PATH+configPath)) {
         console.warn('No config file present, creating one now');
         if (!fs.existsSync(APP_PATH+sampleConfigPath)) {
@@ -26,9 +45,11 @@ const createConfig = () => {
 /** Read config file from disk. */
 const getConfig = () => {
 	try {
-		return JSON.parse(fs.readFileSync(APP_PATH+configPath, 'utf8'));
+		return JSON.parse(fs.readFileSync(resolveConfigPath(), 'utf8'));
 	} catch (e) {
-		console.error('Unable to parse config file.');
+		console.error(envConfigPath
+			? `Unable to read config file "${resolveConfigPath()}".`
+			: 'Unable to parse config file.');
 		process.exit(1);
 	}
 };
