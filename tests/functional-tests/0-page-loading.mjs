@@ -64,12 +64,24 @@ describe('Page Loading', function() {
 	});
 
 	it('the webstrate has an initial revision history of 1', async ()=>{
-		await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
+		// The document's creation commits asynchronously; the ?v snapshot page can be
+		// served before that commit lands and show an earlier state. Poll until the
+		// version settles, with the browser cache disabled so every poll refetches.
+		let version = 0;
+		for (let tries = 0; tries < 20 && version !== 1; tries++) {
+			await pageA.setCacheEnabled(false);
+			await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
+			try {
+				version = (await pageA.evaluate(() =>
+					JSON.parse(document.querySelector('body').innerText))).version;
+			} catch (err) {
+				// An error body instead of the version snapshot — retry.
+				version = 0;
+			}
+			if (version !== 1) await util.sleep(0.25);
+		}
 
-		const innerText = await pageA.evaluate(() =>
-			JSON.parse(document.querySelector('body').innerText));
-
-		assert.equal(innerText.version, 1, 'Version should be 1 immediately after creation');
+		assert.equal(version, 1, 'Version should be 1 after creation');
 	});
 
 	it('should be able to delete a webstrate', async () => {

@@ -68,6 +68,8 @@ describe('HTTP API', function() {
 
 	it('root (/) redirects to /frontpage/', async () => {
 		pageA = await browser.newPage();
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
 		await pageA.goto(config.server_address, { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageA.url();
