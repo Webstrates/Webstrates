@@ -73,9 +73,13 @@ if (global.config.tagging) {
 			global.global.config.tagging * 1000 < timestamp) {
 			const version = req.op.v;
 			documentManager.getTag(webstrateId, version, function(err, tag) {
-				// If a tag already exists at this version, we don't want to overwrite it with our generic,
-				// auto-tagging one.
-				if (tag) return next();
+				// If a tag already exists at this version, we don't want to overwrite it with our
+				// generic, auto-tagging one. We must NOT call next() in here: it has already been
+				// invoked synchronously below, and invoking it a second time would run the submit
+				// chain again, re-submitting the op (a latent bug that sharedb 6.0.2+ no longer
+				// tolerates: the retried commit crashes in SubmitRequest._resetFixups on the
+				// publish-mutated op).
+				if (tag) return;
 
 				var label = global.config.tagging.tagPrefix + new Date(timestamp);
 				documentManager.tagDocument(webstrateId, version, label).catch(err=>{
