@@ -271,14 +271,29 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		// Approve any attribute set on an approved element by checking 'this.__approved'.
 		// Although, third-party libraries can still get their attributes approved by this loose
 		// check, it will still protect browser extensions from spamming DOM elements with attributes.
-		if (this.__approved || (options && options.approved)) approveElementAttribute(this, name);
+		if (this.__approved || (options && options.approved)) {
+			// In HTML documents, the browser stores attribute names in lowercase (i.e.
+			// setAttribute('MyAttr') defines a 'myattr' attribute), and MutationObservers report
+			// attribute names as they are stored in the DOM. So both the name as written and the
+			// lowercased name have to be approved, otherwise the attribute is considered
+			// transient and won't be synchronized. In XML documents and on elements outside the
+			// HTML namespace (e.g. SVG), the name is stored as written, which approving both
+			// variants also covers. (The name may not be a string, but the browser converts it
+			// to one when defining the attribute, hence the String conversion here.)
+			approveElementAttribute(this, name);
+			approveElementAttribute(this, String(name).toLowerCase());
+		}
 		setAttribute.call(this, name, value, options, ...unused);
 	};
 
 	const removeAttribute = Element.prototype.removeAttribute;
 	Element.prototype.removeAttribute = function (name, options, ...unused) {
 		removeAttribute.call(this, name, options, ...unused);
-		if (options && options.approved) removeApproveElementAttribute(this, name);
+		if (options && options.approved) {
+			// Remove both variants, as setAttribute above approves both (see comment there).
+			removeApproveElementAttribute(this, name);
+			removeApproveElementAttribute(this, String(name).toLowerCase());
+		}
 	};
 
 	// Proxy all configurable properties with a set function to intercept calls to properties

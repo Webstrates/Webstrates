@@ -233,3 +233,70 @@ describe('Attribute Manipulation', function() {
 		});
 	});
 });
+
+// Webstrates in protected mode (data-protected on the <html> tag) only sync attributes that
+// have been approved. Uppercase attribute names get lowercased by setAttribute in HTML
+// documents (e.g. 'myAttr' is stored as 'myattr'), but the approval used to be registered
+// under the name as written — so the attribute was deemed transient and never synced to
+// other clients
+describe('Attribute Manipulation in Protected Mode', function() {
+	this.timeout(15000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId + '/';
+	let browser, pageA, pageB;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+
+		pageA = await browser.newPage();
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+
+		pageB = await browser.newPage();
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
+
+		await pageA.evaluate(() =>
+			document.documentElement.setAttribute('data-protected', 'all'));
+
+		const dataProtectedSetB = await util.waitForFunction(pageB, () =>
+			document.documentElement.getAttribute('data-protected') === 'all', 5);
+		assert.isTrue(dataProtectedSetB, 'data-protected attribute should be synced');
+
+		// Protected mode is only enabled after a reload.
+		await Promise.all([pageA.reload({ waitUntil: 'networkidle2' }),
+			pageB.reload({ waitUntil: 'networkidle2' })]);
+
+		// Puppeteer polls waitForFunction with timers inside the page, and Chrome suspends
+		// timers in background tabs — so bring each page to the front while waiting on it, and
+		// keep pageB (the page the test waits on) in front for the test itself.
+		await pageA.bringToFront();
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 5);
+		await pageB.bringToFront();
+		await util.waitForFunction(pageB, () => window.webstrate && window.webstrate.loaded, 5);
+	});
+
+	after(async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
+		await browser.close();
+	});
+
+	it('should be possible to set an attribute with capital letters on an approved element',
+		async () => {
+			await pageA.evaluate(() => {
+				const div = document.createElement('div', { approved: true });
+				div.setAttribute('myAttr', 'value');
+				document.body.appendChild(div);
+			});
+
+			// The div arrives on pageB asynchronously, so the element may not exist (yet) when
+			// waitForFunction first runs its predicate — checking for null avoids throwing in
+			// the predicate before the div has been inserted.
+			const attributeGetsSetB = await util.waitForFunction(pageB, () => {
+				const div = document.body.firstElementChild;
+				return div && div.getAttribute('myAttr') === 'value';
+			}, 8);
+			assert.isTrue(attributeGetsSetB,
+				'attribute with capital letters should be visible on other client');
+		});
+});
