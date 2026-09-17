@@ -101,7 +101,16 @@ module.exports.getDocument = async function({ webstrateId, version, tag }) {
 		let res = await util.promisify(ShareDbWrapper.fetch)(webstrateId);
 		return res;
 	}
-	if (Number.isNaN(version)) throw new Error('Version must be a number or \'head\'');
+	// Versions may arrive as numeric strings (e.g. "3") from clients that don't coerce before
+	// sending. Coerce those, and reject everything else that isn't a number, rather than
+	// letting a string leak into the queries below where BSON type ordering makes it compare
+	// against all numeric versions at once and the final strict version check fail.
+	if (typeof version === 'string' && /^\d+$/.test(version)) {
+		version = Number(version);
+	}
+	if (typeof version !== 'number' || Number.isNaN(version)) {
+		throw new Error('Version must be a number or \'head\'');
+	}
 	let snapshot = await util.promisify(getTagBeforeVersion)(webstrateId, version);
 	return await transformDocumentToVersion({ webstrateId, snapshot, version });
 };

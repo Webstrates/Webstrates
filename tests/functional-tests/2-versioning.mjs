@@ -136,6 +136,25 @@ describe('Versioning', function () {
 		// Finally, the restored "Hello, World!" is version 9.
 		assert.equal(version, 9);
 	});
+
+	it('should be possible to restore to a version passed as a string', async () => {
+		// Some client flows produce the version as a string, e.g. from a URL query, and the
+		// restore should accept it just like the equivalent number.
+		await page.evaluate(async () => {
+			await new Promise((resolve, reject) => {
+				window.webstrate.restore('3', (err, v) => {
+					if (err) {
+						reject(err);
+					} else {
+						resolve();
+					}
+				});
+			});
+		});
+
+		const innerText = await page.evaluate(() => document.body.innerText);
+		assert.equal(innerText, 'Hello, World! How are you?');
+	});
 });
 
 // A restore that reverts more than one edit reverts them one op at a time, so the fully

@@ -137,6 +137,24 @@ exports.subscribe = webstrateId => {
 	});
 };
 
+/**
+ * Set the version (`v`) or tag label (`l`) property on a message object. Versions consist only
+ * of digits while labels cannot begin with a digit, so distinguishing is easy, but the version
+ * may arrive as either a number or a numeric string ("3"), and it is sent to the server as a
+ * number, as the server compares versions strictly.
+ * @param {Object}        msgObj       Message object to set the version/tag property on.
+ * @param {string|Number} tagOrVersion Tag label or version number.
+ * @private
+ */
+function setVersionOrTag(msgObj, tagOrVersion) {
+	if (/^\d+$/.test(String(tagOrVersion))) {
+		// Version 0 is a valid version, so the coerced value mustn't be tested for truthiness.
+		msgObj.v = Number(tagOrVersion);
+	} else {
+		msgObj.l = tagOrVersion;
+	}
+}
+
 exports.fetch = (webstrateId, tagOrVersion) => {
 	return new Promise((resolve, reject) => {
 		const msgObj = {
@@ -144,11 +162,7 @@ exports.fetch = (webstrateId, tagOrVersion) => {
 			d: webstrateId
 		};
 
-		if (/^\d/.test(tagOrVersion) && Number(tagOrVersion)) {
-			msgObj.v = Number(tagOrVersion);
-		} else {
-			msgObj.l = tagOrVersion;
-		}
+		setVersionOrTag(msgObj, tagOrVersion);
 
 		// The second parameter is `sendWhenReady` and true means to queue the message until the
 		// websocket is open rather than to throw and error if the websocket isn't ready. This is not
@@ -163,11 +177,9 @@ exports.fetch = (webstrateId, tagOrVersion) => {
 
 /**
  * Restore document to a previous version, either by version number or tag label.
- * Labels cannot begin with a digit whereas versions consist only of digits, so distinguishing
- * is easy.
  * This does not return a promise, as we do not have control over exactly when the document gets
  * reverted as this is ShareDB's job.
- * @param {string} tagOrVersion Tag label or version number.
+ * @param {string|Number} tagOrVersion Tag label or version number.
  * @param {Function} callback Callback
  */
 exports.restore = (webstrateId, tagOrVersion, callback) => {
@@ -176,11 +188,7 @@ exports.restore = (webstrateId, tagOrVersion, callback) => {
 		d: webstrateId
 	};
 
-	if (/^\d/.test(tagOrVersion)) {
-		msgObj.v = tagOrVersion;
-	} else {
-		msgObj.l = tagOrVersion;
-	}
+	setVersionOrTag(msgObj, tagOrVersion);
 
 	coreWebsocket.send(msgObj, callback);
 };
