@@ -44,6 +44,23 @@ share.use(['connect'], (req, next) => {
 	next();
 });
 
+// ShareDB computes its pubsub channel from the collection field `c` of each message. A
+// message that must carry a collection but doesn't passes sharedb's own shape validation
+// (which only checks `c` when it is present) and ends up on a bogus
+// "undefined.<webstrateId>" channel, where the database lookup throws a TypeError that
+// kills the entire server process. Reject such messages up front in the receive
+// middleware instead.
+const COLLECTION_ACTIONS = ['s', 'f', 'u', 'op', 'bf', 'bs', 'bu', 'qf', 'qs', 'nf', 'nt'];
+share.use('receive', (req, next) => {
+	const data = req.data;
+	if (data && COLLECTION_ACTIONS.includes(data.a) &&
+		(typeof data.c !== 'string' || data.c.length === 0)) {
+		return next(`Invalid message: action "${data.a}" requires a collection field "c".`);
+	}
+
+	next();
+});
+
 
 /**
  * Check if the update changes the permissions of the document.
