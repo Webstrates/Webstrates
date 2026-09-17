@@ -1190,9 +1190,6 @@ function streamToString(stream, callback) {
  * @public
  */
 module.exports.newWebstrateGetRequestHandler = async function(req, res) {
-	// Support for legacy syntax: /new?prototype=<webstrateId>&v=<versionOrTag>&id=<newWebstrateId>,
-	// which is equivalent to /<webstrateId>/<versionOrTag>/?copy=<newWebstrateId>.
-	
 	if (!permissionManager.userIsAllowedToCreateWebstrate(req.user)) {
 		let err = 'Must be logged in to create a webstrate.';
 		if (Array.isArray(config.loggedInToCreateWebstrates)) {
@@ -1305,21 +1302,6 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
             return res.status(409).send(String(err));
         }
     }
-
-	if (req.query.prototype) {
-		var path = `/${req.query.prototype}/`;
-		delete req.query.prototype;
-		if (req.query.v) {
-			path += `${req.query.v}/`;
-			delete req.query.v;
-		}
-		req.query.copy = req.query.id;
-		delete req.query.id;
-		return res.redirect(url.format({
-			pathname: path,
-			query: req.query
-		}));
-	}
 
 	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
 		req.user.provider);
