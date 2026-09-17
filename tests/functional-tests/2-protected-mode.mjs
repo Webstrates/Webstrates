@@ -312,4 +312,148 @@ describe('Protected Mode', function () {
 			assert.equal(attributeValue, 'kebab-case',
 				'The data-camel-case attribute is not \'kebab-case\'');
 		});
+
+	// Comments and comment blocks are structural nodes in the persisted JsonML (['!', ...])
+	// just like elements, so protected mode must also defend against comments being added by
+	// the client — at any level of the document (body in particular). Comments inside an
+	// approved element (e.g. set through approved innerHTML) are still allowed to persist.
+
+	it('comment appended to body should be visible on inserting client', async () => {
+		await pageA.evaluate(() => document.body.appendChild(document.createComment('Comment body')));
+
+		const hasCommentA = await util.waitForFunction(pageA, (text) =>
+			document.body.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.body.lastChild.nodeValue === text, 2, 'Comment body');
+		assert.isTrue(hasCommentA, 'comment should be visible on inserting client');
+	});
+
+	it('comment appended to body should not be visible on other client', async () => {
+		const hasCommentB = await util.waitForFunction(pageB, (text) =>
+			document.body.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.body.lastChild.nodeValue === text, 2, 'Comment body');
+		assert.isFalse(hasCommentB, 'comment should not be visible on other client');
+	});
+
+	it('comment block inserted in body should not be visible on other client', async () => {
+		await pageA.evaluate(() =>
+			document.body.insertAdjacentHTML('beforeend', '<!-- Multi\nline\ncomment block -->'));
+
+		const hasCommentA = await util.waitForFunction(pageA, (text) =>
+			document.body.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.body.lastChild.nodeValue.includes(text), 2, 'Multi\nline\ncomment block');
+		assert.isTrue(hasCommentA, 'comment block should be visible on inserting client');
+
+		const hasCommentB = await util.waitForFunction(pageB, (text) =>
+			document.body.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.body.lastChild.nodeValue.includes(text), 2, 'Multi\nline\ncomment block');
+		assert.isFalse(hasCommentB, 'comment block should not be visible on other client');
+	});
+
+	it('comment inserted inside a persisted element in body should not be visible on other client',
+		async () => {
+			await pageA.evaluate(() => document.body.lastElementChild
+				.appendChild(document.createComment('Comment inside element')));
+
+			const hasCommentA = await util.waitForFunction(pageA, (text) =>
+				document.body.lastElementChild.lastChild.nodeType === Node.COMMENT_NODE
+				&& document.body.lastElementChild.lastChild.nodeValue === text,
+			2, 'Comment inside element');
+			assert.isTrue(hasCommentA, 'comment should be visible on inserting client');
+
+			const hasCommentB = await util.waitForFunction(pageB, (text) =>
+				document.body.lastElementChild.lastChild.nodeType === Node.COMMENT_NODE
+				&& document.body.lastElementChild.lastChild.nodeValue === text,
+			2, 'Comment inside element');
+			assert.isFalse(hasCommentB, 'comment should not be visible on other client');
+		});
+
+	it('comment appended to head should not be visible on other client', async () => {
+		await pageA.evaluate(() => document.head.appendChild(document.createComment('Comment head')));
+
+		const hasCommentA = await util.waitForFunction(pageA, (text) =>
+			document.head.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.head.lastChild.nodeValue === text, 2, 'Comment head');
+		assert.isTrue(hasCommentA, 'comment should be visible on inserting client');
+
+		const hasCommentB = await util.waitForFunction(pageB, (text) =>
+			document.head.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.head.lastChild.nodeValue === text, 2, 'Comment head');
+		assert.isFalse(hasCommentB, 'comment should not be visible on other client');
+	});
+
+	it('comment inserted as a child of the html element should not be visible on other client',
+		async () => {
+			await pageA.evaluate(() => document.documentElement
+				.insertBefore(document.createComment('Comment html'), document.head));
+
+			const hasCommentA = await util.waitForFunction(pageA, (text) =>
+				Array.from(document.documentElement.childNodes).some((node) =>
+					node.nodeType === Node.COMMENT_NODE && node.nodeValue === text), 2, 'Comment html');
+			assert.isTrue(hasCommentA, 'comment should be visible on inserting client');
+
+			const hasCommentB = await util.waitForFunction(pageB, (text) =>
+				Array.from(document.documentElement.childNodes).some((node) =>
+					node.nodeType === Node.COMMENT_NODE && node.nodeValue === text), 2, 'Comment html');
+			assert.isFalse(hasCommentB, 'comment should not be visible on other client');
+		});
+
+	it('comment appended to the document should not be visible on other client', async () => {
+		await pageA.evaluate(() => document.appendChild(document.createComment('Comment document')));
+
+		const hasCommentA = await util.waitForFunction(pageA, (text) =>
+			document.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.lastChild.nodeValue === text, 2, 'Comment document');
+		assert.isTrue(hasCommentA, 'comment should be visible on inserting client');
+
+		const hasCommentB = await util.waitForFunction(pageB, (text) =>
+			document.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.lastChild.nodeValue === text, 2, 'Comment document');
+		assert.isFalse(hasCommentB, 'comment should not be visible on other client');
+	});
+
+	it('comment inside an approved element should be visible on other client', async () => {
+		await pageA.evaluate(() => {
+			const div = document.createElement('div', { approved: true });
+			div.innerHTML = 'Y<!-- Approved comment -->';
+			document.body.appendChild(div);
+		});
+
+		const hasCommentB = await util.waitForFunction(pageB, (text) =>
+			document.body.lastElementChild.lastChild.nodeType === Node.COMMENT_NODE
+			&& document.body.lastElementChild.lastChild.nodeValue === text,
+		2, ' Approved comment ');
+		assert.isTrue(hasCommentB, 'approved comment should be visible on other client');
+	});
+
+	it('unapproved comments should not be persisted, but approved comments should', async () => {
+		await Promise.all([pageA.reload({ waitUntil: 'networkidle2' }),
+			pageB.reload({ waitUntil: 'networkidle2' })]);
+
+		const commentSummary = (page) => page.evaluate(() => {
+			let count = 0;
+			let approved = false;
+			const walk = (node) => {
+				for (const child of node.childNodes) {
+					if (child.nodeType === Node.COMMENT_NODE) {
+						count++;
+						if (child.nodeValue.includes('Approved comment')) {
+							approved = true;
+						}
+					}
+					walk(child);
+				}
+			};
+			walk(document);
+			return { count, approved };
+		});
+
+		const summaryA = await commentSummary(pageA);
+		assert.equal(summaryA.count, 1, 'only the approved comment should be persisted');
+		assert.isTrue(summaryA.approved, 'the persisted comment should be the approved one');
+
+		const summaryB = await commentSummary(pageB);
+		assert.equal(summaryB.count, 1,
+			'only the approved comment should be persisted on other client');
+		assert.isTrue(summaryB.approved, 'the persisted comment should be the approved one');
+	});
 });

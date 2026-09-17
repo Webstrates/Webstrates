@@ -29,8 +29,11 @@ module.exports = {
 	// Keep alive message interval in seconds. A falsy value disables keep alive.
 	keepAliveInterval: 25,
 	// Supports selector syntax, i.e. 'div.not-persisted' to not persist all DIV elements with the
-	// class 'not-persisted'.
-	isTransientElement: (DOMNode) => DOMNode.matches('transient'),
+	// class 'not-persisted'. Only elements can match a selector, so any other node type (text
+	// and comment nodes) is never transient here — protected mode relies on this to be able to
+	// pass comment nodes through to this function without it throwing.
+	isTransientElement: (DOMNode) => DOMNode.nodeType === Node.ELEMENT_NODE
+		&& DOMNode.matches('transient'),
 	// Any attributeName starting with 'transient-' should be transient.
 	isTransientAttribute: (DOMNode, attributeName) => attributeName.startsWith('transient-'),
 	// Peer Connection configuration used for the WebRTC-based signal streaming.

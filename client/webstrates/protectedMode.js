@@ -59,8 +59,12 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		|| isInsideApprovedContentEditable(DOMNode)
 		|| !!DOMNode.__approved; // Directly approved
 	const isInsideApprovedContentEditable = DOMNode => {
-	    let editable = DOMNode.closest('[contenteditable]');
-	    return editable && !!editable.__approved;
+		// Comment (and text) nodes have no .closest, so start the search from their parent
+		// element instead.
+		let editable = DOMNode.nodeType === Node.ELEMENT_NODE
+			? DOMNode.closest('[contenteditable]')
+			: DOMNode.parentElement && DOMNode.parentElement.closest('[contenteditable]');
+		return editable && !!editable.__approved;
 	};
 
 	/**
@@ -192,6 +196,22 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 		options = {}, ...unused) => {
 		options.approved = true;
 		return importNode(externalNode, deep, options, ...unused);
+	});
+
+	// Comments created by other modules (e.g. when populating the document from a JsonML
+	// snapshot or applying incoming ops, see coreJsonML.toHTML) are already persisted
+	// server-side, so they should be approved — just like the elements those functions
+	// create. Without this, protected mode would deny comments that arrive from the server
+	// a place in the path tree, desynchronizing the path tree from the JsonML.
+	// Note: unlike the createElement overrides, there is no BOTH-level override for
+	// createComment that would hand us an already bound function, so the native function has
+	// to be invoked on `this` (the document) explicitly — which also requires a non-arrow
+	// function for the binding to take effect.
+	coreDOM.overrideDocument('createComment', coreDOM.CONTEXT.INTERNAL, function (createComment,
+		data, ...unused) {
+		const comment = createComment.call(this, data, ...unused);
+		approveNode(comment);
+		return comment;
 	});
 
 	coreDOM.overrideDocument('createElementNS', coreDOM.CONTEXT.BOTH, (createElementNS, namespaceURI,

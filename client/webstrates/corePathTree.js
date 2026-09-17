@@ -63,18 +63,21 @@ function PathTree(DOMNode, parentPathTree, overwrite) {
 
 /**
  * Check whether a DOM Node should be persisted on the server (i.e. whether it's transient or not).
- * For a DOM Node to be transient, it has to be an element (i.e. not a text node), exist outside of
- * a template tag, as well as not be in the list of transient elements (config.transientElements).
+ * For a DOM Node to be transient, it has to be an element or a comment node (i.e. not a text
+ * node), exist outside of a template tag, as well as pass the transience check defined in
+ * config.isTransientElement. Comments are structural nodes in the JsonML (['!', ...]) just
+ * like elements, so protected mode has to be able to make them transient too.
  * @param  {DOMNode} DOMNode DOM Node to check.
  * @return {boolean}         True if the DOM Node is transient.
  * @private
  */
 function isTransientElement(DOMNode) {
-	// Only elements can be transient
-	return DOMNode.nodeType === document.ELEMENT_NODE
+	// Elements and comments can be transient (text nodes deliberately never are, so text
+	// edits persist even in protected documents)
+	return (DOMNode.nodeType === document.ELEMENT_NODE || DOMNode.nodeType === document.COMMENT_NODE)
 		// Nothing in templates can be transient
 		&& !coreUtils.elementIsTemplateDescendant(DOMNode)
-		// Only elements passing a function defined in config.isTransientElement are transient.
+		// Only nodes passing a function defined in config.isTransientElement are transient.
 		&& config.isTransientElement && config.isTransientElement(DOMNode);
 }
 
