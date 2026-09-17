@@ -53,9 +53,11 @@ share.use(['connect'], (req, next) => {
 const COLLECTION_ACTIONS = ['s', 'f', 'u', 'op', 'bf', 'bs', 'bu', 'qf', 'qs', 'nf', 'nt'];
 share.use('receive', (req, next) => {
 	const data = req.data;
-	if (data && COLLECTION_ACTIONS.includes(data.a) &&
-		(typeof data.c !== 'string' || data.c.length === 0)) {
-		return next(`Invalid message: action "${data.a}" requires a collection field "c".`);
+	// The collection is also client-controlled. In theory any connected client can address ANY 
+	// Mongo collection in the webstrates database (tags, ops, sessionLog, messages, cookies, or 
+	// brand-new namespaces) - Webstrates only ever uses one collection, so only that one is accepted.
+	if (data && COLLECTION_ACTIONS.includes(data.a) && data.c !== COLLECTION_NAME) {
+		return next(`Invalid message: action "${data.a}" requires collection "${COLLECTION_NAME}".`);
 	}
 
 	next();
@@ -155,7 +157,10 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 
 		const socketId = req.agent.socketId;
 		let user = req.agent.user;
-		const webstrateId = req.id || (req.data && req.data.d) || req.op.d;
+		// The message shape varies by action; e.g. a bare {} message leaves both req.data.d
+		// and req.op unset
+		const webstrateId = req.id || (req.data && req.data.d) || (req.op && req.op.d);
+		if (!webstrateId) return next('Invalid message: no document id.');
 
 		// We have already resolved the user from the token in the sessionMiddleware, but we have to do it here as well,
 		// because the webstrateId here may differ from the original req.params.webstrateId, and so may the permissions.
