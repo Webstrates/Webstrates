@@ -22,7 +22,8 @@ exports.admin = {
     /**
      * Creates a new invite key for the given webstrate with specified permissions and maximum lifetime.
      * @param {string} webstrateId The ID of the webstrate.
-     * @param {object} options Options including permissions and maxAge.
+     * @param {object} [options] Options: permissions (defaults to read-only) and maxAge in
+     *     seconds (defaults to one week, capped at the one-month limit).
      * @param {object} user The user creating the invite.
      * @returns {Promise<object>} An object containing the new invite.
      */
@@ -31,8 +32,12 @@ exports.admin = {
         const inviteKey = crypto.randomBytes(32).toString('hex');
         const expiresAt = new Date();
         const ageLimit = 3600 * 24 * 30; // One-month limit
-        const maxAge = Math.min(options.maxAge, ageLimit);
-        const invitePermissions = options.permissions;
+        const requestedMaxAge = Number(options && options.maxAge);
+        const defaultMaxAge = 7 * 24 * 3600; // One week, like the client library's default.
+        const maxAge = requestedMaxAge > 0
+            ? Math.min(requestedMaxAge, ageLimit)
+            : defaultMaxAge;
+        const invitePermissions = (options && options.permissions) || 'r';
         expiresAt.setSeconds(expiresAt.getSeconds() + maxAge);
 
         const inviteDocument = {

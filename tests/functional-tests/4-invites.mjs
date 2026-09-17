@@ -312,4 +312,138 @@ describe('Invites', function () {
 		expect(error).to.be.an('Error');
 		expect(error.message).to.include('Must be logged in to handle invites');
 	});
+
+	// The client library always fills in permissions and maxAge with defaults before
+	// sending, but the invite actions are a websocket protocol of their own: any client
+	// can send a createInvite action with no options field at all, or with an empty one.
+	// The tests below speak that raw protocol from a logged-in admin page, to pin down
+	// what the server does on its own, without the client library smoothing over the gaps.
+	const rawInviteRequest = (page, action, options) => {
+		const token = 'invite-' + action + '-' + util.randomString();
+		return page.evaluate((id, action, options, token) => new Promise((resolve) => {
+			// options === null means "send no options field at all".
+			const message = { wa: action, d: id, token };
+			if (options !== null) message.options = options;
+
+			const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+			const finish = (reply) => {
+				try { socket.close(); } catch (err) {}
+				resolve(reply);
+			};
+			setTimeout(() => finish({ error: 'timeout waiting for ' + action + ' reply' }), 5000);
+			socket.onerror = () => finish({ error: 'websocket error' });
+			socket.onopen = () => {
+				// ShareDB expects a handshake before the connection settles into anything
+				// usable, so open with one we don't rely on before sending the actual action.
+				socket.send(JSON.stringify({ a: 'hs', id: null, protocol: 1, protocolMinor: 2 }));
+				setTimeout(() => socket.send(JSON.stringify(message)), 200);
+			};
+			socket.onmessage = (event) => {
+				const reply = JSON.parse(event.data);
+				if (reply.wa === 'reply' && reply.token === token) finish(reply);
+			};
+		}), webstrateId, action, options, token);
+	};
+
+	// The data-auth write below is an operation like any other: poll until the server
+	// actually enforces the admin permissions it grants before the tests below rely on them.
+	const awaitAdminPermissions = async (page) => {
+		const deadline = Date.now() + 5000;
+		while (true) {
+			const reply = await rawInviteRequest(page, 'getInvites', null);
+			if (!reply.error) return;
+			if (Date.now() > deadline) {
+				throw new Error('admin permissions did not take effect in time: ' + reply.error);
+			}
+			await util.sleep(0.2);
+		}
+	};
+
+	it('User A regains admin permissions over the webstrate', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		// The previous test case ended with user A losing admin permissions; grant them
+		// back for the invite tests below, keeping the read permissions user B earned.
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('data-auth',
+				JSON.stringify([
+					{
+						username: 'testuserA',
+						provider: 'test',
+						permissions: 'awr'
+					},
+					{
+						username: 'testuserB',
+						provider: 'test',
+						permissions: 'r'
+					}
+				])
+			);
+		});
+
+		await awaitAdminPermissions(pageA);
+	});
+
+	it('Creating an invite without an options field yields a working invite with the default lifetime and permissions', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		const reply = await rawInviteRequest(pageA, 'createInvite', null);
+
+		assert.isUndefined(reply.error, 'createInvite without an options field failed: ' + reply.error);
+		assert.match(reply.reply.key, /^[0-9a-f]{64}$/, 'invite is missing its key');
+		assert.equal(reply.reply.permissions, 'r', 'invite without options should default to read permissions');
+
+		// The default lifetime is the one-week default the client library applies, too.
+		assert.isNotNull(reply.reply.expiresAt, 'invite without options has no expiry');
+		assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
+			Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000, 'default expiry should be one week out');
+
+		const check = await rawInviteRequest(pageA, 'checkInvite', { key: reply.reply.key });
+		assert.isUndefined(check.error, 'invite created without options is not usable: ' + check.error);
+	});
+
+	it('Creating an invite with an empty options object yields a usable invite instead of a dead one', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		const reply = await rawInviteRequest(pageA, 'createInvite', {});
+
+		assert.isUndefined(reply.error, 'createInvite with empty options failed: ' + reply.error);
+		assert.equal(reply.reply.permissions, 'r', 'invite with empty options should default to read permissions');
+		assert.isNotNull(reply.reply.expiresAt, 'invite with empty options has no expiry');
+		assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
+			Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000, 'default expiry should be one week out');
+
+		// The expired-invite sweep runs before every invite action, so an invite whose
+		// expiry was not a real date is born already swept away. Its key must survive one
+		// more API call to prove the invite was actually usable.
+		const check = await rawInviteRequest(pageA, 'checkInvite', { key: reply.reply.key });
+		assert.isUndefined(check.error, 'invite created with empty options is dead on arrival: ' + check.error);
+		assert.equal(check.reply.key, reply.reply.key);
+	});
+
+	it('maxAge values that are not positive numbers fall back to the default lifetime', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		for (const maxAge of ['not-a-number', 0, -3600, null]) {
+			const reply = await rawInviteRequest(pageA, 'createInvite', { maxAge, permissions: 'r' });
+			assert.isUndefined(reply.error,
+				'createInvite with maxAge ' + JSON.stringify(maxAge) + ' failed: ' + reply.error);
+			assert.isNotNull(reply.reply.expiresAt,
+				'maxAge ' + JSON.stringify(maxAge) + ' produced no expiry');
+			assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
+				Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000,
+				'maxAge ' + JSON.stringify(maxAge) + ' should fall back to the one-week default');
+		}
+	});
+
+	it('maxAge above the one-month limit is clamped to it', async function () {
+		if (config.authType !== 'test') return this.skip();
+
+		const reply = await rawInviteRequest(pageA, 'createInvite', { maxAge: 3600 * 24 * 365, permissions: 'r' });
+
+		assert.isUndefined(reply.error, 'createInvite with a years-long maxAge failed: ' + reply.error);
+		assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
+			Date.now() + 30 * 24 * 3600 * 1000, 60 * 1000,
+			'a years-long maxAge should be clamped to the one-month limit');
+	});
 });
