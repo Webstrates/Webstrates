@@ -78,6 +78,13 @@ const changesPermissions = (ops) => Array.isArray(ops) && ops.some(op =>
 if (global.config.tagging) {
 	const webstrateActivites = {};
 
+	// Auto-tag after this many milliseconds of inactivity. The config value is in seconds —
+	// 3600, one hour, by default — and anything that is not a positive finite number falls
+	// back to that default
+	const autotagInterval = Number(global.config.tagging.autotagInterval);
+	const autotagIntervalMs = (Number.isFinite(autotagInterval) && autotagInterval > 0
+		? autotagInterval : 3600) * 1000;
+
 	share.use(['submit'], (req, next) => {
 		// req is the sharedb request, req.req is the HTTP request that we've attached ourselves
 		// when we did share.listen(stream, req).
@@ -91,7 +98,7 @@ if (global.config.tagging) {
 		const timestamp = Date.now();
 
 		if (!webstrateActivites[webstrateId] || webstrateActivites[webstrateId] +
-			global.global.config.tagging * 1000 < timestamp) {
+			autotagIntervalMs < timestamp) {
 			const version = req.op.v;
 			documentManager.getTag(webstrateId, version, function(err, tag) {
 				// If a tag already exists at this version, we don't want to overwrite it with our

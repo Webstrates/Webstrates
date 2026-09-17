@@ -264,3 +264,80 @@ describe('Versioning (restores spanning multiple ops)', function () {
 		assert.equal(innerText, '');
 	});
 });
+
+// Auto-tagging marks the start of a new editing session: a "Session of …" tag fires on a
+// document's first op and on the first op after tagging.autotagInterval seconds of
+// inactivity. The interval was once read as the tagging config object itself, whose NaN
+// made the inactivity check never pass — only the first op of a document was ever tagged.
+// The suite starts its own server with a two-second interval, so the session semantics can
+// be tested in seconds instead of the default hour.
+describe('Versioning (auto-tagging)', function () {
+	this.timeout(30000);
+
+	const webstrateId = 'test-' + util.randomString();
+	let browser, page;
+	let server, url, tagPrefix;
+
+	const sessionTags = () => page.evaluate((prefix) =>
+		Object.values(window.webstrate.tags()).filter((label) => label.startsWith(prefix)),
+	tagPrefix);
+
+	before(async function () {
+		// Under the harness this suite gets its own server with a short auto-tag interval.
+		// Without one (mocha against an external server), skip: that server's interval is
+		// unknown, and the default (an hour) does not fit inside a test.
+		if (!process.env.WEBSTRATES_HARNESS_STATE) this.skip();
+
+		const harness = await import('../lib/server-harness.mjs');
+		server = await harness.startServer({
+			label: 'versioning-autotag',
+			port: 7354,
+			config: {
+				// Keep the base server's database (a dedicated mongod under parallel checkouts).
+				db: config.server.db,
+				tagging: { autotagInterval: 2 }
+			}
+		});
+		url = server.address + webstrateId;
+		tagPrefix = server.config.tagging.tagPrefix;
+
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded, 2);
+	});
+
+	after(async () => {
+		if (page && url) await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		if (browser) await browser.close();
+		if (server) await server.stop();
+	});
+
+	it('should auto-tag the first op of a new document', async () => {
+		const tags = await sessionTags();
+		assert.lengthOf(tags, 1);
+	});
+
+	it('should not auto-tag while edits stay within the inactivity interval', async () => {
+		await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', 'Hello'));
+		await util.waitForFunction(page, () => window.webstrate.version === 2);
+		await util.sleep(.2);
+
+		const tags = await sessionTags();
+		assert.lengthOf(tags, 1);
+	});
+
+	it('should auto-tag the first op after the inactivity interval', async () => {
+		await util.sleep(3);
+
+		await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', ' again'));
+		await util.waitForFunction(page, () => window.webstrate.version === 3);
+
+		// The tag write is asynchronous on the server, so give it a moment to arrive.
+		const tagged = await util.waitForFunction(page, (prefix) =>
+			Object.values(window.webstrate.tags())
+				.filter((label) => label.startsWith(prefix)).length === 2, 5, tagPrefix);
+		assert.isTrue(tagged, 'expected a new session tag after the inactivity interval');
+	});
+});
