@@ -42,6 +42,13 @@ exports.onmessage = (ws, req, data, next) => {
 
 	const stream = streams.get(req.socketId);
 	if (stream) {
+		// Only object messages belong on the ShareDB stream. Pushing anything else would
+		// either confuse ShareDB's protocol handling or, for `null` (which a stream reads
+		// as end-of-stream), silently terminate the ShareDB connection.
+		if (typeof data !== 'object' || data === null) {
+			return next();
+		}
+
 		// Ensuring the client is using the right collection.
 		//if (data.c) data.c = 'webstrates';
 
