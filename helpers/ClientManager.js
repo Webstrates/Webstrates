@@ -4,6 +4,21 @@ const shortId = require('shortid');
 const db = require(APP_PATH + '/helpers/database.js');
 const messagingManager = require(APP_PATH + '/helpers/MessagingManager.js');
 
+// Webstrate ids (URL segments) and signal node ids (`wa` action fields) are client-controlled
+// and are used as keys into the plain-object maps and per-client arrays below. A key that
+// collides with a property of Object.prototype or Array.prototype is not looked up as an own
+// property but walks the prototype chain instead: reads return inherited values that lack
+// the map's methods (TypeError, and in the join/part timers a process-fatal one), and writes
+// land straight in Object.prototype, polluting the whole process — every document the server
+// serves gained phantom attributes (see tests/functional-tests/5-fuzzing.mjs, "crash
+// candidates"). Such keys are refused at the entry points of this module. Legitimate ids
+// (shortid-generated webstrate ids and node wids) never contain these names.
+const INVALID_NAMES = new Set([
+	...Object.getOwnPropertyNames(Object.prototype),
+	...Object.getOwnPropertyNames(Array.prototype)
+]);
+const isInvalidName = (key) => INVALID_NAMES.has(key);
+
 // One-to-one mapping from socketIds to client sockets as well as one-to-many mapping from
 // socketId to webstrateIds. clients holds all connected clients.
 const clients = {};
@@ -186,6 +201,10 @@ module.exports.triggerJoin = function(socketId) {
  * @public
  */
 module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
+	if (isInvalidName(webstrateId)) {
+		return;
+	}
+
 	// The client may have disconnected while its ({a:'s'}) subscribe was still in flight. In that
 	// case clients[socketId] is already gone (removeClient ran on close) and continuing would (a)
 	// throw an unhandled rejection when reading clients[socketId].user below, and (b) leak: the
@@ -292,6 +311,13 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
  * @public
  */
 module.exports.removeClientFromWebstrate = function(socketId, webstrateId, userId) {
+	// Prototype-colliding webstrate ids are never recorded as joined (see
+	// addClientToWebstrate), so a part for one can only be an attempt to reach the
+	// prototype chain through clients[socketId].webstrates[webstrateId] and
+	// webstrates[webstrateId]. Refuse it the same way.
+	if (isInvalidName(webstrateId)) {
+		return;
+	}
 
 	// The client may unsubscribe from a webstrate it never joined (no prior 's'), in which case
 	// there are no node subscriptions to clean up.
@@ -376,6 +402,11 @@ module.exports.removeClientFromWebstrate = function(socketId, webstrateId, userI
  * @public
  */
 module.exports.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
+	// Refuse bad ids - this also stops the retry timer below from ever dereferencing them.
+	if (isInvalidName(webstrateId) || isInvalidName(nodeId)) {
+		return;
+	}
+
 	// Make sure the client is connected to the webstrate.
 	if (!clients[socketId] || !clients[socketId].webstrates[webstrateId]) {
 		// The user may have been so eager to subscribe that they sent the command before they have
@@ -421,6 +452,13 @@ module.exports.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
  * @public
  */
 module.exports.unsubscribe = function(socketId, webstrateId, nodeId) {
+	// Prototype-colliding ids never have recorded subscriptions (see subscribe), so a
+	// request for one can only be an attempt to reach the prototype chain through
+	// nodeIds[webstrateId][nodeId]. Refuse it the same way.
+	if (isInvalidName(webstrateId) || isInvalidName(nodeId)) {
+		return;
+	}
+
 	if (!nodeIds[webstrateId] || !nodeIds[webstrateId][nodeId]) {
 		return;
 	}
@@ -466,6 +504,12 @@ module.exports.unsubscribe = function(socketId, webstrateId, nodeId) {
  * @public
  */
 module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, recipients) {
+	// Prototype-colliding ids are never subscribed (see subscribe); refusing them here
+	// keeps the spreads below from trying to iterate the prototype chain.
+	if (isInvalidName(webstrateId) || isInvalidName(nodeId)) {
+		return;
+	}
+
 	if (!nodeIds[webstrateId]) {
 		return;
 	}
@@ -623,7 +667,7 @@ module.exports.fetchCookie = async function(userId, webstrateId, key){
  * @public
  */
 module.exports.sendToClients = function(webstrateId, message) {
-	if (!webstrates[webstrateId]) {
+	if (!webstrates[webstrateId] || isInvalidName(webstrateId)) {
 		return;
 	}
 
@@ -664,7 +708,7 @@ module.exports.sendToClient = function(socketId, message) {
  * @private
  */
 function broadcastToWebstrateClients(webstrateId, message) {
-	if (!webstrates[webstrateId]) {
+	if (!webstrates[webstrateId] || isInvalidName(webstrateId)) {
 		return;
 	}
 
@@ -681,7 +725,7 @@ function broadcastToWebstrateClients(webstrateId, message) {
  * @private
  */
 function broadcastToUserClientsInWebstrate(webstrateId, userId, message) {
-	if (!webstrates[webstrateId] || !userIds[userId]) {
+	if (!webstrates[webstrateId] || !userIds[userId] || isInvalidName(webstrateId)) {
 		return;
 	}
 
