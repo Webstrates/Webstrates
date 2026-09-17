@@ -105,4 +105,10 @@ documentProxyObj.get = (obj, prop) => {
 		: obj[prop];
 };
 
+// Make webstrate.document behave exactly like document on writes
+documentProxyObj.set = (obj, prop, value) => {
+	obj[prop] = value;
+	return true;
+};
+
 module.exports = coreDOMModule;

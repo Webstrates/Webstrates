@@ -128,4 +128,28 @@ describe('Basic DOM Manipulation', function() {
 
 			assert.equal(error, false);
 		});
+
+	it('setting title through webstrate.document shouldn\'t throw an error (issue #68)', async () => {
+		// webstrate.document is a proxy of the document. Assigning native properties (like
+		// title) on it used to throw "Illegal invocation", because the proxy became the
+		// receiver of the document's native setters instead of the document itself.
+		const error = await pageA.evaluate(() => {
+			try {
+				window.webstrate.document.title = 'Title set through webstrate.document';
+				return null;
+			} catch (err) {
+				return err.message;
+			}
+		});
+		assert.isNull(error, `setting title threw: ${error}`);
+
+		// The assignment went to the real document, so it takes effect locally...
+		const titleA = await pageA.evaluate(() => document.title);
+		assert.equal(titleA, 'Title set through webstrate.document');
+
+		// ...and syncs to other clients like any other DOM change.
+		const titleSynced = await util.waitForFunction(pageB, () =>
+			document.title === 'Title set through webstrate.document');
+		assert.isTrue(titleSynced);
+	});
 });
