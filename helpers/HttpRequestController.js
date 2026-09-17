@@ -524,7 +524,7 @@ function setCorsHeaders(req, res, snapshot) {
 	const originHost = getHostFromUrl(req.headers.origin);
 
 	if (!originHost || !snapshot || !snapshot.data || !snapshot.data[0] ||
-		!snapshot.data[0] === 'html' || !snapshot.data[1] || !snapshot.data[1]['data-cors']) {
+		snapshot.data[0] !== 'html' || !snapshot.data[1] || !snapshot.data[1]['data-cors']) {
 		return false;
 	}
 

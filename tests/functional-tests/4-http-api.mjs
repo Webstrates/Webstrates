@@ -328,3 +328,185 @@ describe('HTTP API: /new?prototypeUrl= refuses internal addresses', function() {
 	});
 
 });
+
+// The CORS feature: a document whose root <html> element carries a data-cors attribute — a
+// JSON list of URLs — receives Access-Control-Allow-* response headers on requests whose
+// Origin host matches the host of one of the listed URLs.
+describe('HTTP API: CORS headers (data-cors)', function() {
+	this.timeout(10000);
+
+	// The cross-origin requests below are plain GETs carrying an Origin header, and the
+	// origins can be arbitrary URLs: the server compares hosts only.
+	const ALLOWED_ORIGIN = 'http://allowed.example';
+	const DENIED_ORIGIN = 'http://denied.example';
+
+	// Documents created on the side (raw-socket test), so after() can delete them.
+	const createdWebstrateIds = [];
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId + '/';
+
+	let browser, page;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded);
+	});
+
+	after(async () => {
+		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
+		// Clean up the documents the raw-socket test created.
+		for (const createdId of createdWebstrateIds) {
+			await fetch(config.server_address + createdId + '?delete').catch(() => {});
+		}
+
+		await browser.close();
+	});
+
+	// Set (or remove, when value is null) the root element's data-cors attribute through the
+	// real client, then wait for the change to reach the server's committed snapshot: ?json
+	// serves exactly the snapshot the CORS logic evaluates, and fetching right after the
+	// DOM change would race the op sync. The client HTML-escapes attribute values on their
+	// way into the snapshot (double quotes arrive as &quot;), so compare after the same
+	// un-escaping the server performs on data-cors.
+	const setDataCors = async (value) => {
+		await page.evaluate((attributeValue) => {
+			if (attributeValue === null) {
+				document.documentElement.removeAttribute('data-cors');
+			} else {
+				document.documentElement.setAttribute('data-cors', attributeValue);
+			}
+		}, value);
+		const unescape = (stored) => stored.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
+		const deadline = Date.now() + 5000;
+		while (Date.now() < deadline) {
+			const snapshot = await (await fetch(url + '?json')).json();
+			const stored = snapshot[1]['data-cors'];
+			const unescaped = stored === undefined ? null : unescape(stored);
+			if (unescaped === value) return;
+			await util.sleep(0.25);
+		}
+		assert.fail(`data-cors change to ${JSON.stringify(value)} never reached the server snapshot`);
+	};
+
+	// GET a document the way a cross-origin request would, and return the response status
+	// and the CORS response headers (null when a header is absent).
+	const corsHeaders = async (docUrl, origin) => {
+		const response = await fetch(docUrl, { headers: { Origin: origin } });
+		await response.text(); // Drain the body so the connection is released.
+		return {
+			status: response.status,
+			allowOrigin: response.headers.get('Access-Control-Allow-Origin'),
+			allowCredentials: response.headers.get('Access-Control-Allow-Credentials'),
+			allowHeaders: response.headers.get('Access-Control-Allow-Headers')
+		};
+	};
+
+	// Create a webstrate with arbitrary initial JsonML through a raw ShareDB websocket from
+	// the connected page (the pattern of the permissions tests) — the only way into the
+	// system for documents whose root element is not <html>, which the browser client never
+	// produces. Resolves null on success, or a description of the failure.
+	const createWebstrateOnRawSocket = (docId, data) =>
+		page.evaluate((id, data) => new Promise((resolve) => {
+			const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+			const finish = (error) => {
+				try { socket.close(); } catch { /* ignore */ }
+				resolve(error || null);
+			};
+			setTimeout(() => finish('timeout'), 5000);
+			socket.onopen = () => socket.send(JSON.stringify({
+				a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
+				create: { type: 'http://sharejs.org/types/JSONv0', data: data }
+			}));
+			socket.onerror = () => finish('websocket error');
+			socket.onmessage = (event) => {
+				const message = JSON.parse(event.data);
+				if (message.wa || message.a === 'init') return;
+				finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
+					JSON.stringify(message));
+			};
+		}), docId, data);
+
+	it('sends Access-Control-Allow-* headers to an origin listed in data-cors', async () => {
+		await setDataCors(JSON.stringify([ALLOWED_ORIGIN]));
+		const headers = await corsHeaders(url, ALLOWED_ORIGIN);
+		assert.equal(headers.status, 200, 'the cross-origin request should be served');
+		assert.equal(headers.allowOrigin, ALLOWED_ORIGIN,
+			'Access-Control-Allow-Origin should echo the requesting origin');
+		assert.equal(headers.allowCredentials, 'true', 'Access-Control-Allow-Credentials ' +
+			'should be true');
+		assert.equal(headers.allowHeaders, 'Origin, X-Requested-With, Content-Type, Accept',
+			'Access-Control-Allow-Headers should list the accepted request headers');
+	});
+
+	it('matches data-cors entries by host, ignoring scheme and path', async () => {
+		// The host comparison is deliberately lax: scheme and any path suffix do not
+		// matter, only the host does.
+		await setDataCors(JSON.stringify(['https://allowed.example/some/page/']));
+		const headers = await corsHeaders(url, ALLOWED_ORIGIN);
+		assert.equal(headers.allowOrigin, ALLOWED_ORIGIN,
+			'data-cors entries are matched by host, not by string equality');
+	});
+
+	it('parses single-quoted data-cors values leniently', async () => {
+		// Single quotes (and &quot;) are converted to double quotes before JSON.parsing,
+		// so hand-written values don't have to be strict JSON.
+		await setDataCors(`['${ALLOWED_ORIGIN}']`);
+		const headers = await corsHeaders(url, ALLOWED_ORIGIN);
+		assert.equal(headers.allowOrigin, ALLOWED_ORIGIN,
+			'a single-quoted data-cors value should grant CORS all the same');
+	});
+
+	it('sends no CORS headers to an origin not listed in data-cors', async () => {
+		await setDataCors(JSON.stringify([ALLOWED_ORIGIN]));
+		const headers = await corsHeaders(url, DENIED_ORIGIN);
+		assert.equal(headers.status, 200, 'the document itself is still served');
+		assert.isNull(headers.allowOrigin, 'an unlisted origin must not receive ' +
+			'Access-Control-Allow-Origin');
+	});
+
+	it('sends no CORS headers without a data-cors attribute', async () => {
+		await setDataCors(null);
+		const headers = await corsHeaders(url, ALLOWED_ORIGIN);
+		assert.equal(headers.status, 200, 'the document itself is still served');
+		assert.isNull(headers.allowOrigin, 'documents without data-cors must not receive ' +
+			'Access-Control-Allow-Origin');
+	});
+
+	it('sends no CORS headers when data-cors is unparseable', async () => {
+		await setDataCors('not json');
+		const headers = await corsHeaders(url, ALLOWED_ORIGIN);
+		assert.equal(headers.status, 200, 'the document itself is still served');
+		assert.isNull(headers.allowOrigin, 'an unparseable data-cors value must not ' +
+			'receive Access-Control-Allow-Origin');
+	});
+
+	it('grants CORS only on documents whose root element is html', async () => {
+		// Both documents carry the same data-cors listing the requesting origin; only the
+		// root element differs. data-cors is an attribute of the root <html> element: on a
+		// document whose root element is not html (here a plain ShareDB-created div
+		// document), it must not grant CORS.
+		const dataCors = JSON.stringify([ALLOWED_ORIGIN]);
+		const htmlId = 'test-' + util.randomString();
+		const divId = 'test-' + util.randomString();
+		createdWebstrateIds.push(htmlId, divId);
+
+		const htmlCreateError = await createWebstrateOnRawSocket(htmlId,
+			['html', { 'data-cors': dataCors }, ['head', {}], ['body', {}]]);
+		assert.isNull(htmlCreateError, 'creating the html-root document failed');
+		const divCreateError = await createWebstrateOnRawSocket(divId,
+			['div', { 'data-cors': dataCors }, ['span', {}, 'not an html document']]);
+		assert.isNull(divCreateError, 'creating the div-root document failed');
+
+		const htmlHeaders = await corsHeaders(config.server_address + htmlId + '/', ALLOWED_ORIGIN);
+		const divHeaders = await corsHeaders(config.server_address + divId + '/', ALLOWED_ORIGIN);
+		assert.equal(htmlHeaders.allowOrigin, ALLOWED_ORIGIN,
+			'the html-root control document should be CORS-enabled');
+		assert.isNull(divHeaders.allowOrigin, 'a non-HTML document must not receive ' +
+			'Access-Control-Allow-Origin');
+	});
+
+});
