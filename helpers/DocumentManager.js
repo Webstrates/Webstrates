@@ -200,7 +200,11 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 		return await module.exports.tagDocument(webstrateId, currentVersion.v, tag + ' (restored at '+new Date()+')');
 	} else {
 		await util.promisify(module.exports.submitOps)(webstrateId, ops, source);
-		var newVersion = currentVersion.v + ops.length + 1;
+		// submitOps consumes the ops array (it shift()s each op off as it submits them), so
+		// ops.length is 0 by the time submitOps returns and the version can't be derived from
+		// it. Instead, read the document's actual head after the restore ops have landed. This
+		// also tags the correct version if other ops are submitted concurrently.
+		var newVersion = await module.exports.getDocumentVersion(webstrateId);
 		return await module.exports.tagDocument(webstrateId, newVersion, tag + ' (restored at '+new Date()+')');
 	}
 };

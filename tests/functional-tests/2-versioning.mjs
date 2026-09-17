@@ -137,3 +137,111 @@ describe('Versioning', function () {
 		assert.equal(version, 9);
 	});
 });
+
+// A restore that reverts more than one edit reverts them one op at a time, so the fully
+// restored content only exists at the last of those ops' versions. The reply and the tag
+// that the restore creates must reference that fully-restored version — a version in
+// between only holds some of the reverts.
+describe('Versioning (restores spanning multiple ops)', function () {
+	this.timeout(20000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId;
+	let browser, page;
+
+	// Every restore tags the version it restores to with "<label> (restored at <date>)",
+	// using the tag label of the restored version as the prefix.
+	const restoreTag = () => page.evaluate(() => {
+		const tags = window.webstrate.tags();
+		return Object.entries(tags).find(([, label]) => label.includes('restored at')) || null;
+	});
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded, 2);
+	});
+
+	after(async () => {
+		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await browser.close();
+	});
+
+	it('version should be 1 before we begin', async () => {
+		const version = await page.evaluate(() => window.webstrate.version);
+		assert.equal(version, 1);
+	});
+
+	// Two edits in two separate elements, so that reverting them requires one op per edit.
+	it('edits in separate elements should bump the version per edit', async () => {
+		await page.evaluate(() => {
+			const heading = document.createElement('h1');
+			heading.textContent = 'Heading';
+			document.body.appendChild(heading);
+		});
+
+		await util.waitForFunction(page, () => window.webstrate.version === 2);
+
+		await page.evaluate(() => {
+			const paragraph = document.createElement('p');
+			paragraph.textContent = 'Paragraph';
+			document.body.appendChild(paragraph);
+		});
+
+		await util.waitForFunction(page, () => window.webstrate.version === 3);
+	});
+
+	it('restoring should reply with the fully-restored version', async () => {
+		const restoredVersion = await page.evaluate(() => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.restore(1, (err, v) => {
+					if (err) return reject(err);
+					resolve(v);
+				});
+			});
+		});
+
+		// The empty document is version 1, "Heading" is version 2,
+		// "Heading"+"Paragraph" is version 3, the restore no-op is version 4, and reverting
+		// the two elements takes one op each, so the restored document is version 6.
+		assert.equal(restoredVersion, 6);
+	});
+
+	it('restoring should restore the original content', async () => {
+		await util.waitForFunction(page, () => window.webstrate.version === 6, 5);
+
+		const innerText = await page.evaluate(() => document.body.innerText);
+		assert.equal(innerText, '');
+	});
+
+	it('the tag created by the restore should point at the fully-restored version', async () => {
+		const tag = await restoreTag();
+		assert.isNotNull(tag, 'expected the restore to create a tag');
+		assert.equal(Number(tag[0]), 6);
+	});
+
+	it('should be possible to restore back to the restore tag', async () => {
+		const tag = await restoreTag();
+		assert.isNotNull(tag, 'expected the restore to create a tag');
+		const label = tag[1];
+
+		await page.evaluate((label) => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.restore(label, (err) => {
+					if (err) return reject(err);
+					resolve();
+				});
+			});
+		}, label);
+
+		await util.sleep(.5);
+
+		// The restore tag points at the fully-restored document, so restoring back to it
+		// must yield that same content again, not a document that still contains one of
+		// the edits that the first restore reverted.
+		const innerText = await page.evaluate(() => document.body.innerText);
+		assert.equal(innerText, '');
+	});
+});
