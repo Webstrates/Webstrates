@@ -268,6 +268,9 @@ module.exports.getDocumentVersion = async function(webstrateId) {
  */
 module.exports.getVersionFromTag = async function(webstrateId, tag, next) {
 	let doc = await db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 });
+	if (!doc) {
+		throw new Error(`Requested tag ${tag} does not exist.`);
+	}
 	return Number(doc.v);
 };
 
@@ -388,7 +391,9 @@ module.exports.tagDocument = async function(webstrateId, version, label) {
  */
 module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 	var query = { webstrateId };
-	if (version) {
+	// Version 0 (the initial, empty version of every document) is a valid version to
+	// untag, so presence must be tested against undefined, not with truthiness.
+	if (version !== undefined && version !== null) {
 		query.v = version;
 	}
 	else {

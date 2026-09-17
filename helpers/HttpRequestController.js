@@ -490,8 +490,10 @@ function extractVersionOrTag(versionOrTag) {
 	var version, tag;
 	if (versionOrTag === '') {
 		version = '';
-	} else if (/^\d/.test(versionOrTag)) {
-		version = Number(versionOrTag) || undefined;
+	} else if (/^\d+$/.test(versionOrTag)) {
+		// Version 0 is a valid version, so it mustn't be coerced to undefined by testing
+		// the truthiness of the parsed number.
+		version = Number(versionOrTag);
 	} else {
 		tag = versionOrTag;
 	}
@@ -609,7 +611,9 @@ module.exports.requestHandler = async function(req, res) {
 			// Otherwise we need to check in the request handler if there is a tag
 			try {
 				const version = await documentManager.getVersionFromTag(req.params.webstrateId, req.params.assetOrVersionOrTag);
-				if (version) {
+				// Version 0 is a valid version for a tag to sit on, so presence must be
+				// tested against undefined, not with truthiness.
+				if (version !== undefined && version !== null && !Number.isNaN(version)) {
 					req.params.versionOrTag = req.params.assetOrVersionOrTag;
 					req.params.tag = req.params.assetOrVersionOrTag;
 				}
@@ -1078,16 +1082,19 @@ async function copyWebstrate(req, res, snapshot) {
  */
 async function restoreWebstrate(req, res, snapshot) {
 	// There shouldn't be a version or tag in the first part of the URL, i.e.
-	// `/<id>/<version|tag>/?restore` is not allowed.
-	if (req.params.version || req.params.tag) {
+	// `/<id>/<version|tag>/?restore` is not allowed. (Version 0 is a valid version, so
+	// presence must be tested against undefined, not with truthiness.)
+	if (req.params.version !== undefined || req.params.tag !== undefined) {
 		return res.status(409).send('Can not restore a document at a previous tag or version.' +
 			` Did you mean <code><a href="/${req.params.webstrateId}/?restore=${req.params.versionOrTag}">` +
 			`/${req.params.webstrateId}/?restore=${req.params.versionOrTag}</a></code>?`);
 	}
 
-	// A version or tag in the query string, however, should be defined.
+	// A version or tag in the query string, however, should be defined. (Version 0 is a
+	// valid version, so presence must be tested against undefined, not with truthiness;
+	// the empty string is the explicitly invalid `?restore` with no value.)
 	var { version, tag } = extractVersionOrTag(req.query.restore);
-	if (!version && !tag) {
+	if ((version === undefined || version === '') && !tag) {
 		return res.status(409).send('No tag or version defined.');
 	}
 

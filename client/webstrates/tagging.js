@@ -163,7 +163,9 @@ globalObject.publicObject.tag = (label, version, callback) => {
  * @public
  */
 globalObject.publicObject.untag = (tagOrVersion) => {
-	if (!tagOrVersion) {
+	// Version 0 is a valid version, so presence must be tested against undefined, not
+	// with truthiness.
+	if (tagOrVersion === undefined || tagOrVersion === null || tagOrVersion === '') {
 		throw new Error('Tag label or version number must he provided');
 	}
 
@@ -174,9 +176,9 @@ globalObject.publicObject.untag = (tagOrVersion) => {
 
 	let version;
 
-	// If tagOrVersion begins with a digit, we know it's a version.
-	if (/^\d/.test(tagOrVersion)) {
-		version = tagOrVersion;
+	// If tagOrVersion is (a string of) digits, we know it's a version.
+	if (/^\d+$/.test(String(tagOrVersion))) {
+		version = Number(tagOrVersion);
 	} else {
 		// If it's a tag label, find the corresponding version.
 		version = Object.keys(allTags).find(candidateVersion =>
@@ -185,7 +187,7 @@ globalObject.publicObject.untag = (tagOrVersion) => {
 
 	msgObj.v = version;
 
-	if (!version) {
+	if (version === undefined) {
 		throw new Error('Provided tag does not exist');
 	}
 

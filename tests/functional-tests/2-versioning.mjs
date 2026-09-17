@@ -265,6 +265,92 @@ describe('Versioning (restores spanning multiple ops)', function () {
 	});
 });
 
+// Version 0 is the state of a document before its initial creation op, and it is where
+// every new document's session tag sits. Since 0 is falsy, every gate that tested a
+// version with truthiness (`!!version ^ !!tag`, `if (version)`, `!version`) rejected it:
+// restoring to version 0 answered "Can't restore, need either a tag label or version. Not
+// both.", untagging version 0 never reached the server, and `?restore=0` was a 409 — while
+// the very same version stayed reachable through its tag label all along.
+describe('Versioning (version zero)', function () {
+	this.timeout(20000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId;
+	let browser, page;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+	});
+
+	after(async () => {
+		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await browser.close();
+	});
+
+	it('the session tag should sit on version 0', async () => {
+		const tags = await page.evaluate(() => window.webstrate.tags());
+		assert.exists(tags[0]); // tags is an object, 0 is the key name.
+	});
+
+	it('should be possible to restore to version 0', async () => {
+		const newVersion = await page.evaluate(() => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.restore(0, (err, v) => {
+					if (err) return reject(err);
+					resolve(v);
+				});
+			});
+		});
+
+		await util.waitForFunction(page, () => window.webstrate.version === 4, 5);
+
+		// The initial document is version 1, the restore no-op is version 2, and reverting
+		// the initial creation op takes one op per jsondiff component (delete, insert
+		// null) — versions 3 and 4.
+		assert.equal(newVersion, 4);
+
+		// Version 0 is the empty document, so the restored document has no content.
+		const innerText = await page.evaluate(() => document.body.innerText);
+		assert.equal(innerText, '');
+
+		// The restore tags the version it restores to, like every other restore.
+		const tags = await page.evaluate(() => window.webstrate.tags());
+		assert.include(tags[4], 'restored at');
+	});
+
+	it('should be possible to untag version 0', async () => {
+		await page.evaluate(() => window.webstrate.untag(0));
+
+		// The tag map updates optimistically on the client, so reload and read the tags
+		// the server sends to verify that version 0's tag is really gone. (Goto the
+		// canonical slashed URL: the bare one redirects, and a redirect to a cached
+		// document is exactly the navigation that hangs in puppeteer.)
+		await page.goto(url + '/', { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+
+		const tags = await page.evaluate(() => window.webstrate.tags());
+		assert.notExists(tags[0]);
+	});
+
+	it('should be possible to restore to version 0 using the HTTP API', async () => {
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await page.setCacheEnabled(false);
+		await page.goto(url + '?restore=0', { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		assert.equal(page.url(), url + '/');
+
+		// The document is already empty after the first restore to version 0, so this
+		// restore only sends the no-op — version 5 — and moves the restore tag to it.
+		const version = await page.evaluate(() => window.webstrate.version);
+		assert.equal(version, 5);
+
+		const tags = await page.evaluate(() => window.webstrate.tags());
+		assert.include(tags[5], 'restored at');
+	});
+});
 // Auto-tagging marks the start of a new editing session: a "Session of …" tag fires on a
 // document's first op and on the first op after tagging.autotagInterval seconds of
 // inactivity. The interval was once read as the tagging config object itself, whose NaN

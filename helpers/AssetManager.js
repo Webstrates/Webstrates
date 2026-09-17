@@ -233,8 +233,12 @@ module.exports.copyAssets = async function({ fromWebstrateId, toWebstrateId, ver
  * @public
  */
 module.exports.restoreAssets = async function ({ webstrateId, version, tag, newVersion }) {
-	// We need the version, so if it's not defined, we fetch it
-	if (!version) version = await documentManager.getVersionFromTag(webstrateId, tag);
+	// We need the version, so if it's not defined, we fetch it. Version 0 (the initial,
+	// empty version of every document) is a valid version to restore, so presence must be
+	// tested against undefined, not with truthiness.
+	if (version === undefined || version === null) {
+		version = await documentManager.getVersionFromTag(webstrateId, tag);
+	}
 
 	const assets = await db.assets.find({ webstrateId }).toArray();
 

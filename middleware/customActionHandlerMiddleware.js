@@ -230,8 +230,12 @@ exports.onmessage = async (ws, req, data, next) => {
 			const version = data.v;
 			const tag = data.l;
 			// Only one of these should be defined. We can't restore to a version and a tag.
+			// Version 0 (the initial, empty version of every document) is a valid restore
+			// target, so presence must be tested against undefined, not with truthiness.
 			// version xor tag.
-			if (!!version ^ !!tag) {
+			const hasVersion = version !== undefined && version !== null && version !== '';
+			const hasTag = tag !== undefined && tag !== null && tag !== '';
+			if (hasVersion !== hasTag) {
 				const source = `${user.userId} (${req.remoteAddress})`;
 				try {
 					let newVersion = await documentManager.restoreDocument({ webstrateId, tag, version }, source);
@@ -303,12 +307,16 @@ exports.onmessage = async (ws, req, data, next) => {
 				documentManager.untagDocument(webstrateId, { tag });
 				break;
 			}
-			const version = parseInt(data.v);
-			if (version) {
-				documentManager.untagDocument(webstrateId, { version });
-				break;
+			// Version 0 (the initial, empty version of every document) is a valid version
+			// to untag, so presence must be tested against undefined, not with truthiness.
+			if (data.v !== undefined && data.v !== null && data.v !== '') {
+				const version = parseInt(data.v, 10);
+				if (!Number.isNaN(version)) {
+					documentManager.untagDocument(webstrateId, { version });
+					break;
+				}
 			}
-			console.error('Can\'t restore, need either a tag label or version.');
+			console.error('Can\'t untag, need either a tag label or version.');
 			break;
 		}
 		// Search CSV assets.

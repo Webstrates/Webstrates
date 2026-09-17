@@ -26,7 +26,9 @@ coreUtilsModule.getLocationObject = () => {
 	}
 
 	let tag, version;
-	if (/^\d/.test(tagOrVersion) && Number(tagOrVersion)) {
+	// Version 0 is a valid version, so we can't rely on the truthiness of the coerced
+	// value — only on whether it consists of digits. (Tags can't begin with a digit.)
+	if (/^\d+$/.test(String(tagOrVersion || ''))) {
 		version = Number(tagOrVersion);
 	} else {
 		tag = tagOrVersion;
