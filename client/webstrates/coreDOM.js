@@ -41,6 +41,21 @@ coreDOMModule.CONTEXT = new Proxy(contexts, {
 
 const internalDocumentOverrides = new Map();
 
+/**
+ * Find the object in a prototype chain that has an own property `property`, i.e. the object on
+ * which the property is defined (e.g. Document.prototype for `importNode`). Returns null if no
+ * object in the chain defines the property.
+ * @param  {Object} obj      Object whose prototype chain to search.
+ * @param  {string} property Name of property.
+ * @return {(Object|null)}   Object defining the property, or null if not found.
+ */
+const getPropertyOwner = (obj, property) => {
+	while (obj) {
+		if (Object.prototype.hasOwnProperty.call(obj, property)) return obj;
+		obj = Object.getPrototypeOf(obj);
+	}
+	return null;
+};
 
 /**
  * Override a property on the document object, either internally or internally and externally.
@@ -66,10 +81,20 @@ coreDOMModule.overrideDocument = (property, context, value) => {
 			// original function as the first argument. This, for instance, allows somebody to override
 			// document.createElement and still have access to the original createElement function from
 			// within the new implementation.
-			const originalProperty = coreDOMModule.externalDocument[property]
-				.bind(coreDOMModule.externalDocument);
-			coreDOMModule.externalDocument[property] = value.bind(coreDOMModule.externalDocument,
-				originalProperty);
+			const externalDocument = coreDOMModule.externalDocument;
+			const originalProperty = externalDocument[property].bind(externalDocument);
+			
+			// Install the override where the property currently resides: on the document instance if
+			// userland has defined it there, otherwise on the prototype that defines it (e.g.
+			// Document.prototype for importNode). Installing on the prototype itself — rather than
+			// shadowing it with an own property on the document instance — allows userland to
+			// override the very same prototype function afterwards (e.g.
+			// `Document.prototype.importNode = ...`). The userland override captures our wrapper, so
+			// both get to run
+			const owner = Object.prototype.hasOwnProperty.call(externalDocument, property)
+				? externalDocument
+				: (getPropertyOwner(externalDocument, property) || externalDocument);
+			owner[property] = value.bind(externalDocument, originalProperty);
 		} else {
 			coreDOMModule.externalDocument[property] = value;
 		}

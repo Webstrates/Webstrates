@@ -193,13 +193,16 @@ coreEvents.addEventListener('populated', targetElement => {
 		return element;
 	});
 
-	const cloneNode = Element.prototype.cloneNode;
-	Element.prototype.cloneNode = function(deep, ...unused) {
-		const element = cloneNode.call(this, deep, ...unused);
-		coreUtils.recursiveForEach(element, childNode => {
+	// Installing on Node.prototype (rather than Element) lets userland overrides capture our wrapper
+	// and call through to it, so both the userland logic and the webstrate object attaching
+	// below get to run. This also covers cloning of non-element nodes (text and comment nodes).
+	const cloneNode = Node.prototype.cloneNode;
+	Node.prototype.cloneNode = function(deep, ...unused) {
+		const node = cloneNode.call(this, deep, ...unused);
+		coreUtils.recursiveForEach(node, childNode => {
 			attachWebstrateObjectToNode(childNode, true);
 		});
-		return element;
+		return node;
 	};
 
 	coreEvents.triggerEvent('webstrateObjectsAdded', targetElement);
