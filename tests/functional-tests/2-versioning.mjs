@@ -1,6 +1,7 @@
 // Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
 /* global describe before after it */
 import puppeteer from 'puppeteer';
+import WebSocket from 'ws';
 import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
@@ -351,6 +352,107 @@ describe('Versioning (version zero)', function () {
 		assert.include(tags[5], 'restored at');
 	});
 });
+
+// Subscribing to a webstrate sends a `{wa: 'tags', …}` message listing every tag on the
+// document, and `?tags` serves the same list over HTTP. The tags collection stores a full
+// snapshot copy per tag (that is what makes serving /<webstrateId>/<tag>/ possible)
+describe('Versioning (tag payload)', function () {
+	this.timeout(20000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId;
+
+	// Tags can't begin with a number, so we prepend an x.
+	const tagName = 'x' + util.randomString();
+
+	// Enough body text that a leaked snapshot would blow the size assertion below wide
+	// open: two tags × this much text is ~96 KB, while the intended payload is a few
+	// hundred bytes for any sane number of tags.
+	const BODY_TEXT = 'lorem ipsum '.repeat(4000);
+
+	let browser, page;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded, 2);
+
+		await page.evaluate((text) => {
+			document.body.insertAdjacentHTML('beforeend', `<p>${text}</p>`);
+		}, BODY_TEXT);
+		await util.sleep(.5);
+
+		await page.evaluate((t) => window.webstrate.tag(t), tagName);
+		await util.sleep(.5);
+	});
+
+	after(async () => {
+		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await browser.close();
+	});
+
+	// Subscribe over a raw websocket, the way the browser client does, and capture the
+	// tags message the server sends along with the snapshot.
+	it('should send only {v, label, timestamp} per tag when a client subscribes', async () => {
+		const message = await new Promise((resolve, reject) => {
+			const socket = new WebSocket(
+				config.server_address.replace(/^http/, 'ws') + webstrateId + '/');
+			const timeout = setTimeout(() => {
+				socket.terminate();
+				reject(new Error('no tags message within 5 seconds'));
+			}, 5000);
+			socket.on('error', (err) => {
+				clearTimeout(timeout);
+				reject(err);
+			});
+			socket.on('open', () => socket.send(JSON.stringify({ a: 'hs' })));
+			socket.on('message', (data) => {
+				const msg = JSON.parse(data.toString());
+				// Handshake first, then subscribe — the message flow the browser client uses.
+				if (msg.a === 'hs') {
+					socket.send(JSON.stringify({ a: 's', c: 'webstrates', d: webstrateId, v: 0 }));
+					return;
+				}
+				if (msg.wa === 'tags') {
+					clearTimeout(timeout);
+					socket.close();
+					resolve(msg);
+				}
+			});
+		});
+
+		assert.isArray(message.tags, 'the tags message must carry a tags array');
+		assert.isAtLeast(message.tags.length, 1, 'the set-up tag should be present');
+		message.tags.forEach((tag) => {
+			assert.deepEqual(Object.keys(tag).sort(), ['label', 'timestamp', 'v'],
+				`tag payload must carry only label/timestamp/v, got: ${Object.keys(tag)}`);
+		});
+		assert.include(message.tags.map((tag) => tag.label), tagName);
+
+		// Belt and suspenders: with the snapshot data in it, the message for two tags and
+		// this much body text is well over 90 KB. Without it, it is a few hundred bytes.
+		const messageLength = JSON.stringify(message).length;
+		assert.isBelow(messageLength, 50000,
+			`tags message is ${messageLength} bytes — it is carrying snapshot data`);
+	});
+
+	// The ?tags HTTP endpoint serves the same DocumentManager.getTags list and must not
+	// ship snapshots either.
+	it('should serve only {v, label, timestamp} per tag from the ?tags endpoint', async () => {
+		const response = await fetch(url + '?tags');
+		const tags = await response.json();
+
+		assert.isArray(tags);
+		assert.isAtLeast(tags.length, 1, 'the set-up tag should be present');
+		tags.forEach((tag) => {
+			assert.deepEqual(Object.keys(tag).sort(), ['label', 'timestamp', 'v'],
+				`?tags payload must carry only label/timestamp/v, got: ${Object.keys(tag)}`);
+		});
+	});
+});
+
 // Auto-tagging marks the start of a new editing session: a "Session of …" tag fires on a
 // document's first op and on the first op after tagging.autotagInterval seconds of
 // inactivity. The interval was once read as the tagging config object itself, whose NaN

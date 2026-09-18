@@ -23,7 +23,7 @@ const cleanUp = async () => {
 	const unlink = util.promisify(fs.unlink);
 
 	const assetsFs = new Set(await readdir(UPLOAD_DEST));
-	const assetDbCursor = await db.assets.find({}, { fileName: 1, _id: 0 });
+	const assetDbCursor = await db.assets.find({}, { projection: { fileName: 1, _id: 0 } });
 	const assetsDb = new Set((await assetDbCursor.toArray()).map(o => o.fileName));
 
 	console.log('Found', assetsDb.size, 'assets in database,', assetsFs.size, 'in file system.');

@@ -81,7 +81,7 @@ function broadcastToUserEverywhere(userId, messageId, message, senderId) {
  * @public
  */
 module.exports.getMessages = async function(userId) {
-	return await db.messages.find({ userId }, { _id: 0 }).toArray();
+	return await db.messages.find({ userId }, { projection: { _id: 0 } }).toArray();
 };
 
 /**

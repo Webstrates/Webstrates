@@ -27,7 +27,7 @@ const sleep = (ms) => new Promise(accept => setTimeout(accept, ms));
  * @private
  */
 const isCached = async (fileName) =>
-	await db.assetSearchCache.findOne({ _id: fileName }, { _id: 1 });
+	await db.assetSearchCache.findOne({ _id: fileName }, { projection: { _id: 1 } });
 
 /**
  * Insert rows into the search cache. Rows are inserted as upserts with deterministic ids
@@ -256,7 +256,7 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 
 	query._fileName = asset.fileName;
 	const result = await db.assetsCsv
-		.find(query, { _id: 0, _fileName: 0 })
+		.find(query, { projection: { _id: 0, _fileName: 0 } })
 		.limit(limit)
 		.sort(sort)
 		.skip(skip)

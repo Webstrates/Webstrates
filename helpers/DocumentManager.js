@@ -237,7 +237,7 @@ module.exports.getDocument = async function({ webstrateId, version, tag }) {
  * @public
  */
 module.exports.documentExists = async function(webstrateId) {
-	return await db.webstrates.findOne({ _id: webstrateId }, { _id: 1 });
+	return await db.webstrates.findOne({ _id: webstrateId }, { projection: { _id: 1 } });
 };
 
 /**
@@ -365,7 +365,7 @@ module.exports.deleteDocument = async function(webstrateId) {
  * @return {int}                  (async) Document version.
  */
 module.exports.getDocumentVersion = async function(webstrateId) {
-	let doc = await db.webstrates.findOne({ _id: webstrateId }, { _v: 1});
+	let doc = await db.webstrates.findOne({ _id: webstrateId }, { projection: { _v: 1 } });
 	if (!doc) {
 		throw new Error(`Webstrate ${webstrateId} does not exist.`);
 	}
@@ -384,7 +384,7 @@ module.exports.getDocumentVersion = async function(webstrateId) {
  * @return {int}                  (async) Document version.
  */
 module.exports.getVersionFromTag = async function(webstrateId, tag, next) {
-	let doc = await db.tags.findOne({ webstrateId, label: tag }, { _id: 0, v: 1 });
+	let doc = await db.tags.findOne({ webstrateId, label: tag }, { projection: { _id: 0, v: 1 } });
 	if (!doc) {
 		throw new Error(`Requested tag ${tag} does not exist.`);
 	}
@@ -428,13 +428,15 @@ module.exports.getOps = async function({ webstrateId, initialVersion, version })
  */
 module.exports.getTag = function(webstrateId, version, next) {
 	if (version === undefined || version === 'head') {
-		return db.tags.find({ webstrateId }, { data: 0, type: 0 }).sort({ v: -1 }).limit(1).toArray().then(tags=>{
-			return next && next(null, tags[0]);
-		}).catch(err=>{
-			return next && next(err);
-		});
+		return db.tags
+			.find({ webstrateId }, { projection: { data: 0, type: 0 } })
+			.sort({ v: -1 }).limit(1).toArray().then(tags=>{
+				return next && next(null, tags[0]);
+			}).catch(err=>{
+				return next && next(err);
+			});
 	}
-	db.tags.findOne({ webstrateId, v: version }, { data: 0, type: 0 }).then((tag)=>{
+	db.tags.findOne({ webstrateId, v: version }, { projection: { data: 0, type: 0 } }).then((tag)=>{
 		return next && next(null, tag);
 	}).catch(err=>{
 		return next && next(err);
@@ -448,7 +450,7 @@ module.exports.getTag = function(webstrateId, version, next) {
  * @public
  */
 module.exports.getTags = function(webstrateId, next) {
-	db.tags.find({ webstrateId }, { webstrateId: 0, data: 0, type: 0 })
+	db.tags.find({ webstrateId }, { projection: { webstrateId: 0, data: 0, type: 0 } })
 		.sort({ v: 1 }).toArray().then(tags => {
 			tags.forEach(tag => {
 				tag.timestamp = tag._id.getTimestamp();

@@ -78,7 +78,9 @@ module.exports.assetUploadHandler = async function(req, res) {
  * @public
  */
 module.exports.getAssets = async function(webstrateId, latestOnly = false) {
-	let assets = await db.assets.find({ webstrateId }, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
+	let assets = await db.assets
+		.find({ webstrateId }, { projection: { _id: 0, _originalId: 0, webstrateId: 0 } })
+		.toArray();
 	if (latestOnly) assets = filterNewestAssets(assets);
 	assets.forEach(function(asset) {
 		asset.identifier = asset.fileName;
@@ -101,7 +103,9 @@ module.exports.getAssets = async function(webstrateId, latestOnly = false) {
 module.exports.getCurrentAssets = async function(webstrateId, version) {
 	const query = { webstrateId };
 	if (version) query.v = { $lte: version };
-	let assets = await db.assets.find(query, { _id: 0, _originalId: 0, webstrateId: 0 }).toArray();
+	let assets = await db.assets
+		.find(query, { projection: { _id: 0, _originalId: 0, webstrateId: 0 } })
+		.toArray();
 	assets = filterNewestAssets(assets);
 	// Filter out assets that were deleted at or before `version`. Without a version we're looking at
 	// the newest version of the document, where every deleted asset is gone.
@@ -310,7 +314,10 @@ module.exports.deleteAssets = async function(webstrateId) {
 	// to delete both the file and the search cache keyed on that file. (Flattening the records
 	// to plain file names used to run deleteSearchable with undefined ids, leaving the rows
 	// orphaned.)
-	let assets = await db.assets.find({ webstrateId }, { fileName: 1 }).toArray();
+	// (The vestigial `{ fileName: 1 }` positional argument below used to be a projection on
+	// mongodb 3.x and has been a silent no-op since the driver 6 upgrade — it is removed here
+	// so nobody "fixes" it into a working projection and undoes the whole-record fetch.)
+	let assets = await db.assets.find({ webstrateId }).toArray();
 
 	// Files are deduplicated across webstrates (uploading a file that already exists reuses
 	// it), so a file — and with it the search cache derived from that file — must only be
