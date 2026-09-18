@@ -353,7 +353,7 @@ module.exports.setUserPermissions = async function(username, provider, permissio
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||
 		typeof snapshot.data[1] !== 'object') {
-		return next(new Error('Invalid document'));
+		throw new Error('Invalid document');
 	}
 
 	const oldPermissions = snapshot.data[1]['data-auth'];
