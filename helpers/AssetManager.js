@@ -303,32 +303,41 @@ module.exports.restoreAssets = async function ({ webstrateId, version, tag, newV
  * @param  {string}   webstrateId WebstrateId to delete assets from.
  */
 module.exports.deleteAssets = async function(webstrateId) {
-	// Transform array of objects into primitive array.
+	// Keep the asset records whole: the fileName (the identifier of the file on disk) is needed
+	// to delete both the file and the search cache keyed on that file. (Flattening the records
+	// to plain file names used to run deleteSearchable with undefined ids, leaving the rows
+	// orphaned.)
 	let assets = await db.assets.find({ webstrateId }, { fileName: 1 }).toArray();
-	assets.forEach(function(asset, index) {
-		assets[index] = asset.fileName;
-	});
 
-	// Don't delete assets being used by other webstrates.
-	let assetsBeingUsed = await db.assets.distinct('fileName', {
-		fileName: { $in: assets },
+	// Files are deduplicated across webstrates (uploading a file that already exists reuses
+	// it), so a file — and with it the search cache derived from that file — must only be
+	// deleted when no other webstrate uses it. Copies keep using the original's file, but
+	// their records carry the same fileName, so they are covered by this check.
+	let fileNamesInUse = await db.assets.distinct('fileName', {
+		fileName: { $in: assets.map(asset => asset.fileName) },
 		webstrateId: { $ne: webstrateId }
 	});
-	var assetsToBeDeleted = assets.filter(asset =>  !assetsBeingUsed.includes(asset));
 
 	var promises = [];
-	// Run through the files and delete them.
-	assetsToBeDeleted.forEach(function(asset) {
-		promises.push(searchableAssets.deleteSearchable(asset._id));
-		promises.push(new Promise(function(resolve, reject) {
-			util.promisify(fs.unlink)(`${module.exports.UPLOAD_DEST}${asset}`).then(()=>{
-				resolve();
-			}).catch(err=>{
-				// We print out errors, but we don't stop execution. If a file fails to delete, we
-				// probably still want to get rid of the remaining files.
-				console.error(err);
-			});
-		}));
+	// Run through the assets, deleting the files that no other webstrate is using. Several
+	// records can share a file (a re-uploaded or restored asset has a record per upload), so
+	// delete each distinct file — and its search cache — only once.
+	var deletedFileNames = new Set();
+	assets.forEach(function(asset) {
+		if (!fileNamesInUse.includes(asset.fileName) && !deletedFileNames.has(asset.fileName)) {
+			deletedFileNames.add(asset.fileName);
+			promises.push(searchableAssets.deleteSearchable(asset.fileName));
+			promises.push(new Promise(function(resolve, reject) {
+				util.promisify(fs.unlink)(`${module.exports.UPLOAD_DEST}${asset.fileName}`).then(()=>{
+					resolve();
+				}).catch(err=>{
+					// We print out errors, but we don't stop execution. If a file fails to delete, we
+					// probably still want to get rid of the remaining files.
+					console.error(err);
+					resolve();
+				});
+			}));
+		}
 	});
 
 	// Once every file has been deleted from the file system, we delete them from the database.
@@ -390,7 +399,7 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 
 	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + ' ' + source);
 	const version = await documentManager.getDocumentVersion(webstrateId);
-	const result = await db.assets.insertOne({
+	await db.assets.insertOne({
 		webstrateId,
 		v: version,
 		// asset.filename is the name of the file on our system, originalname is what the file was
@@ -399,7 +408,10 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		originalFileName: asset.originalname,
 		fileSize: asset.size,
 		mimeType: asset.mimetype,
-		fileHash: asset.fileHash
+		fileHash: asset.fileHash,
+		// Making an asset searchable is just a flag on the record: the search cache is built
+		// lazily on the first search, keyed on the file (see SearchableAssets.js).
+		...(searchable && asset.mimetype === 'text/csv' ? { searchable: true } : {})
 	});
 
 	const assetToBeAnnounced = {
@@ -412,8 +424,6 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	};
 
 	if (searchable && asset.mimetype === 'text/csv') {
-		const assetId = result.insertedId;
-		await searchableAssets.makeSearchable(assetId, module.exports.UPLOAD_DEST + asset.filename);
 		assetToBeAnnounced.searchable = true;
 	}
 

@@ -2,6 +2,7 @@
 /* global describe before after it */
 import puppeteer from 'puppeteer';
 import { assert, expect } from 'chai';
+import { MongoClient } from 'mongodb';
 import config from '../config.js';
 import util from '../util.js';
 
@@ -24,9 +25,11 @@ const uploadAssetHelper = async (page, testAsset, searchable = false) => {
 	const fileChooser = await fileChooserPromise;
 	await fileChooser.accept([testAsset]);
 
+	// Poll on a fixed interval rather than the default (requestAnimationFrame), which never
+	// fires in background tabs — i.e. whenever a page shares its browser with other pages.
 	await page.waitForFunction(() => {
 		return window.testAssetUploaded === true;
-	}, { timeout: 5000 });
+	}, { timeout: 5000, polling: 100 });
 }
 
 const deleteAssetHelper = async (page, fileName) => {
@@ -39,7 +42,7 @@ const deleteAssetHelper = async (page, fileName) => {
 
 	await page.waitForFunction(() => {
 		return window.testAssetDeleted === true;
-	}, { timeout: 5000 });
+	}, { timeout: 5000, polling: 100 });
 
 	await page.reload({ waitUntil: 'networkidle2' });
 }
@@ -400,6 +403,284 @@ describe('Assets', function () {
 			window.webstrate.deleteAsset('test.txt', resolve)));
 		assert.isUndefined(writeDeleteError,
 			'Client with write permissions should be able to delete an asset');
+	});
+});
+
+describe('Searchable asset cleanup', function () {
+	this.timeout(30000);
+
+	// Searchable rows are a cache of the file they were parsed from, keyed on the file's
+	// identifier: files are deduplicated by content across webstrates, so every webstrate
+	// referencing the same content shares the same rows. The cache is built lazily on the first
+	// search, and it lives exactly as long as the file — until no webstrate references it
+	// anymore. The CSV contents are unique per run, so caches left behind by an interrupted run
+	// can never share identifiers with this run's uploads.
+	const csvAContent = 'name,city\nAda,Aarhus\nBob,Boston\nrun,' + util.randomString(10) + '\n';
+	const csvCContent = 'name,city\nDana,Drammen\nErik,Esbjerg\nrun,' + util.randomString(10) + '\n';
+
+	const webstrateIdA = 'test-' + util.randomString();
+	const webstrateIdB = 'test-' + util.randomString();
+	const webstrateIdC = 'test-' + util.randomString();
+	const webstrateIdD = 'test-' + util.randomString();
+	const webstrateIdE = 'test-' + util.randomString();
+	const webstrateIdF = 'test-' + util.randomString();
+	const urlA = config.server_address + webstrateIdA;
+	const urlB = config.server_address + webstrateIdB;
+	const urlC = config.server_address + webstrateIdC;
+	const urlD = config.server_address + webstrateIdD;
+	const urlE = config.server_address + webstrateIdE;
+	const urlF = config.server_address + webstrateIdF;
+
+	let browser, pageA, pageB, pageC, pageD;
+	let mongo, dbAssetsCsv, dbAssetSearchCache;
+	let testDir, csvFileA, csvFileC;
+	let identifierA, identifierC;
+
+	const uploadsPath = (identifier) => path.join(process.cwd(), 'uploads', identifier);
+
+	// The number of cached search rows of an asset, by the identifier of its file on disk.
+	const cacheRowCount = async (identifier) =>
+		await dbAssetsCsv.countDocuments({ _fileName: identifier });
+
+	// The identifier (the name of the file on disk) of a webstrate's asset.
+	const identifierOf = async (url, fileName) => {
+		const asset = (await (await fetch(url + '?assets')).json())
+			.find(asset => asset.fileName === fileName);
+		assert.isDefined(asset, `The webstrate at ${url} should have an asset ${fileName}`);
+		return asset.identifier;
+	};
+
+	// The response is only sent once the webstrate's assets have been deleted.
+	const deleteWebstrate = async (url) => {
+		const response = await fetch(url + '?delete');
+		assert(response.ok, `Deleting the webstrate at ${url} failed (${response.status})`);
+	};
+
+	const searchAsset = (page, fileName, name) => page.evaluate((fileName, name) => {
+		return new Promise((resolve) => {
+			window.webstrate.searchAsset(fileName, { query: { name } }, (err, result) => {
+				resolve({ err, result });
+			});
+		});
+	}, fileName, name);
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		pageA = await browser.newPage();
+		pageB = await browser.newPage();
+		pageC = await browser.newPage();
+		pageD = await browser.newPage();
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		await pageB.goto(urlB + '/', { waitUntil: 'networkidle2' });
+		await pageC.goto(urlC + '/', { waitUntil: 'networkidle2' });
+
+		testDir = path.join(process.cwd(), 'tests', 'test-assets');
+		if (!fs.existsSync(testDir)) {
+			fs.mkdirSync(testDir, { recursive: true });
+		}
+		csvFileA = path.join(testDir, 'cleanup-a.csv');
+		fs.writeFileSync(csvFileA, csvAContent);
+		csvFileC = path.join(testDir, 'cleanup-c.csv');
+		fs.writeFileSync(csvFileC, csvCContent);
+
+		mongo = new MongoClient(config.server.db);
+		await mongo.connect();
+		dbAssetsCsv = mongo.db().collection('assetsCsv');
+		dbAssetSearchCache = mongo.db().collection('assetSearchCache');
+	});
+
+	after(async () => {
+		// The tests delete their webstrates as they go; delete any left behind by a failure so
+		// no uploaded files outlive the run.
+		await Promise.all([urlA, urlB, urlC, urlD, urlE, urlF].map(url =>
+			fetch(url + '?delete').catch(() => {})));
+		await browser.close();
+		await mongo.close();
+
+		[csvFileA, csvFileC].forEach(file => {
+			if (fs.existsSync(file)) fs.unlinkSync(file);
+		});
+		if (fs.existsSync(testDir)) fs.rmdirSync(testDir);
+	});
+
+	it('uploading the same searchable asset twice should share the file and the cache',
+		async () => {
+			await uploadAssetHelper(pageA, csvFileA, true);
+			await uploadAssetHelper(pageB, csvFileA, true);
+
+			identifierA = await identifierOf(urlA, 'cleanup-a.csv');
+			assert.equal(await identifierOf(urlB, 'cleanup-a.csv'), identifierA,
+				'Uploading the same file to two webstrates should deduplicate to the same file');
+			assert.isTrue(fs.existsSync(uploadsPath(identifierA)),
+				'The shared file should exist on disk');
+
+			// The cache is built lazily: uploading a searchable asset indexes nothing.
+			assert.equal(await cacheRowCount(identifierA), 0,
+				'Uploading a searchable asset should not build its search cache');
+
+			// Searching from both webstrates at once builds the shared cache exactly once.
+			const [searchA, searchB] = await Promise.all([
+				searchAsset(pageA, 'cleanup-a.csv', 'Ada'),
+				searchAsset(pageB, 'cleanup-a.csv', 'Bob')
+			]);
+			assert.isUndefined(searchA.err, 'The first webstrate\'s asset should be searchable');
+			assert.isUndefined(searchB.err, 'The second webstrate\'s asset should be searchable');
+			assert.deepEqual(searchA.result, [{ name: 'Ada', city: 'Aarhus' }],
+				'The first webstrate should find its rows');
+			assert.deepEqual(searchB.result, [{ name: 'Bob', city: 'Boston' }],
+				'The second webstrate should find its rows');
+			assert.equal(await cacheRowCount(identifierA), 3,
+				'Both webstrates should share a single cache, not one each');
+		});
+
+	it('deleting one of the webstrates should keep the shared cache and file', async () => {
+		await deleteWebstrate(urlB);
+
+		assert.equal(await cacheRowCount(identifierA), 3,
+			'The cache is still used by the surviving webstrate and should be kept');
+		assert.isTrue(fs.existsSync(uploadsPath(identifierA)),
+			'The file is still in use by the surviving webstrate and should not be deleted');
+
+		const { err, result } = await searchAsset(pageA, 'cleanup-a.csv', 'Ada');
+		assert.isUndefined(err, 'The surviving webstrate\'s asset should still be searchable');
+		assert.deepEqual(result, [{ name: 'Ada', city: 'Aarhus' }],
+			'The surviving webstrate should still find its rows');
+	});
+
+	it('deleting the last webstrate using an asset should delete its cache and file', async () => {
+		await deleteWebstrate(urlA);
+
+		assert.equal(await cacheRowCount(identifierA), 0,
+			'No cached rows of the asset should remain');
+		assert.isFalse(fs.existsSync(uploadsPath(identifierA)),
+			'The file should be deleted once no webstrate uses it anymore');
+	});
+
+	it('a copied webstrate should search the original webstrate\'s cache', async () => {
+		await uploadAssetHelper(pageC, csvFileC, true);
+
+		identifierC = await identifierOf(urlC, 'cleanup-c.csv');
+		assert.equal(await cacheRowCount(identifierC), 0,
+			'The original webstrate\'s cache should only be built once it is searched');
+
+		await pageD.goto(urlC + '?copy=' + webstrateIdD, { waitUntil: 'networkidle2' });
+		assert.equal(await identifierOf(urlD, 'cleanup-c.csv'), identifierC,
+			'The copy should reuse the original\'s file rather than duplicating it');
+
+		const { err, result } = await searchAsset(pageD, 'cleanup-c.csv', 'Dana');
+		assert.isUndefined(err, 'The copy should be able to search the original\'s cache');
+		assert.deepEqual(result, [{ name: 'Dana', city: 'Drammen' }],
+			'The copy should find the shared rows');
+		assert.equal(await cacheRowCount(identifierC), 3,
+			'The copy should use the original\'s cache rather than building its own');
+	});
+
+	it('a shared cache should survive deleting the original webstrate but not the copy',
+		async () => {
+			await deleteWebstrate(urlC);
+
+			assert.equal(await cacheRowCount(identifierC), 3,
+				'The cache still used by the copy should survive the deletion of the original');
+			const search = await searchAsset(pageD, 'cleanup-c.csv', 'Dana');
+			assert.isUndefined(search.err, 'The copy should still find the shared rows');
+			assert.deepEqual(search.result, [{ name: 'Dana', city: 'Drammen' }],
+				'The copy\'s search results should be unchanged');
+
+			await deleteWebstrate(urlD);
+			assert.equal(await cacheRowCount(identifierC), 0,
+				'Deleting the last webstrate that uses the cache should delete it');
+			assert.isFalse(fs.existsSync(uploadsPath(identifierC)),
+				'The file should be deleted once no webstrate uses it anymore');
+		});
+
+	it('an asset deleted in a revision keeps its cache until the webstrate is deleted',
+		async () => {
+			const pageE = await browser.newPage();
+			await pageE.goto(urlE + '/', { waitUntil: 'networkidle2' });
+
+			// Upload the searchable asset (a fresh webstrate makes the upload version 2) and
+			// build its cache by searching it once.
+			await uploadAssetHelper(pageE, csvFileA, true);
+			const identifierE = await identifierOf(urlE, 'cleanup-a.csv');
+			const firstSearch = await searchAsset(pageE, 'cleanup-a.csv', 'Ada');
+			assert.isUndefined(firstSearch.err, 'The uploaded asset should be searchable');
+			assert.equal(await cacheRowCount(identifierE), 3, 'The search should build the cache');
+
+			// Bump the version and wait for it to land, so the deletion below is marked at a
+			// version strictly after the upload's — the asset is alive at version 2, deleted at 3.
+			await pageE.evaluate(() => document.body.insertAdjacentHTML('beforeend', '<p></p>'));
+			const serverVersion = await pageE.evaluate(
+				async () => (await (await fetch('?v')).json()).version);
+			assert.isTrue(await util.waitForFunction(pageE, (v) => window.webstrate.version >= v, 5,
+				serverVersion), 'Timed out waiting for the version bump');
+
+			// Deleting an asset in a revision only marks it deleted: the webstrate can still be
+			// reverted to a version where the asset is alive, so its cache and file must survive.
+			await deleteAssetHelper(pageE, 'cleanup-a.csv');
+			assert.equal(await cacheRowCount(identifierE), 3,
+				'Deleting an asset in a revision must not delete its cache');
+			assert.isTrue(fs.existsSync(uploadsPath(identifierE)),
+				'Deleting an asset in a revision must not delete its file');
+
+			// Reverting the webstrate to the version where the asset was alive brings it back —
+			// searchable, too, since its cache is keyed on the file rather than on the asset
+			// record that the restore replaced.
+			await pageE.setCacheEnabled(false);
+			await pageE.goto(urlE + '?restore=2', { waitUntil: 'networkidle2' });
+			assert.isTrue(await util.waitForFunction(pageE, () =>
+				Array.isArray(window.webstrate.assets) &&
+				window.webstrate.assets.some(asset => asset.fileName === 'cleanup-a.csv' &&
+					!asset.deletedAt), 5), 'Timed out waiting for the restored asset to arrive');
+
+			const restoredAsset = await pageE.evaluate(() => window.webstrate.assets
+				.find(asset => asset.fileName === 'cleanup-a.csv' && !asset.deletedAt));
+			assert.equal(restoredAsset.restoredFrom, 2, 'The asset should be restored from version 2');
+			const restoredSearch = await searchAsset(pageE, 'cleanup-a.csv', 'Ada');
+			assert.isUndefined(restoredSearch.err, 'The restored asset should still be searchable');
+			assert.deepEqual(restoredSearch.result, [{ name: 'Ada', city: 'Aarhus' }],
+				'The restored asset should find its rows');
+
+			// Only deleting the webstrate itself — from where the asset can no longer be
+			// restored — actually removes the cache and the file.
+			await deleteWebstrate(urlE);
+			assert.equal(await cacheRowCount(identifierE), 0,
+				'The cache should only be deleted once the webstrate itself is deleted');
+			assert.isFalse(fs.existsSync(uploadsPath(identifierE)),
+				'The file should only be deleted once the webstrate itself is deleted');
+
+			await pageE.close();
+		});
+
+	it('a cleared or half-built cache is rebuilt from the file on the next search', async () => {
+		const pageF = await browser.newPage();
+		await pageF.goto(urlF + '/', { waitUntil: 'networkidle2' });
+
+		await uploadAssetHelper(pageF, csvFileA, true);
+		const identifierF = await identifierOf(urlF, 'cleanup-a.csv');
+		const firstSearch = await searchAsset(pageF, 'cleanup-a.csv', 'Ada');
+		assert.isUndefined(firstSearch.err, 'The uploaded asset should be searchable');
+		assert.equal(await cacheRowCount(identifierF), 3, 'The search should build the cache');
+
+		// Clearing the cache (to reclaim space) drops the rows and the manifest alike; the next
+		// search simply rebuilds them from the file.
+		await dbAssetsCsv.deleteMany({ _fileName: identifierF });
+		await dbAssetSearchCache.deleteOne({ _id: identifierF });
+		const rebuiltSearch = await searchAsset(pageF, 'cleanup-a.csv', 'Bob');
+		assert.isUndefined(rebuiltSearch.err, 'A cleared cache should be rebuilt on the next search');
+		assert.deepEqual(rebuiltSearch.result, [{ name: 'Bob', city: 'Boston' }],
+			'The rebuilt cache should find its rows');
+		assert.equal(await cacheRowCount(identifierF), 3,
+			'The rebuilt cache should hold exactly one copy of the rows');
+
+		// A build abandoned half-way through (a crashed process) leaves rows behind but no
+		// manifest; rebuilding on top of them must not duplicate anything.
+		await dbAssetSearchCache.deleteOne({ _id: identifierF });
+		const redoneSearch = await searchAsset(pageF, 'cleanup-a.csv', 'Ada');
+		assert.isUndefined(redoneSearch.err, 'A half-built cache should be completed, not failed');
+		assert.equal(await cacheRowCount(identifierF), 3,
+			'Rebuilding on top of a half-built cache must not duplicate its rows');
+
+		await pageF.close();
 	});
 });
 

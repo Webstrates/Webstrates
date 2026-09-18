@@ -20,7 +20,18 @@ MongoClient.connect(global.config.db).then(client =>{
 	db.assets = _db.collection('assets');
 	db.assets.createIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });
 	db.assetsCsv = _db.collection('assetsCsv');
-	db.assetsCsv.createIndex({ _assetId: 1 });
+	// Search rows are cached per file, keyed by the file's identifier — see SearchableAssets.js.
+	db.assetsCsv.createIndex({ _fileName: 1 });
+	// Old releases keyed rows on the asset record id instead of on the file; that index is dead
+	// weight now. (Best effort — fresh databases never had it.)
+	db.assetsCsv.dropIndex('_assetId_1').catch(() => {});
+	// Manifests of which files have their search cache built (see SearchableAssets.js).
+	db.assetSearchCache = _db.collection('assetSearchCache');
+	// Locks that keep concurrent processes from building the same search cache twice. A lock
+	// expires after 60 seconds, so one held by a process that dies mid-build doesn't block the
+	// file's cache forever. (Must match LOCK_TTL_SECONDS in SearchableAssets.js.)
+	db.assetSearchCacheLocks = _db.collection('assetSearchCacheLocks');
+	db.assetSearchCacheLocks.createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 });
 
 	db.sessions = _db.collection('sessions');
 	db.sessions.createIndex({ userId: 1, createdAt: 1 });
