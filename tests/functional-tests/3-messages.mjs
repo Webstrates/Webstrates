@@ -397,11 +397,9 @@ describe('Messages', function() {
 	// Send a webstrates action on a raw websocket opened from within the page, carrying the
 	// page's login session. The server accepts websocket connections without any permission
 	// check, which is exactly the surface the pre-fix sendMessage handler was exposed on.
-	// The server drops messages that arrive before the connection has settled (session
-	// deserialization is asynchronous), so we wait a moment after opening before sending.
 	const sendOnRawSocket = (page, webstrateId, action) => page.evaluate((id, action) => {
 		const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
-		socket.onopen = () => setTimeout(() => socket.send(JSON.stringify(action)), 300);
+		socket.onopen = () => socket.send(JSON.stringify(action));
 		socket.onerror = () => {};
 		setTimeout(() => socket.close(), 2000);
 	}, webstrateId, action);
@@ -413,11 +411,8 @@ describe('Messages', function() {
 		sockets.push(socket);
 		socket.on('error', reject);
 		socket.on('open', () => {
-			// See sendOnRawSocket: let the connection settle before sending.
-			setTimeout(() => {
-				socket.send(JSON.stringify(action));
-				setTimeout(resolve, 200);
-			}, 300);
+			socket.send(JSON.stringify(action));
+			setTimeout(resolve, 200);
 		});
 	});
 
@@ -570,13 +565,12 @@ describe('Messages', function() {
 		// and the first `limit` always are.
 		await pageE.evaluate((id, recipient, count, prefix) => {
 			const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
-			// Wait for the connection to settle (see sendOnRawSocket) before the burst.
-			socket.onopen = () => setTimeout(() => {
+			socket.onopen = () => {
 				for (let i = 0; i < count; i++) {
 					socket.send(JSON.stringify(
 						{ wa: 'sendMessage', m: prefix + i, recipients: recipient }));
 				}
-			}, 300);
+			};
 			socket.onerror = () => {};
 			setTimeout(() => socket.close(), 5000);
 		}, floodWebstrateId, floodUserId, 3 * limit, floodPrefix);

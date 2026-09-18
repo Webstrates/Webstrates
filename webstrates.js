@@ -67,7 +67,7 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
 
 const app = express();
-expressWs(app);
+const wsInstance = expressWs(app);
 
 
 const middleware = [];
@@ -296,6 +296,30 @@ app.use('*any', function (req, res, next) {
 	sessionMiddleware(req, res, next);
 });
 
+// The ws library completes the websocket upgrade (the 101 response) before Express runs
+// the middleware chain that ends in the app.ws() handler below, and that chain is partly
+// asynchronous (deserializing the user's session is a database query). A client that sends
+// its first frame immediately after the handshake can therefore have that frame emitted
+// into the socket before the handler has attached its 'message' listener, where the
+// EventEmitter silently drops it. Buffer such early frames on the socket and replay them
+// once the connection is fully set up (see the app.ws() handler below), instead of losing
+// them and waiting for the client's own retry or the socket timeout.
+const earlyFrames = new WeakMap();
+
+wsInstance.getWss().on('connection', (ws) => {
+	// When the middleware chain completes synchronously (connections without a login
+	// cookie), the app.ws() handler has already attached its 'message' listener by the
+	// time this listener runs, and there is no window to guard against.
+	if (ws.listenerCount('message') > 0) return;
+
+	const guard = { listener: null, frames: [] };
+	guard.listener = (data) => {
+		guard.frames.push(data);
+	};
+	earlyFrames.set(ws, guard);
+	ws.on('message', guard.listener);
+});
+
 app.ws('/:webstrateId', (ws, req) => {
 	const socketId = clientManager.addClient(ws, req, req.user);
 	req.socketId = socketId;
@@ -322,7 +346,14 @@ app.ws('/:webstrateId', (ws, req) => {
 		runMiddleware('onclose', [ws, req, reason], ...middleware);
 	});
 
+	// The connection is not fully set up until the 'onconnect' middleware below has
+	// run (the ShareDB stream is registered there). Frames arriving before that —
+	// including any held by the early-frame guard above — must wait, so they are
+	// processed in order and not ahead of the connection setup.
+	let connectionReady = false;
+
 	ws.on('message', data => {
+		if (!connectionReady) return;
 		try {
 			data = JSON.parse(data);
 		} catch (err) {
@@ -331,7 +362,25 @@ app.ws('/:webstrateId', (ws, req) => {
 		}
 		runMiddleware('onmessage', [ws, req, data], ...middleware);
 	});
-	runMiddleware('onconnect', [ws, req], ...middleware);
+
+	// The last middleware in the 'onconnect' chain: the connection is now fully set
+	// up, so the listener above takes over and any frames the guard buffered while
+	// the middleware chain was still running are delivered in arrival order.
+	const replayEarlyFrames = {
+		onconnect: (ws, req, next) => {
+			connectionReady = true;
+			const guard = earlyFrames.get(ws);
+			if (guard) {
+				earlyFrames.delete(ws);
+				ws.removeListener('message', guard.listener);
+				for (const frame of guard.frames) {
+					ws.emit('message', frame);
+				}
+			}
+			next();
+		}
+	};
+	runMiddleware('onconnect', [ws, req], ...middleware, replayEarlyFrames);
 });
 
 app.get('/', httpRequestController.rootRequestHandler);
