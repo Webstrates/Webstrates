@@ -20,25 +20,55 @@ const csvConfig = {
 const batchInsertJsonToMongo = (filePath, assetId) => new Promise((accept, reject) => {
 	let batchRows = [];
 	let counter = 0;
+
+	let settled = false;
+	const rejectOnce = (err) => {
+		if (settled) return;
+		settled = true;
+		reject(err);
+	};
+	const insertBatch = async () => {
+		// Empty CSV files emit no 'data' events at all, leaving batchRows empty — and
+		// insertMany rejects empty batches ("Invalid BulkOperation, Batch cannot be empty").
+		// Throwing inside the async 'done' handler used to leave this promise forever
+		// unsettled, which hung the upload request, so empty batches are skipped and all
+		// insert errors are funneled through rejectOnce.
+		if (batchRows.length === 0) return;
+		await db.assetsCsv.insertMany(batchRows, { ordered: true });
+		batchRows = [];
+		counter = 0;
+	};
 	csv(csvConfig).fromFile(filePath)
 		.on('data', async data => {
+			if (settled) return;
 			const row = JSON.parse(data.toString('utf8'));
 			row._assetId = assetId;
 			batchRows.push(row);
 			counter++;
 			// Insert 100,000 entries at a time.
 			if (counter === 10e4) {
-				await db.assetsCsv.insertMany(batchRows, { ordered: true });
-				batchRows = [];
-				counter = 0;
+				try {
+					await insertBatch();
+				} catch (err) {
+					rejectOnce(err);
+				}
 			}
 		})
 		.on('done', async err => {
+			if (settled) return;
 			// When we've run through all the rows, insert the remainder. This will be less than 100,000.
-			await db.assetsCsv.insertMany(batchRows, { ordered: true });
-			if (err) reject(err);
-			else accept();
-		});
+			try {
+				await insertBatch();
+			} catch (insertErr) {
+				return rejectOnce(insertErr);
+			}
+			if (err) rejectOnce(err);
+			else {
+				settled = true;
+				accept();
+			}
+		})
+		.on('error', rejectOnce);
 });
 
 /**

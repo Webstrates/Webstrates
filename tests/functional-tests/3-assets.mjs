@@ -56,7 +56,7 @@ describe('Assets', function () {
 
 	let browserA, browserB, pageA, pageB;
 	let testDir;
-	let testTextFile, testCsvFile, testImageFile, testZipFile, testNumericFile;
+	let testTextFile, testCsvFile, testEmptyCsvFile, testImageFile, testZipFile, testNumericFile;
 
 	before(async () => {
 		browserA = await puppeteer.launch();
@@ -79,6 +79,10 @@ describe('Assets', function () {
 		// Create a simple CSV file for searchable assets
 		testCsvFile = path.join(testDir, 'test.csv');
 		fs.writeFileSync(testCsvFile, 'name,age,city\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago');
+
+		// Create an empty CSV file (no rows at all)
+		testEmptyCsvFile = path.join(testDir, 'empty.csv');
+		fs.writeFileSync(testEmptyCsvFile, '');
 
 		// Create an image file
 		testImageFile = path.join(testDir, 'test.png');
@@ -111,7 +115,7 @@ describe('Assets', function () {
 
 	after(async () => {
 		// Clean up test files
-		[testTextFile, testCsvFile, testImageFile, testZipFile, testNumericFile].forEach(file => {
+		[testTextFile, testCsvFile, testEmptyCsvFile, testImageFile, testZipFile, testNumericFile].forEach(file => {
 			if (fs.existsSync(file)) {
 				fs.unlinkSync(file);
 			}
@@ -277,6 +281,30 @@ describe('Assets', function () {
 			age: 35,
 			city: 'Chicago'
 		}, 'Search result does not match expected data');
+	});
+
+	it('An empty searchable CSV should upload and be searchable with no results', async () => {
+		await uploadAssetHelper(pageA, testEmptyCsvFile, true);
+
+		const emptyCsvAsset = await pageA.evaluate(async () => {
+			return (await window.webstrate.assets).find(asset => asset.fileName === 'empty.csv');
+		});
+		assert.isDefined(emptyCsvAsset, 'Empty CSV asset should be in the asset list');
+		assert.isTrue(emptyCsvAsset.searchable, 'Empty CSV asset should be searchable');
+
+		const { err, result, count } = await pageA.evaluate(async () => {
+			return new Promise((resolve, reject) => {
+				window.webstrate.searchAsset('empty.csv', {
+					query: {}
+				}, (err, result, count) => {
+					resolve({ err, result, count });
+				});
+			});
+		});
+
+		assert.isUndefined(err, 'Searching an empty searchable CSV should not throw an error');
+		assert.deepEqual(result, [], 'Search result should be empty');
+		assert.equal(count, 0, 'Search count should be 0');
 	});
 
 	it('Deleted searchable CSV assets should not be searchable', async () => {
