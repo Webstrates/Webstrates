@@ -114,13 +114,21 @@ const addUserClient = (socketId, userId, userClient) => {
  * @private
  */
 const removeUserClient = (socketId, userId) => {
-	if (userClients[userId]) {
-		delete userClients[userId][socketId];
-		// Prune the user's entry when their last client disconnects, so userClients doesn't retain
-		// an empty object per user that has ever connected.
-		if (Object.keys(userClients[userId]).length === 0) {
-			delete userClients[userId];
-		}
+	// userClients[userId] exists only for logged-in users (addUserClient is gated on the user not
+	// being anonymous). Anonymous sockets all share the userId 'anonymous:' (userIds is populated
+	// unconditionally in addClient), so broadcasting here anyway would fan a clientPart frame out
+	// to every anonymous socket on the server — in every webstrate — none of which has a user
+	// object to remove the parting client from. A logged-in user always has an entry while any of
+	// their sockets is live, so the broadcast still reaches everyone who can use it.
+	if (!userClients[userId]) {
+		return;
+	}
+
+	delete userClients[userId][socketId];
+	// Prune the user's entry when their last client disconnects, so userClients doesn't retain
+	// an empty object per user that has ever connected.
+	if (Object.keys(userClients[userId]).length === 0) {
+		delete userClients[userId];
 	}
 
 	// There is no specific 'userClientPart' command, because we can just try to remove all
@@ -683,8 +691,6 @@ module.exports.sendToClients = function(webstrateId, message) {
  * @public
  */
 module.exports.sendToClient = function(socketId, message) {
-	message.c = 'webstrates';
-
 	// If we don't have the client's socket (e.g. it has already disconnected), we can't send
 	// the message, and that's fine.
 	if (!clients[socketId]) {

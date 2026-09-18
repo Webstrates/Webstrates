@@ -1,6 +1,7 @@
 // Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
 /* global describe before after it */
 import puppeteer from 'puppeteer';
+import WebSocket from 'ws';
 import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
@@ -20,6 +21,12 @@ describe('Client Events', function() {
 	});
 
 	after(async () => {
+		// Close the observer socket even if the last test failed before its end, so a dangling
+		// socket can't keep the test process alive.
+		if (observerSocket) {
+			try { observerSocket.close(); } catch { /* already closed */ }
+		}
+
 		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
 
 		await browser.close();
@@ -92,6 +99,50 @@ describe('Client Events', function() {
 		const clientList = await pageA.evaluate(() => window.webstrate.clients);
 
 		assert.deepEqual([firstClientId], clientList);
+	});
+
+	let observerSocket;
+	it('should not broadcast clientPart to anonymous clients in other webstrates', async () => {
+		// All anonymous clients share the userId 'anonymous:', so the user-object part broadcast
+		// (which carries no webstrate id) used to fan a clientPart out to every anonymous socket on
+		// the server. The observer is an anonymous socket that never even joins its own webstrate,
+		// so no clientPart should ever reach it.
+		observerSocket = new WebSocket(config.server_address.replace(/^http/, 'ws') + webstrateId
+			+ '-observer');
+		const partFrames = [];
+		observerSocket.on('message', data => {
+			const msg = JSON.parse(data.toString());
+			if (msg.wa === 'clientPart') partFrames.push(msg);
+		});
+		await new Promise((resolve, reject) => {
+			observerSocket.on('error', reject);
+			observerSocket.on('open', resolve);
+		});
+
+		const pageC = await browser.newPage();
+		await pageC.goto(url, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(pageC, () => window.webstrate && window.webstrate.loaded);
+		const thirdClientId = await pageC.evaluate(() => window.webstrate.clientId);
+
+		// Wait for pageC's join to register, so the part below is guaranteed to fire.
+		await util.waitForFunction(pageA, clientId => window.webstrate.clients.includes(clientId), 3,
+			thirdClientId);
+
+		await pageA.evaluate(clientId => {
+			window.webstrate.on('clientPart', partingClientId => {
+				if (partingClientId === clientId) window.__test_thirdParted = true;
+			});
+		}, thirdClientId);
+
+		await pageC.close();
+
+		// Control: the same-webstrate client did get notified of the part, and the anonymous
+		// fan-out (if any) is sent synchronously with that notification.
+		assert.isTrue(await util.waitForFunction(pageA, () => window.__test_thirdParted));
+		await util.sleep(.5);
+		assert.lengthOf(partFrames, 0);
+
+		observerSocket.close();
 	});
 
 });
