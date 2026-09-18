@@ -4,6 +4,7 @@ const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const messagingManager = require(APP_PATH + '/helpers/MessagingManager.js');
 const searchableAssets = require(APP_PATH + '/helpers/SearchableAssets.js');
+const snapshotCacheManager = require(APP_PATH + '/helpers/SnapshotCacheManager.js');
 
 // Per-sender rate limit for sendMessage, so a client gone haywire or a malicious user
 // cannot flood other users' inboxes. Configurable as config.messageRateLimit =
@@ -128,6 +129,30 @@ exports.onmessage = async (ws, req, data, next) => {
 	}
 
 	switch (data.wa) {
+		// Request a brotli-compressed snapshot from the server's cache over the
+		// websocket
+		// The reply is a single BINARY frame with a tiny envelope
+		// [0x01][tokenLen:uint8][token utf8][brotli payload] — the token correlates
+		// it like any other reply (see client/webstrates/coreWebsocket.js). A 
+		// cache miss is reported as a regular reply with
+		// no `reply` field, and triggers an immediate (deduplicated) cache rebuild
+		// so the next load is warm.
+		case 'fetchSnapshot': {
+			if (!data.token) break;
+			const entry = snapshotCacheManager.readEntry(webstrateId);
+			if (!entry) {
+				snapshotCacheManager.scheduleRebuild(webstrateId, null);
+				ws.send(JSON.stringify({ wa: 'reply', token: data.token }));
+				break;
+			}
+			const token = Buffer.from(String(data.token), 'utf8');
+			if (token.length === 0 || token.length > 255) {
+				ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: 'Invalid token.' }));
+				break;
+			}
+			ws.send(Buffer.concat([Buffer.from([1, token.length]), token, entry.buffer]));
+			break;
+		}
 		// Request a snapshot.
 		case 'fetchdoc': {
 			if (!data.token) break;

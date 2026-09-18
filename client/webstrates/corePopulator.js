@@ -8,12 +8,25 @@ const corePopulator = {};
 
 coreEvents.createEvent('populated');
 
-corePopulator.populate = function(rootElement, doc) {
-	// Empty the document, so we can use it.
-	while (rootElement.firstChild) {
-		rootElement.removeChild(rootElement.firstChild);
-	}
+/**
+ * Execute collected scripts, build the path tree and fire 'populated' — the
+ * tail of the population path.
+ * @param  {Node}     targetElement The <html> element that now lives in the document.
+ * @param  {array}    scripts      Script elements to (re)execute in order.
+ * @param  {string}   webstrateId  Webstrate id.
+ * @return {Promise}               Resolves when the population is complete.
+ * @private
+ */
+const finishPopulation = (targetElement, scripts, webstrateId) => new Promise((resolve) => {
+	coreUtils.executeScripts(scripts, () => {
+		const pathTree = corePathTree.create(targetElement, null, true);
+		pathTree.check();
+		resolve();
+		coreEvents.triggerEvent('populated', targetElement, webstrateId);
+	});
+});
 
+corePopulator.populate = function(rootElement, doc) {
 	const webstrateId = doc.id;
 	const staticMode = coreUtils.getLocationObject().staticMode;
 	// If the document doesn't exist (no type) or is empty (no data), we should recreate it, unless
@@ -46,19 +59,15 @@ corePopulator.populate = function(rootElement, doc) {
 	// execute them in order afterwards.
 	const scripts = [];
 	const html = coreJsonML.toHTML(doc.data, undefined, scripts);
+
+	// Empty the previous document (e.g. the loading shell)
+	while (rootElement.firstChild) {
+		rootElement.removeChild(rootElement.firstChild);
+	}
+
 	coreUtils.appendChildWithoutScriptExecution(rootElement, html);
 
-	return new Promise((resolve) => {
-		coreUtils.executeScripts(scripts, () => {
-			// Do not include the parent element in the path, i.e. create corePathTree on the <html>
-			// element rather than the document element.
-			const targetElement = rootElement.childNodes[0];
-			const pathTree = corePathTree.create(targetElement, null, true);
-			pathTree.check();
-			resolve();
-			coreEvents.triggerEvent('populated', targetElement, webstrateId);
-		});
-	});
+	return finishPopulation(rootElement.childNodes[0], scripts, webstrateId);
 };
 
 module.exports = corePopulator;

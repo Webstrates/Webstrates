@@ -67,6 +67,170 @@ Object.defineProperty(globalObject.publicObject, 'getDocument', {
 	}
 });
 
+/**
+ * Whether the browser's DecompressionStream natively understands brotli
+ * (Firefox does; Chrome only supports gzip/deflate — there the snapshot is
+ * decoded by a lazily fetched WASM decoder shipped as a bundle chunk).
+ * @return {bool} True if new DecompressionStream('br') can be constructed.
+ * @private
+ */
+let nativeBrotliSupported;
+function canNativeBrotli() {
+	if (nativeBrotliSupported === undefined) {
+		try {
+			new DecompressionStream('br');
+			nativeBrotliSupported = true;
+		} catch (err) {
+			nativeBrotliSupported = false;
+		}
+	}
+	return nativeBrotliSupported;
+}
+
+// Cached promise for the lazily initialized WASM brotli decoder (Chrome has
+// no native 'br' DecompressionStream). The decoder glue AND its wasm bytes
+// are bundled with the client (as base64, generated at build time), so the
+// fast path pays no extra roundtrip for the decoder — it inits with the
+// embedded bytes instead of letting the package fetch its .wasm.
+let brotliInitPromise;
+const brotliWasmModule = require('brotli-dec-wasm/web');
+const BROTLI_WASM_BASE64 = require('./brotli-wasm-bytes.b64');
+
+/**
+ * Decode the embedded brotli-decoder wasm into bytes (once per page).
+ * @return {Uint8Array} Decoder wasm bytes.
+ * @private
+ */
+function embeddedBrotliWasmBytes() {
+	const binary = atob(BROTLI_WASM_BASE64);
+	const bytes = new Uint8Array(binary.length);
+	for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+	return bytes;
+}
+
+/**
+ * Decompress brotli bytes (as a Uint8Array) into a parsed JSON payload.
+ * Returns null when no decoder is available or decoding fails — callers then
+ * fall back to the HTTP ?snapshot route, whose Content-Encoding: br is
+ * decompressed by the network stack, no client decoder needed.
+ * @param  {Uint8Array} bytes Compressed payload.
+ * @return {Promise<Object|null>} Parsed payload, or null.
+ * @private
+ */
+async function decodeBrotliPayload(bytes) {
+	try {
+		if (canNativeBrotli()) {
+			const stream = new Blob([bytes]).stream().pipeThrough(new DecompressionStream('br'));
+			return JSON.parse(await new Response(stream).text());
+		}
+		brotliInitPromise = brotliInitPromise
+			|| brotliWasmModule.default({ module_or_path: embeddedBrotliWasmBytes() });
+		await brotliInitPromise;
+		return JSON.parse(new TextDecoder().decode(brotliWasmModule.decompress(bytes)));
+	} catch (err) {
+		return null;
+	}
+}
+
+/**
+ * Request the compressed snapshot over the (already open) websocket, so no
+ * second HTTP request is needed on load. The server replies with a binary
+ * frame (cache hit — the brotli bytes, token-correlated by coreWebsocket), a
+ * plain reply without payload (genuine cache miss — proceed with a normal
+ * subscribe; the server is already rebuilding the cache), or nothing at all
+ * (older server without the handler — after a short timeout, fall back to
+ * the HTTP route).
+ * @param  {string} webstrateId Webstrate id.
+ * @return {Promise<Uint8Array|undefined|null>} Compressed bytes (hit),
+ *   undefined (miss), or null (websocket path unavailable — use HTTP).
+ * @private
+ */
+function fetchCompressedSnapshotOverWebsocket(webstrateId) {
+	return new Promise((resolve) => {
+		let settled = false;
+		const settle = (value) => {
+			if (settled) return;
+			settled = true;
+			clearTimeout(timer);
+			resolve(value);
+		};
+		const timer = setTimeout(() => settle(null), 2000);
+		coreWebsocket.send({ wa: 'fetchSnapshot', d: webstrateId }, (err, reply) => {
+			if (err) return settle(null);
+			if (!(reply instanceof Uint8Array) || reply.byteLength === 0) return settle(undefined);
+			settle(reply);
+		}, { waitForOpen: true });
+	});
+}
+
+/**
+ * Fetch the brotli-compressed snapshot from the server's cache — preferring
+ * the websocket (the connection is already open, so the initial bulk data
+ * arrives without firing up another HTTP request), falling back to the HTTP
+ * ?snapshot route when the websocket path is unavailable (there the network
+ * stack decompresses the payload before fetch() sees it) — and ingest it
+ * into the ShareDB doc locally, exactly as if it had arrived as a regular
+ * snapshot. A subsequent doc.subscribe() then only needs the ops since this
+ * version (sharedb's subscribe message carries doc.version and the server
+ * answers with ops only) — the full JSONML snapshot never crosses the
+ * websocket as uncompressed JSON.
+ * @param  {Doc}    doc         ShareDB document.
+ * @param  {string} webstrateId Webstrate id.
+ * @return {Promise<bool>}     Whether a snapshot was ingested.
+ * @private
+ */
+async function tryIngestCompressedSnapshot(doc, webstrateId) {
+	try {
+		const bytes = await fetchCompressedSnapshotOverWebsocket(webstrateId);
+
+		if (bytes) {
+			const payload = await decodeBrotliPayload(bytes);
+			if (!payload) {
+				// No usable decoder (or a corrupt frame): the HTTP route needs none.
+				return ingestFromHttpResponse(doc, await fetch(`${location.pathname}?snapshot`,
+					{ cache: 'no-store' }));
+			}
+			if (typeof payload.v !== 'number' || !Array.isArray(payload.data)) {
+				return false;
+			}
+			doc.ingestSnapshot({ v: payload.v, type: payload.type, data: payload.data });
+			return true;
+		}
+
+		if (bytes === undefined) {
+			// A genuine miss: don't also fire the HTTP request (it would miss
+			// too, and the server is already rebuilding the cache entry).
+			return false;
+		}
+
+		// Websocket path unavailable (null): HTTP fallback.
+		return ingestFromHttpResponse(doc, await fetch(`${location.pathname}?snapshot`,
+			{ cache: 'no-store' }));
+	} catch (err) {
+		return false;
+	}
+}
+
+/**
+ * Ingest a payload fetched over the HTTP ?snapshot route (Content-Encoding:
+ * br — the network stack has already decompressed it into JSON).
+ * @param  {Doc}      doc      ShareDB document.
+ * @param  {Response} response fetch() response for ?snapshot.
+ * @return {Promise<bool>}      Whether a snapshot was ingested.
+ * @private
+ */
+async function ingestFromHttpResponse(doc, response) {
+	if (!response.ok) {
+		return false;
+	}
+	const payload = await response.json();
+	if (!payload || typeof payload.v !== 'number' || !Array.isArray(payload.data)) {
+		return false;
+	}
+	doc.ingestSnapshot({ v: payload.v, type: payload.type, data: payload.data });
+	return true;
+}
+
 exports.subscribe = webstrateId => {
 	return new Promise((resolve, reject) => {
 		// Check if we can reuse the ShareDB Database connection from a parent if we're in an iframe.
@@ -92,12 +256,9 @@ exports.subscribe = webstrateId => {
 			doc = conn.get(COLLECTION_NAME, webstrateId);
 		}
 
-		// Subscribe to remote operations (changes to the ShareDB document).
-		doc.subscribe(function(error) {
-			if (error) {
-				return reject(error);
-			}
-
+		// Wire up the document events once the (cache-accelerated or normal)
+		// subscribe has completed.
+		const wireUp = () => {
 			coreEvents.triggerEvent('receivedDocument', doc, { static: false });
 
 			// Generate a unique ID for this document client.
@@ -133,7 +294,42 @@ exports.subscribe = webstrateId => {
 			});
 
 			resolve(doc);
-		});
+		};
+
+		// The compressed fast path is only attempted when the server advertises it (the
+		// flag is baked into the bundle at build time) and we own the ShareDB connection
+		// (a transcluded webstrate reuses its parent's doc, which the parent already
+		// loaded).
+		const cacheEligible = serverConfig.compressedSnapshots === true && !coreUtils.isTranscluded();
+
+		const finishSubscribe = (ingestedFromCache) => {
+			doc.subscribe(function(error) {
+				if (error) {
+					// An ingested cache snapshot can disagree with the server's op log
+					// (e.g. the document was deleted and recreated after the cache entry
+					// was written): discard the doc and do a clean, cache-less load.
+					if (ingestedFromCache) {
+						doc.destroy(() => {
+							doc = conn.get(COLLECTION_NAME, webstrateId);
+							doc.subscribe(function(retryError) {
+								if (retryError) return reject(retryError);
+								wireUp();
+							});
+						});
+						return;
+					}
+					return reject(error);
+				}
+
+				wireUp();
+			});
+		};
+
+		if (!cacheEligible) return finishSubscribe(false);
+
+		tryIngestCompressedSnapshot(doc, webstrateId)
+			.then(ingested => finishSubscribe(ingested))
+			.catch(() => finishSubscribe(false));
 	});
 };
 

@@ -1,38 +1,46 @@
 {
-	"listeningAddress": "0.0.0.0",
-	"listeningPort": 7007,
-	"db": "mongodb://127.0.0.1:27017/webstrate",
-	"niceWebstrateIds": false,
-	"maxAge": "1d",
-	"maxAssetSize": 100,
-	"maxZipEntries": 1000,
-	"maxZipUncompressedSize": 250,
-	"messageRateLimit": {
-		"messagesPerInterval": 100,
-		"intervalLength": 60000,
-		"note": "Rate limit for the messaging API (P-213): messagesPerInterval sendMessage requests per sender (userId; all of a user's connections share one budget) per intervalLength (ms). Messages beyond the limit are dropped. Invalid or missing blocks fall back to the values shown here."
-	},
-	"_rateLimit": {
-		"opsPerInterval": 5000,
-		"signalsPerInterval": 5000,
-		"intervalLength": 60000,
-		"banDuration": 10000,
-		"note": "Rate limiting is disabled until a block named \"rateLimit\" (no underscore) with these fields is added to config.json. opsPerInterval: ShareDB messages (ops, subscribes, fetches, keep-alives, unrecognized messages) allowed per address per intervalLength (ms); signalsPerInterval: Webstrates actions (signals, replies, cookies) per address per interval; banDuration (ms): how long an address over either budget is banned — open connections are closed, new ones are terminated, and the budget resets when the ban lifts. Behind nginx/apache, the proxy must set X-Forwarded-For to the client address (overwriting any client-supplied value), or every user shares one budget and one ban. See middleware/dosProtectionMiddleware.js."
-	},
-	"auth": {
-		"cookie": {
-			"secret": "This is a secret",
-			"duration": 31536000000
-		},
-		"permissionTimeout": 300,
-		"defaultPermissions": [
-			{"username": "anonymous", "provider": "", "permissions": "arw"}
-		],
-		"providers": {
-		}
-	},
-	"tagging": {
-		"autotagInterval": 3600,
-		"tagPrefix": "Session of "
-	}
+  "listeningAddress": "0.0.0.0",
+  "listeningPort": 7007,
+  "db": "mongodb://127.0.0.1:27017/webstrate",
+  "niceWebstrateIds": false,
+  "maxAge": "1d",
+  "maxAssetSize": 100,
+  "maxZipEntries": 1000,
+  "maxZipUncompressedSize": 250,
+  "messageRateLimit": {
+    "messagesPerInterval": 100,
+    "intervalLength": 60000,
+    "note": "Rate limit for the messaging API (P-213): messagesPerInterval sendMessage requests per sender (userId; all of a user's connections share one budget) per intervalLength (ms). Messages beyond the limit are dropped. Invalid or missing blocks fall back to the values shown here."
+  },
+  "_rateLimit": {
+    "opsPerInterval": 5000,
+    "signalsPerInterval": 5000,
+    "intervalLength": 60000,
+    "banDuration": 10000,
+    "note": "Rate limiting is disabled until a block named \"rateLimit\" (no underscore) with these fields is added to config.json. opsPerInterval: ShareDB messages (ops, subscribes, fetches, keep-alives, unrecognized messages) allowed per address per intervalLength (ms); signalsPerInterval: Webstrates actions (signals, replies, cookies) per address per interval; banDuration (ms): how long an address over either budget is banned — open connections are closed, new ones are terminated, and the budget resets when the ban lifts. Behind nginx/apache, the proxy must set X-Forwarded-For to the client address (overwriting any client-supplied value), or every user shares one budget and one ban. See middleware/dosProtectionMiddleware.js."
+  },
+  "auth": {
+    "cookie": {
+      "secret": "This is a secret",
+      "duration": 31536000000
+    },
+    "permissionTimeout": 300,
+    "defaultPermissions": [
+      {
+        "username": "anonymous",
+        "provider": "",
+        "permissions": "arw"
+      }
+    ],
+    "providers": {}
+  },
+  "tagging": {
+    "autotagInterval": 3600,
+    "tagPrefix": "Session of "
+  },
+  "compressedSnapshots": true,
+  "compressedSnapshotCacheDir": "snapshot-cache",
+  "compressedSnapshotBrotliQuality": 11,
+  "compressedSnapshotDebounceMs": 5000,
+  "compressedSnapshotMaxStalenessMs": 60000
 }

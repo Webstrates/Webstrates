@@ -67,6 +67,11 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 		websocket = new WebSocket(url, protocols);
 	}
 
+	// Binary frames carry binary reply payloads (e.g. the brotli-compressed
+	// snapshot, see customActionHandlerMiddleware). ArrayBuffer rather than the
+	// default Blob, so the payload arrives as a directly sliceable buffer.
+	websocket.binaryType = 'arraybuffer';
+
 	forceClose = false;
 
 	websocket.onopen = event => {
@@ -97,6 +102,29 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 
 	websocket.onmessage = event => {
 		let parsedData;
+
+		// Binary frames are token-correlated replies with binary payloads (e.g.
+		// the brotli-compressed snapshot): envelope
+		// [msgType:uint8][tokenLen:uint8][token utf8][payload bytes]. The token is
+		// looked up in the same callback map as textual replies, the payload (the
+		// rest of the frame, as a Uint8Array view) is passed to the callback.
+		// Binary frames never reach the websocket copies below — their filters
+		// assume text (event.data.startsWith would throw).
+		if (event.data instanceof ArrayBuffer) {
+			const header = new Uint8Array(event.data, 0, 2);
+			if (header[0] === 1) {
+				const tokenLen = header[1];
+				const token = new TextDecoder().decode(new Uint8Array(event.data, 2, tokenLen));
+				if (token && callbacks.has(token)) {
+					const callback = callbacks.get(token);
+					callbacks.delete(token);
+					callback(null, new Uint8Array(event.data, 2 + tokenLen));
+				}
+			}
+			return;
+		}
+
+		if (typeof event.data !== 'string') return;
 
 		// If the message has a reply attached, it means it's an answer to a specific request, and not
 		// something that should just be sent to everybody. Therefore, we find the requester in the

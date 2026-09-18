@@ -26,6 +26,7 @@ const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
+const snapshotCacheManager = require(APP_PATH + '/helpers/SnapshotCacheManager.js');
 const invites = require(APP_PATH + '/middleware/userInvites.js');
 
 const DEFAULT_PROTOTYPE_URL_DNS_SERVERS = ['8.8.8.8', '1.1.1.1'];
@@ -1134,6 +1135,7 @@ async function deleteWebstrate(req, res) {
 	try {
 		await assetManager.deleteAssets(req.params.webstrateId);
 		await documentManager.deleteDocument(req.params.webstrateId, source);
+		snapshotCacheManager.removeEntry(req.params.webstrateId);
 		res.redirect('/');
 	} catch (err){
 		console.error(err);

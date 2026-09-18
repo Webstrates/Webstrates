@@ -1,8 +1,9 @@
 const fs = require('fs');
 const path = require('path');
 const execSync = require('child_process').execSync;
+const zlib = require('zlib');
 const webpack = require('webpack');
-const ESLintPlugin = require('eslint-webpack-plugin'); 
+const ESLintPlugin = require('eslint-webpack-plugin');
 const configHelper = require('./helpers/ConfigHelper.js');
 const MinimizerPlugin = require('minimizer-webpack-plugin');
 
@@ -25,6 +26,7 @@ const cleanServerConfig = {
         rateLimit: serverConfig.rateLimit,
         basicAuth: serverConfig.basicAuth,
         providers: serverConfig.providers && Object.keys(serverConfig.providers),
+        compressedSnapshots: serverConfig.compressedSnapshots === true,
         gitCommit,
         nodeVersion: process.version
 };
@@ -34,16 +36,44 @@ const wrapperHeaderContent = fs.readFileSync(path.resolve(__dirname, './client/w
 const wrapperFooterContent = fs.readFileSync(path.resolve(__dirname, './client/wrapper-footer.js'), 'utf-8');
 
 
+// Embed the brotli decoder's wasm bytes in the bundle as base64: the client
+// snapshot fast path decodes the websocket payload with them, and an
+// embedded copy avoids a runtime roundtrip for the .wasm asset
+const brotliWasmPath = path.resolve(__dirname,
+        'node_modules/brotli-dec-wasm/pkg/brotli_dec_wasm_bg.wasm');
+fs.writeFileSync(path.resolve(__dirname, 'client/webstrates/brotli-wasm-bytes.b64'),
+        fs.readFileSync(brotliWasmPath).toString('base64'));
+
 const config = {
         entry: './client/index.js',
         output: {
                 path: path.resolve(__dirname, 'static'),
                 filename: 'webstrates.js',
-                sourceMapFilename: '[file].map'
+                sourceMapFilename: '[file].map',
+                // An explicit publicPath skips webpack's auto-detection
+                publicPath: '/'
         },
         devtool: 'eval',
         module: {
-                rules: []
+                rules: [
+                        // Base64-embedded binaries (the brotli decoder's wasm bytes,
+                        // generated above into client/webstrates/brotli-wasm-bytes.b64)
+                        // are imported as plain strings.
+                        {
+                                test: /brotli-wasm-bytes\.b64$/,
+                                type: 'asset/source'
+                        },
+                        // The brotli-dec-wasm package's fetch-based default init
+                        // references its .wasm via new URL(...). The client never
+                        // calls it (it inits with the embedded bytes), but webpack
+                        // statically rewrites the reference, so the file must stay
+                        // resolvable as an asset. It is emitted but never fetched.
+                        {
+                                test: /brotli_dec_wasm_bg\.wasm$/,
+                                type: 'asset/resource',
+                                generator: { filename: 'brotli-dec.wasm' }
+                        }
+                ]
         },
         resolve: {
             fallback: { 
@@ -58,6 +88,20 @@ const config = {
                 // Header and footer
                 new webpack.BannerPlugin({banner: wrapperHeaderContent,raw:true,entryOnly:true}),                
                 new webpack.BannerPlugin({banner: wrapperFooterContent,raw:true,entryOnly:true,footer:true}),
+                // Pre-compress the client bundle with brotli
+                {
+                        apply(compiler) {
+                                compiler.hooks.done.tap('EmitPrecompressedBundle', () => {
+                                        const bundlePath = path.resolve(__dirname, 'static', 'webstrates.js');
+                                        const compressed = zlib.brotliCompressSync(
+                                                fs.readFileSync(bundlePath),
+                                                { params: { [zlib.constants.BROTLI_PARAM_QUALITY]: 11 } });
+                                        const tmp = bundlePath + '.br.tmp';
+                                        fs.writeFileSync(tmp, compressed);
+                                        fs.renameSync(tmp, bundlePath + '.br');
+                                });
+                        }
+                },
                 {
                         // Add a hash of webstrates.js to the HTML that's being served to the client in order to
                         // invalidate webstrates.js when it gets updated.

@@ -1,6 +1,8 @@
 'use strict';
 
 const argv = require('minimist')(process.argv.slice(2));
+const fs = require('fs');
+const path = require('path');
 const bodyParser = require('body-parser');
 const express = require('express');
 const expressWs = require('express-ws');
@@ -95,6 +97,22 @@ function runMiddleware(type, args, middleware, ...middlewares) {
 
 
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Serve the pre-compressed client bundle (webstrates.js.br, emitted by the
+// webpack build) to browsers that accept brotli
+app.get('/webstrates.js', (req, res, next) => {
+	if (!(req.headers['accept-encoding'] || '').includes('br')) return next();
+	const compressedPath = path.join(APP_PATH, 'static', 'webstrates.js.br');
+	fs.readFile(compressedPath, (err, data) => {
+		if (err) return next();
+		res.set('Content-Type', 'text/javascript; charset=UTF-8');
+		res.set('Content-Encoding', 'br');
+		res.set('Vary', 'Accept-Encoding');
+		res.set('Cache-Control', 'public, max-age=186400');
+		res.end(data);
+	});
+});
+
 app.use(express.static('static', { maxAge: config.maxAge }));
 
 if (config.basicAuth) {

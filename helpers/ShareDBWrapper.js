@@ -9,6 +9,7 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
+const snapshotCacheManager = require(APP_PATH + '/helpers/SnapshotCacheManager.js');
 
 const COLLECTION_NAME = 'webstrates';
 
@@ -150,6 +151,18 @@ share.use(['afterWrite'], (req, next) => {
 		permissionManager.expireAllAccessTokens(webstrateId);
 	}
 
+	next();
+});
+
+// SnapshotCacheManager: any committed op makes the compressed snapshot cache
+// entry for the document stale. Schedule a debounced rebuild (a delete drops
+// the entry immediately) — see helpers/SnapshotCacheManager.js. This runs
+// after the op has been written, so it can never delay the acknowledgement
+// (the rebuild itself is async on top of the debounce).
+share.use(['afterWrite'], (req, next) => {
+	if (req.op && req.op.d) {
+		snapshotCacheManager.scheduleRebuild(req.op.d, req.op);
+	}
 	next();
 });
 
