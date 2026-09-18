@@ -403,7 +403,9 @@ app.post('/:webstrateId', function (req, res) {
 		return permissionManager.generateAccessToken(req, res);
 	}
 
-	if (req.headers['content-type'].startsWith('multipart/form-data;')) {
+	// The Content-Type header is optional (curl can be told to omit it, and so can any raw
+	// HTTP client), so we must not dereference req.headers['content-type'] unconditionally.
+	if ((req.headers['content-type'] || '').startsWith('multipart/form-data;')) {
 		return assetManager.assetUploadHandler(req, res);
 	}
 
@@ -420,8 +422,15 @@ app.post('*any', function (req, res) {
 	res.send('You can only post assets to URLs of the form /<webstrateId>/.');
 });
 
+// Error middleware: log the error and respond with a 500. Previously this middleware called
+// next() (as an argument to console.log) and never sent a response, so the request fell
+// through the router and the client got a misleading 404 error page.
 app.use((err, req, res, next) => {
-	console.log(err, next());
+	console.error(err);
+	if (res.headersSent) {
+		return next(err);
+	}
+	res.status(500).send('Internal server error.');
 });
 
 const port = argv.p || config.listeningPort || 7007;

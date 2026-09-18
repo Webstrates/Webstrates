@@ -1346,7 +1346,10 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 		if (err) {
 			console.error(err);
 			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
-				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` } : err);
+				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` }
+				// Serialize the message (multer attaches an enumerable `storageErrors` property to
+				// the file filter's Error, and res.json(err) would only show that).
+				: { error: err.message || String(err) });
 		}
 
 		if (!req.file) {
@@ -1595,9 +1598,9 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 							fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
 						});
 						if (htmlDocumentFound) {
-							return reject('index.html found, but unable to create webstrate from it. Aborting.');
+							return reject(new Error('index.html found, but unable to create webstrate from it. Aborting.'));
 						} else {
-							return reject('No index.html found.');
+							return reject(new Error('No index.html found.'));
 						}
 					}
 

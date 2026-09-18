@@ -188,7 +188,15 @@ coreWebsocketModule.send = (data, callback, options = {}) => {
 	// not all type of messages can handle callbacks.
 	if (typeof callback === 'function') {
 		if (typeof data === 'string') {
-			data = JSON.parse(data);
+			// A string message must be valid JSON, since we need to attach a token to it before
+			// sending. If it isn't, report the error through the callback instead of letting a
+			// SyntaxError escape to the caller.
+			try {
+				data = JSON.parse(data);
+			} catch (err) {
+				callback(new Error(`Cannot send message: not valid JSON. ${err.message}`));
+				return;
+			}
 		}
 		const token = coreUtils.randomString();
 		data.token = token;

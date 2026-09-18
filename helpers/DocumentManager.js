@@ -366,10 +366,13 @@ module.exports.deleteDocument = async function(webstrateId) {
  */
 module.exports.getDocumentVersion = async function(webstrateId) {
 	let doc = await db.webstrates.findOne({ _id: webstrateId }, { _v: 1});
+	if (!doc) {
+		throw new Error(`Webstrate ${webstrateId} does not exist.`);
+	}
 	try {
 		return Number(doc._v);
 	} catch (err){
-		console.log("Error in getDocumentVersion:", e, doc, err);
+		console.error("Error in getDocumentVersion:", err, doc);
 		throw err;
 	}
 };
@@ -425,13 +428,15 @@ module.exports.getOps = async function({ webstrateId, initialVersion, version })
  */
 module.exports.getTag = function(webstrateId, version, next) {
 	if (version === undefined || version === 'head') {
-		db.tags.find({ webstrateId }, { data: 0, type: 0 }).sort({ v: -1 }).limit(1).toArray().then(tags=>{
+		return db.tags.find({ webstrateId }, { data: 0, type: 0 }).sort({ v: -1 }).limit(1).toArray().then(tags=>{
 			return next && next(null, tags[0]);
 		}).catch(err=>{
 			return next && next(err);
 		});
 	}
-	db.tags.findOne({ webstrateId, v: version }, { data: 0, type: 0 }).then((tag)=>next(null,tag)).catch(err=>{
+	db.tags.findOne({ webstrateId, v: version }, { data: 0, type: 0 }).then((tag)=>{
+		return next && next(null, tag);
+	}).catch(err=>{
 		return next && next(err);
 	});
 };

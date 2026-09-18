@@ -31,7 +31,10 @@ module.exports.assetUploadHandler = async function(req, res) {
 		if (err) {
 			console.error(err);
 			return res.status(409).json(err.code === 'LIMIT_FILE_SIZE'  ?
-				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` } : err);
+				{ error: `Maximum file size exceeded (${(config.maxAssetSize || 20)} MB).` }
+				// Serialize the message (multer attaches an enumerable `storageErrors` property to
+				// the file filter's Error, and res.json(err) would only show that).
+				: { error: err.message || String(err) });
 		}
 
 		if (!req.files) {
