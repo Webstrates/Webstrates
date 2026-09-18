@@ -61,31 +61,145 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 };
 
 /**
- * Checks whether a snapshot is "empty", i.e. just a shell with an (almost) empty head and body.
+ * Checks whether a snapshot is "empty", i.e. nothing but a shell of html, head and body
+ * elements (with an optional title) that carries no content. The check assumes nothing
+ * about the snapshot's shape and goes through a series of explicit steps: JsonML neither
+ * requires attribute objects on elements (["body"] is as valid as ["body", {}]) nor that
+ * a document follows the html/head/body form at all, so anything that cannot be verified
+ * to be such a shell counts as not empty. (An "empty" verdict allows the document to be
+ * deleted to free its webstrate name, so when in doubt we must err towards "not empty".)
  * @param  {Snapshot}  snapshot ShareDB snapshot.
  * @return {Boolean}            Whether snapshot is empty or not.
  * @private
  */
 function isSnapshotEmpty(snapshot) {
+	// A missing snapshot is an empty document by definition — there is nothing to keep.
 	if (!snapshot)
 		return true;
 
-	// Remove empty elements like '\n' from the root of the document.
-	snapshot = snapshot.filter(o => !(typeof o === 'string' && o.trim() === ''));
+	// A string snapshot (a raw document of text) is empty if it is nothing but whitespace.
+	if (typeof snapshot === 'string')
+		return snapshot.trim() === '';
 
-	if (snapshot[2] && snapshot[2][0].toLowerCase() !== 'head' // head tag exists
-		&& (Object.keys(snapshot[2][1]).length > 1))  // has no attributes (other than wid)
+	// Only a JsonML tree can be verified to be an empty shell; any other value may carry
+	// content.
+	if (!Array.isArray(snapshot))
 		return false;
 
-	// Remove empty elements like '\n' from the head.
-	snapshot[2] = snapshot[2].filter(o => !(typeof o === 'string' && o.trim() === ''));
-	return (!snapshot[2][2] // has an empty head
-				|| (Array.isArray(snapshot[2][2]) // or has a head
-					&& snapshot[2][2][0].toLowerCase() === 'title')) // that element being a title tag
-		&& snapshot[3] && snapshot[3][0].toLowerCase() === 'body' // body tag exists
-		&& (Object.keys(snapshot[3][1]).length <= 1) // has no attributes (other than wid)
-		&& snapshot[3].slice(2).join('').trim() === ''; // and an empty body
+	// Remove empty string elements (whitespace doesn't count as content) from the
+	// entire snapshot, so we don't have to do it again in any of the steps below.
+	snapshot = stripWhitespaceStrings(snapshot);
+
+	// If no elements are left at all, the snapshot is empty.
+	if (snapshot.length === 0)
+		return true;
+
+	// What is left must be a lone html tag; anything else cannot be an empty webstrate.
+	// An html element that is itself empty (no children, no attributes but its webstrate
+	// id) makes the snapshot empty.
+	if (elementTag(snapshot) !== 'html')
+		return false;
+	if (elementEmpty(snapshot))
+		return true;
+
+	// The html tag has children and/or attributes, so we look at what it may contain.
+	// Attributes other than the webstrate id mean the document isn't empty.
+	if (!hasOnlyWidAttributes(snapshot))
+		return false;
+
+	// The html children may be at most one head and at most one body; anything else is
+	// content.
+	let head = null, body = null;
+	for (const child of elementChildren(snapshot)) {
+		if (elementTag(child) === 'head' && !head) head = child;
+		else if (elementTag(child) === 'body' && !body) body = child;
+		else return false;
+	}
+
+	// A body that isn't empty means the document isn't empty.
+	if (body && !elementEmpty(body))
+		return false;
+
+	// An empty head keeps the document empty, as does a head with no attributes
+	// but the webstrate id whose only child is a title — or no head at all; any other head
+	// has content.
+	if (!head || elementEmpty(head))
+		return true;
+
+	const headChildren = elementChildren(head);
+	return hasOnlyWidAttributes(head) && headChildren.length === 1
+		&& elementTag(headChildren[0]) === 'title';
 }
+
+/**
+ * Check whether a JsonML element is "empty": it has no children and no attributes other
+ * than, optionally, its webstrate id.
+ * @param  {JsonML}   element JsonML element.
+ * @return {Boolean}          Whether the element is empty.
+ * @private
+ */
+function elementEmpty(element) {
+	return hasOnlyWidAttributes(element) && elementChildren(element).length === 0;
+}
+
+/**
+ * Check whether a JsonML element carries no attributes other than, optionally, its
+ * webstrate id — the __wid attribute the client puts on elements. Elements without an
+ * attribute object at all qualify.
+ * @param  {JsonML}   element JsonML element.
+ * @return {Boolean}          Whether the element has no attributes but its webstrate id.
+ * @private
+ */
+function hasOnlyWidAttributes(element) {
+	const attributes = element[1];
+	if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes))
+		return true;
+	return Object.keys(attributes).every(key => key === '__wid');
+}
+
+/**
+ * Get the (lowercased) tag name of a JsonML element, or null for values that aren't
+ * elements with a string tag.
+ * @param  {JsonML}   element JsonML element (or any other value).
+ * @return {string?}          Lowercased tag name, or null.
+ * @private
+ */
+function elementTag(element) {
+	if (!Array.isArray(element) || typeof element[0] !== 'string')
+		return null;
+	return element[0].toLowerCase();
+}
+
+/**
+ * Get the children of a JsonML element. JsonML elements are [tag, attrs?, ...children],
+ * where the attribute object may be omitted entirely — the children then start at index 1
+ * instead of 2.
+ * @param  {JsonML}  element JsonML element.
+ * @return {array}           Child nodes of the element.
+ * @private
+ */
+function elementChildren(element) {
+	const maybeAttributes = element[1];
+	const childrenStart = (maybeAttributes && typeof maybeAttributes === 'object'
+		&& !Array.isArray(maybeAttributes)) ? 2 : 1;
+	return element.slice(childrenStart);
+}
+
+/**
+ * Recursively remove empty string elements (whitespace doesn't count as content) from the
+ * entire snapshot — the root and every element in it.
+ * @param  {JsonML}  node JsonML element or plain value.
+ * @return {JsonML}       The node with whitespace-only strings gone.
+ * @private
+ */
+function stripWhitespaceStrings(node) {
+	if (!Array.isArray(node))
+		return node;
+	return node
+		.map(child => stripWhitespaceStrings(child))
+		.filter(child => !(typeof child === 'string' && child.trim() === ''));
+}
+
 /**
  * Retrieve a document snapshot from the database.
  * @param  {string}   options.webstrateId WebstrateId.
