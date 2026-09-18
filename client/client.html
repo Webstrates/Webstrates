@@ -1,33 +1,36 @@
 <!doctype html>
 <html>
 <body>
-<p>Loading Webstrates</p>
 <div class="spinner"></div>
 <style type="text/css" media="screen">
-body {
-	font-family: sans-serif;
-	font-weight: 200;
-	-webkit-font-smoothing: antialiased;
-	text-align: center;
-	margin-top: 15%;
-	animation: fadein 1s;
-}
-@keyframes fadein {
-	0% { opacity: 0; }
-	100% { opacity: 1; }
-}
-.spinner {
-	width: 40px;
-	height: 40px;
-	margin: 0 auto;
-	background-color: #31a46f;
-	animation: rotateplane 1.2s infinite ease-in-out;
-}
-@keyframes rotateplane {
-	0% { transform: perspective(120px) rotateX(0deg) rotateY(0deg); }
-	50% { transform: perspective(120px) rotateX(-180.1deg) rotateY(0deg); }
-	100% { transform: perspective(120px) rotateX(-180deg) rotateY(-179.9deg); }
-}
+  body {
+    display: grid;
+    place-items: center;
+    height: 100vh;
+  }
+  .spinner {
+    position: relative;
+    width: 10vw;
+    height: 10vh;
+    aspect-ratio: 1;
+    background: url("/favicon.ico") no-repeat center / contain;
+  }
+  .spinner::before,
+  .spinner::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: inherit;
+    animation: emit 2.4s ease-out infinite;
+    z-index: -1;
+  }
+  .spinner::after {
+    animation-delay: 1.2s;
+  }
+  @keyframes emit {
+    from { transform: scale(1); opacity: .4; }
+    to   { transform: scale(1.7); opacity: 0; }
+  }
 </style>
 <script src="/webstrates.js?{{hash}}"></script>
 </body></html>

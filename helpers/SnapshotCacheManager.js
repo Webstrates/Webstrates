@@ -138,21 +138,27 @@ function bootStyle() {
 	// path tree and model (config.isTransientElement matches [transient]),
 	// so the reveal's deferred removal (see paintAdoption) is op-free: no
 	// commit, no version bump, no mirror divergence.
+	//
+	// The look mirrors the shell's favicon-ripple spinner (client.html,
+	// d624124): the tab favicon served at /favicon.ico is already warm by
+	// the time the boot style parses. The zero-DOM constraint (no node
+	// besides the style itself may exist in the walked document) leaves
+	// html's two pseudo-element slots: ::before is the icon, ::after the
+	// single ripple (the shell's second, staggered ripple has no slot
+	// here) growing from icon size to double and fading out.
 	return '<style transient data-webstrates-boot="1">'
 		+ 'body{visibility:hidden}'
 		+ 'body>*{display:none!important}'
-		+ 'html::before{content:"";position:fixed;top:calc(50% - 60px);'
-		+ 'left:calc(50% - 20px);width:40px;height:40px;'
-		+ 'background-color:#31a46f;z-index:2147483647;'
-		+ 'animation:wsp-rotateplane 1.2s infinite ease-in-out}'
-		+ 'html::after{content:"Loading Webstrates";position:fixed;'
-		+ 'top:calc(50% + 30px);left:0;right:0;text-align:center;'
-		+ 'font:200 16px sans-serif;-webkit-font-smoothing:antialiased;'
-		+ 'color:#333;z-index:2147483647}'
-		+ '@keyframes wsp-rotateplane{0%{transform:perspective(120px) '
-		+ 'rotateX(0deg) rotateY(0deg)}'
-		+ '50%{transform:perspective(120px) rotateX(-180.1deg) rotateY(0deg)}'
-		+ '100%{transform:perspective(120px) rotateX(-180deg) rotateY(-179.9deg)}}'
+		+ 'html::before{content:"";position:fixed;top:calc(50% - 24px);'
+		+ 'left:calc(50% - 24px);width:48px;height:48px;'
+		+ 'background:url("/favicon.ico") no-repeat center / contain;'
+		+ 'z-index:2147483647}'
+		+ 'html::after{content:"";position:fixed;top:calc(50% - 48px);'
+		+ 'left:calc(50% - 48px);width:96px;height:96px;'
+		+ 'background:url("/favicon.ico") no-repeat center / contain;'
+		+ 'animation:wsp-emit 2.4s ease-out infinite;z-index:2147483646}'
+		+ '@keyframes wsp-emit{from{transform:scale(.5);opacity:.4}'
+		+ 'to{transform:scale(1);opacity:0}}'
 		+ '</style>';
 }
 
