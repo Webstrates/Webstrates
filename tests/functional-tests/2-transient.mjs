@@ -212,3 +212,172 @@ describe('Transient Tags', function() {
 	});
 
 });
+
+describe('Transient Attribute', function() {
+	this.timeout(10000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId + '/';
+	let browser, pageA, pageB;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+
+		pageA = await browser.newPage();
+		await pageA.goto(url, { waitUntil: 'networkidle2' });
+
+		pageB = await browser.newPage();
+		await pageB.goto(url, { waitUntil: 'networkidle2' });
+	});
+
+	after(async () => {
+		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
+		await browser.close();
+	});
+
+	it('can insert element with the transient attribute', async () => {
+		await pageA.evaluate(() => {
+			const d = document.createElement('div');
+			d.id = 'transient-attribute-div';
+			d.setAttribute('transient', '');
+			d.textContent = 'transient content';
+			document.body.appendChild(d);
+		});
+
+		const containsTransientDiv = await util.waitForFunction(pageA,
+			() => document.body.querySelector('#transient-attribute-div') !== null);
+		assert.isTrue(containsTransientDiv);
+	});
+
+	it('element with the transient attribute should not be visible to other clients', async () => {
+		const containsTransientDiv = await util.waitForFunction(pageB,
+			() => document.body.querySelector('#transient-attribute-div') !== null);
+		assert.isFalse(containsTransientDiv);
+	});
+
+	it('can insert children into transient-attribute elements', async () => {
+		await pageA.evaluate(() => {
+			const t = document.querySelector('#transient-attribute-div');
+			const span = document.createElement('span');
+			span.id = 'transient-attribute-span';
+			span.textContent = 'transient child';
+			t.appendChild(span);
+		});
+
+		const containsTransientSpan = await util.waitForFunction(pageA,
+			() => document.body.querySelector(
+				'#transient-attribute-div > #transient-attribute-span') !== null);
+		assert.isTrue(containsTransientSpan);
+	});
+
+	it('children of transient-attribute elements should not sync to other clients', async () => {
+		const containsTransientSpan = await util.waitForFunction(pageB,
+			() => document.body.querySelector(
+				'#transient-attribute-div > #transient-attribute-span') !== null);
+		assert.isFalse(containsTransientSpan);
+	});
+
+	it('elements whose transient attribute is removed before insertion are persisted', async () => {
+		await pageA.evaluate(() => {
+			const d = document.createElement('div');
+			d.id = 'no-longer-transient-div';
+			d.setAttribute('transient', '');
+			d.removeAttribute('transient');
+			document.body.appendChild(d);
+		});
+
+		const containsDivA = await util.waitForFunction(pageA,
+			() => document.body.querySelector('#no-longer-transient-div') !== null);
+		assert.isTrue(containsDivA);
+
+		const containsDivB = await util.waitForFunction(pageB,
+			() => document.body.querySelector('#no-longer-transient-div') !== null);
+		assert.isTrue(containsDivB);
+	});
+
+	it('adding the transient attribute to a persisted element does not sync it', async () => {
+		await pageA.evaluate(() => {
+			const span = document.createElement('span');
+			span.id = 'synced-span';
+			document.body.appendChild(span);
+		});
+
+		const spanSynced = await util.waitForFunction(pageB,
+			() => document.body.querySelector('#synced-span') !== null);
+		assert.isTrue(spanSynced);
+
+		await pageA.evaluate(() => {
+			document.querySelector('#synced-span').setAttribute('transient', '');
+		});
+
+		// The transient attribute itself must never arrive anywhere — it is transient as an
+		// attribute, too, and it must not desynchronize the JsonML from the path tree.
+		await util.sleep(2);
+		const transientAttributeOnB = await pageB.evaluate(() =>
+			document.body.querySelector('#synced-span').hasAttribute('transient'));
+		assert.isFalse(transientAttributeOnB, 'transient attribute should not synchronize');
+
+		// The element stays persisted — later regular edits still synchronize.
+		await pageA.evaluate(() => {
+			document.querySelector('#synced-span').setAttribute('data-foo', 'bar');
+		});
+
+		const regularAttributeArrived = await util.waitForFunction(pageB,
+			() => document.body.querySelector('#synced-span').getAttribute('data-foo') === 'bar');
+		assert.isTrue(regularAttributeArrived);
+	});
+
+	it('the document element can not be made transient', async () => {
+		let error = false;
+		pageA.on('pageerror', _error => error = _error);
+
+		await pageA.evaluate(() => {
+			document.documentElement.setAttribute('transient', '');
+		});
+
+		await util.sleep(.5);
+		assert.equal(error, false, 'setting transient on the html element threw: ' + error);
+
+		// Despite the html element carrying the transient attribute, the document must keep
+		// synchronizing: a regular element inserted afterwards still arrives on other clients.
+		await pageA.evaluate(() => {
+			const d = document.createElement('div');
+			d.id = 'after-html-transient-div';
+			document.body.appendChild(d);
+		});
+
+		const containsDivB = await util.waitForFunction(pageB,
+			() => document.body.querySelector('#after-html-transient-div') !== null);
+		assert.isTrue(containsDivB, 'document should keep synchronizing');
+	});
+
+	it('comment nodes are persisted with the default transient configuration', async () => {
+		// Comments (and any other non-element node) must pass through isTransientElement
+		// without throwing and come out non-transient — userland predicates chain on top of
+		// the default one (see the WPMv2 isTransientElement override) and rely on this
+		// contract, so guard it.
+		let error = false;
+		pageA.on('pageerror', _error => error = _error);
+
+		await pageA.evaluate(() => {
+			document.body.appendChild(document.createComment('a persisted comment'));
+		});
+
+		const commentArrivedOnB = await util.waitForFunction(pageB,
+			() => Array.from(document.body.childNodes).some(node =>
+				node.nodeType === Node.COMMENT_NODE && node.nodeValue === 'a persisted comment'));
+		assert.isTrue(commentArrivedOnB, 'comment should be visible to other clients');
+
+		assert.equal(error, false, 'handling a comment node threw: ' + error);
+	});
+
+	it('transient-attribute elements do not survive a reload', async () => {
+		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		const containsTransientDiv = await util.waitForFunction(pageA,
+			() => document.body.querySelector('#transient-attribute-div') !== null);
+		assert.isFalse(containsTransientDiv, 'transient-attribute element should be gone after reload');
+	});
+
+});
