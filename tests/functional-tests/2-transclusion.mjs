@@ -29,8 +29,12 @@ describe('Transclusion', function() {
 
 	after(async () => {
 		await Promise.all([
-			pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlInner + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlInner + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await browser.close();

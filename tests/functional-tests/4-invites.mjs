@@ -56,6 +56,12 @@ describe('Invites', function () {
 
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
+		// The data-auth write is an operation like any other: pageA.evaluate resolves before
+		// the server has committed the op, so a request from pageB sent right away can still
+		// win the race and be served under the old (default, anonymous) permissions. Capture
+		// the version before the write and wait for the bump — the client only sees the new
+		// version once the server has committed the op and echoed it back.
+		const version = await pageA.evaluate(() => window.webstrate.version);
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify([{
@@ -65,6 +71,9 @@ describe('Invites', function () {
 				}])
 			);
 		});
+		assert.isTrue(await util.waitForFunction(pageA,
+			(v) => window.webstrate.version > v, 5, version),
+			'data-auth operation did not commit in time');
 	});
 
 	it('User B should not have access to the webstrate', async function () {
@@ -184,6 +193,9 @@ describe('Invites', function () {
 			return await window.webstrate.user.invites.create({ permissions: 'r' });
 		});
 
+		// Wait for the data-auth rewrite below to commit before pageB's request: the op is
+		// only server-side once the client sees the version bump (see the comment above).
+		const version = await pageA.evaluate(() => window.webstrate.version);
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify([
@@ -195,6 +207,9 @@ describe('Invites', function () {
 				])
 			);
 		});
+		assert.isTrue(await util.waitForFunction(pageA,
+			(v) => window.webstrate.version > v, 5, version),
+			'data-auth operation did not commit in time');
 
 		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`, { waitUntil: 'networkidle2' });
 		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invite via HTTP API');
@@ -216,6 +231,10 @@ describe('Invites', function () {
 			return await window.webstrate.user.invites.create({ permissions: 'w' });
 		});
 
+		// Wait for the data-auth write to commit before pageB connects: pageB's permissions
+		// are negotiated when its page loads, and the test's expected error depends on pageB
+		// actually having admin (but not creator) permissions (see the comment above).
+		const version = await pageA.evaluate(() => window.webstrate.version);
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify([
@@ -232,6 +251,9 @@ describe('Invites', function () {
 				])
 			);
 		});
+		assert.isTrue(await util.waitForFunction(pageA,
+			(v) => window.webstrate.version > v, 5, version),
+			'data-auth operation did not commit in time');
 
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
@@ -255,7 +277,10 @@ describe('Invites', function () {
 	it('An invite sent by a user which now has lost admin permission becomes invalid', async function () {
 		if (config.authType !== 'test') return this.skip();
 
-		// Remove admin permissions from User A
+		// Remove admin permissions from User A. Wait for the write to commit before pageB
+		// connects — the expected error below requires the server to already see user A
+		// without admin permissions when the invite is accepted (see the comment above).
+		const version = await pageA.evaluate(() => window.webstrate.version);
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify([
@@ -272,6 +297,9 @@ describe('Invites', function () {
 				])
 			);
 		});
+		assert.isTrue(await util.waitForFunction(pageA,
+			(v) => window.webstrate.version > v, 5, version),
+			'data-auth operation did not commit in time');
 
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 

@@ -24,7 +24,8 @@ describe('Copying', function() {
 	});
 
 	after(async () => {
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await page.setCacheEnabled(false);
+		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 		await browser.close();
 	});
 

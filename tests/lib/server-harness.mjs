@@ -116,8 +116,21 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 	fullConfig.listeningPort = port_;
 
 	const tmp = os.tmpdir();
-	const configFile = path.join(tmp, `webstrates-harness-config-${label}.json`);
-	const logFile = path.join(tmp, `webstrates-harness-${label}.log`);
+	// The sample config points the compressed-snapshot cache at a directory relative to
+	// the repo cwd, which every concurrently running server instance (and every suite
+	// sharing this checkout) would write into. Random webstrate ids make actual cache
+	// collisions between instances unlikely, but give each instance its own directory
+	// anyway — the cache is per-server mutable state and deserves the same isolation as
+	// the port. (Entry names are just the webstrate id, so sharing also let one suite's
+	// entries accumulate in another's checkout forever.)
+	fullConfig.compressedSnapshotCacheDir = path.join(
+		fs.mkdtempSync(path.join(tmp, 'webstrates-harness-')), 'snapshot-cache');
+	// Config and log files carry the spawning process's pid in their name: labels are the
+	// same across test suites (every suite's ratelimit tests use "ratelimit"), so on a
+	// shared host two concurrent runs would otherwise overwrite each other's config mid-
+	// boot and interleave their logs (the state file is already pid-unique).
+	const configFile = path.join(tmp, `webstrates-harness-config-${label}-${process.pid}.json`);
+	const logFile = path.join(tmp, `webstrates-harness-${label}-${process.pid}.log`);
 	fs.writeFileSync(configFile, JSON.stringify(fullConfig, null, '\t'));
 
 	const child = spawn(process.execPath, [path.join(REPO_ROOT, 'webstrates.js')], {

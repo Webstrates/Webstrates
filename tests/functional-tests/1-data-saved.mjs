@@ -49,8 +49,12 @@ describe('DOM Manipulation with dataSaved', function() {
 
 	after(async () => {
 		await Promise.all([
-			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await browser.close();

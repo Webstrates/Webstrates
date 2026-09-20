@@ -356,7 +356,8 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 	});
 
 	after(async () => {
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await page.setCacheEnabled(false);
+		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 
 		// Clean up the documents the raw-socket test created.
 		for (const createdId of createdWebstrateIds) {

@@ -127,8 +127,12 @@ describe('Assets', function () {
 			fs.rmdirSync(testDir);
 		}
 
-		await pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' });
-		await pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' });
+		await Promise.all([
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' });
+		await pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' });
 		await Promise.all([
 			browserA.close(),
 			browserB.close()

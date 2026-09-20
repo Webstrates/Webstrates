@@ -52,8 +52,12 @@ describe('Messages', function() {
 
 	after(async () => {
 		await Promise.all([
-			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await Promise.all([
@@ -485,15 +489,20 @@ describe('Messages', function() {
 		}
 
 		sockets.forEach(socket => socket.close());
+		await Promise.all([
+			pageA.setCacheEnabled(false),
+			pageD.setCacheEnabled(false),
+			pageE.setCacheEnabled(false)
+		]);
 
 		// Deletes have to be sequential per page, so delete testuser's two webstrates one
 		// after the other.
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-		await pageA.goto(restrictedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(restrictedUrl + '/?delete', { waitUntil: 'domcontentloaded' });
 
 		await Promise.all([
-			pageD.goto(otherUrl + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageE.goto(floodUrl + '?delete', { waitUntil: 'domcontentloaded' })
+			pageD.goto(otherUrl + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageE.goto(floodUrl + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await Promise.all([

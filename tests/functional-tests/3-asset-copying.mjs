@@ -161,13 +161,12 @@ describe('Asset copying', function () {
 	});
 
 	after(async () => {
-		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await page.setCacheEnabled(false);
 		for (const copyUrl of copyUrls) {
 			await page.goto(copyUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		}
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-		await page.goto(emptyUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await page.goto(emptyUrl + '/?delete', { waitUntil: 'domcontentloaded' });
 
 		await browser.close();
 
