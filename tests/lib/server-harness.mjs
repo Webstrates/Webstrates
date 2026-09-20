@@ -124,8 +124,15 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 	fullConfig.snapshotCacheDir = path.join(dataDir, 'page-cache');
 
 	const tmp = os.tmpdir();
-	const configFile = path.join(tmp, `webstrates-harness-config-${label}.json`);
-	const logFile = path.join(tmp, `webstrates-harness-${label}.log`);
+	// The snapshot cache is already per-instance in this variant: the line above
+	// points snapshotCacheDir into the per-server dataDir, so no instance (and no
+	// suite sharing this checkout) writes into another's cache.
+	// Config and log files carry the spawning process's pid in their name: labels are the
+	// same across test suites (every suite's ratelimit tests use "ratelimit"), so on a
+	// shared host two concurrent runs would otherwise overwrite each other's config mid-
+	// boot and interleave their logs (the state file is already pid-unique).
+	const configFile = path.join(tmp, `webstrates-harness-config-${label}-${process.pid}.json`);
+	const logFile = path.join(tmp, `webstrates-harness-${label}-${process.pid}.log`);
 	fs.writeFileSync(configFile, JSON.stringify(fullConfig, null, '\t'));
 
 	const child = spawn(process.execPath, [path.join(REPO_ROOT, 'webstrates.js')], {

@@ -495,6 +495,11 @@ describe('Messages', function() {
 		}
 
 		sockets.forEach(socket => socket.close());
+		await Promise.all([
+			pageA.setCacheEnabled(false),
+			pageD.setCacheEnabled(false),
+			pageE.setCacheEnabled(false)
+		]);
 
 		// Slashed delete URLs + disabled browser cache, so the gotos can't hang on a
 		// redirect to a cached document (see the first describe's after()).
