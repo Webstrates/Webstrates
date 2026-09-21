@@ -44,6 +44,8 @@ const brotliWasmPath = path.resolve(__dirname,
 fs.writeFileSync(path.resolve(__dirname, 'client/webstrates/brotli-wasm-bytes.b64'),
         fs.readFileSync(brotliWasmPath).toString('base64'));
 
+const isProduction = process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production';
+
 const config = {
         entry: './client/index.js',
         output: {
@@ -53,7 +55,8 @@ const config = {
                 // An explicit publicPath skips webpack's auto-detection
                 publicPath: '/'
         },
-        devtool: 'eval',
+        // Allow the minifier to run in production but keep eval-source in dev
+        devtool: isProduction ? false : 'eval',
         module: {
                 rules: [
                         // Base64-embedded binaries (the brotli decoder's wasm bytes,
@@ -76,10 +79,20 @@ const config = {
                 ]
         },
         resolve: {
-            fallback: { 
+            fallback: {
 		"util": false,
 		"setimmediate": require.resolve("setimmediate")
-	    } // webpack < 5 used to include polyfills for node.js core modules by default
+	    }, // webpack < 5 used to include polyfills for node.js core modules by default
+
+            // ShareDB's client pulls in its whole real-time presence subsystem
+            // (plus the `async` library) from connection.js, but no Webstrates
+            // code ever uses it. Alias them to shims
+            alias: {
+                './presence/presence$': path.resolve(__dirname, 'client/shims/presence.js'),
+                './presence/doc-presence$': path.resolve(__dirname, 'client/shims/doc-presence.js'),
+                './presence/doc-presence-emitter$':
+			path.resolve(__dirname, 'client/shims/doc-presence-emitter.js')
+            }
         },
         plugins: [
                 // Our own config and debug module
@@ -124,7 +137,7 @@ const config = {
 };
 
 // In production
-if (process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production') {
+if (isProduction) {
         // Minify the code.
         config.plugins.push(
             new MinimizerPlugin({
