@@ -150,7 +150,7 @@ exports.onmessage = async (ws, req, data, next) => {
 				ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: 'Invalid token.' }));
 				break;
 			}
-			ws.send(Buffer.concat([Buffer.from([1, token.length]), token, entry.buffer]));
+			ws.send(Buffer.concat([Buffer.from([1, token.length]), token, entry]));
 			break;
 		}
 		// Request a snapshot.

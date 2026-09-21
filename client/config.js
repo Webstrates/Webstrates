@@ -1,5 +1,4 @@
 module.exports = {
-	VERBOSE_MODE: false,
 	modules: [
 		'globalObject',
 		'loadedEvent',

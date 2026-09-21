@@ -166,8 +166,11 @@ share.use(['afterWrite'], (req, next) => {
 	next();
 });
 
-share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delete', 'handshake'],
-	async function(req, next) {
+// Permission enforcement on the actions a connected client can trigger. Only 'query',
+// 'submit' and 'receive' are real ShareDB 6 middleware actions (MIDDLEWARE_ACTIONS); the
+// also-registered 'fetch'/'getOps'/'bulk fetch'/'delete'/'handshake' never fire, so reads
+// over the websocket relied on the permission checks elsewhere. See DEAD_CODE.md §7.1.
+share.use(['query', 'submit', 'receive'], async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).
 		if (!req.agent.user) return next();
@@ -231,8 +234,6 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 		}
 
 		switch (req.action) {
-			case 'fetch':
-			case 'getOps': // Operations request.
 			case 'query': // Document request.
 				if (permissions.includes('r')) {
 					return next();
@@ -306,12 +307,6 @@ share.use(['fetch', 'getOps', 'query', 'submit', 'receive', 'bulk fetch', 'delet
 					return next();
 				}
 				break;
-			case 'bulk fetch':
-				console.log('req.action bulk fetch');
-				break;
-			case 'delete':
-				console.log('req.action delete');
-				break;
 		}
 
 		return next('Forbidden, write permissions required');
@@ -362,7 +357,5 @@ module.exports.submitOp = (webstrateId, op, next) => {
 	const request = new sharedb.SubmitRequest(share, agent, COLLECTION_NAME, webstrateId, op);
 	request.submit(next);
 };
-
-module.exports.use = (event, callback) => share.use(event, callback);
 
 module.exports.listen = (stream, req) => share.listen(stream, req);

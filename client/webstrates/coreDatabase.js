@@ -110,9 +110,8 @@ function embeddedBrotliWasmBytes() {
 
 /**
  * Decompress brotli bytes (as a Uint8Array) into a parsed JSON payload.
- * Returns null when no decoder is available or decoding fails — callers then
- * fall back to the HTTP ?snapshot route, whose Content-Encoding: br is
- * decompressed by the network stack, no client decoder needed.
+ * Returns null when no decoder is available or decoding fails — the caller
+ * then gives up on the cached snapshot and proceeds with a normal subscribe.
  * @param  {Uint8Array} bytes Compressed payload.
  * @return {Promise<Object|null>} Parsed payload, or null.
  * @private
@@ -138,11 +137,11 @@ async function decodeBrotliPayload(bytes) {
  * frame (cache hit — the brotli bytes, token-correlated by coreWebsocket), a
  * plain reply without payload (genuine cache miss — proceed with a normal
  * subscribe; the server is already rebuilding the cache), or nothing at all
- * (older server without the handler — after a short timeout, fall back to
- * the HTTP route).
+ * (older server without the handler — after a short timeout, the caller
+ * proceeds with a normal subscribe).
  * @param  {string} webstrateId Webstrate id.
  * @return {Promise<Uint8Array|undefined|null>} Compressed bytes (hit),
- *   undefined (miss), or null (websocket path unavailable — use HTTP).
+ *   undefined (miss), or null (websocket path unavailable — normal subscribe).
  * @private
  */
 function fetchCompressedSnapshotOverWebsocket(webstrateId) {
@@ -164,16 +163,13 @@ function fetchCompressedSnapshotOverWebsocket(webstrateId) {
 }
 
 /**
- * Fetch the brotli-compressed snapshot from the server's cache — preferring
- * the websocket (the connection is already open, so the initial bulk data
- * arrives without firing up another HTTP request), falling back to the HTTP
- * ?snapshot route when the websocket path is unavailable (there the network
- * stack decompresses the payload before fetch() sees it) — and ingest it
- * into the ShareDB doc locally, exactly as if it had arrived as a regular
- * snapshot. A subsequent doc.subscribe() then only needs the ops since this
- * version (sharedb's subscribe message carries doc.version and the server
- * answers with ops only) — the full JSONML snapshot never crosses the
- * websocket as uncompressed JSON.
+ * Fetch the brotli-compressed snapshot from the server's cache over the
+ * (already open) websocket and ingest it into the ShareDB doc locally,
+ * exactly as if it had arrived as a regular snapshot. A subsequent
+ * doc.subscribe() then only needs the ops since this version (sharedb's
+ * subscribe message carries doc.version and the server answers with ops
+ * only) — the full JSONML snapshot never crosses the websocket as
+ * uncompressed JSON.
  * @param  {Doc}    doc         ShareDB document.
  * @param  {string} webstrateId Webstrate id.
  * @return {Promise<bool>}     Whether a snapshot was ingested.
@@ -185,50 +181,20 @@ async function tryIngestCompressedSnapshot(doc, webstrateId) {
 
 		if (bytes) {
 			const payload = await decodeBrotliPayload(bytes);
-			if (!payload) {
-				// No usable decoder (or a corrupt frame): the HTTP route needs none.
-				return ingestFromHttpResponse(doc, await fetch(`${location.pathname}?snapshot`,
-					{ cache: 'no-store' }));
-			}
-			if (typeof payload.v !== 'number' || !Array.isArray(payload.data)) {
+			if (!payload || typeof payload.v !== 'number' || !Array.isArray(payload.data)) {
 				return false;
 			}
 			doc.ingestSnapshot({ v: payload.v, type: payload.type, data: payload.data });
 			return true;
 		}
 
-		if (bytes === undefined) {
-			// A genuine miss: don't also fire the HTTP request (it would miss
-			// too, and the server is already rebuilding the cache entry).
-			return false;
-		}
-
-		// Websocket path unavailable (null): HTTP fallback.
-		return ingestFromHttpResponse(doc, await fetch(`${location.pathname}?snapshot`,
-			{ cache: 'no-store' }));
+		// A genuine miss (undefined), a websocket path that stayed silent (null)
+		// or an undecodable payload: give up on the cached snapshot and let the
+		// normal subscribe below fetch the document the usual way.
+		return false;
 	} catch (err) {
 		return false;
 	}
-}
-
-/**
- * Ingest a payload fetched over the HTTP ?snapshot route (Content-Encoding:
- * br — the network stack has already decompressed it into JSON).
- * @param  {Doc}      doc      ShareDB document.
- * @param  {Response} response fetch() response for ?snapshot.
- * @return {Promise<bool>}      Whether a snapshot was ingested.
- * @private
- */
-async function ingestFromHttpResponse(doc, response) {
-	if (!response.ok) {
-		return false;
-	}
-	const payload = await response.json();
-	if (!payload || typeof payload.v !== 'number' || !Array.isArray(payload.data)) {
-		return false;
-	}
-	doc.ingestSnapshot({ v: payload.v, type: payload.type, data: payload.data });
-	return true;
 }
 
 exports.subscribe = webstrateId => {

@@ -65,8 +65,6 @@ const maxStalenessMs = () => {
 
 const cachePath = (webstrateId) =>
 	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.json.br');
-const metaPath = (webstrateId) =>
-	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.json.meta');
 
 // ---------------------------------------------------------------------------
 // Cache maintenance
@@ -80,9 +78,10 @@ function ensureCacheDir() {
 }
 
 function removeCacheEntry(webstrateId) {
-	for (const file of [cachePath(webstrateId), metaPath(webstrateId)]) {
-		try { fs.unlinkSync(file); } catch (err) { /* not there — fine */ }
-	}
+	// Only the payload file is unlinked: a stale .meta sidecar left over from an older
+	// build of the cache writer is never read without the payload file existing next to
+	// it (readEntry reads only the payload now), and the next rebuild overwrites it.
+	try { fs.unlinkSync(cachePath(webstrateId)); } catch (err) { /* not there — fine */ }
 }
 
 /**
@@ -131,10 +130,6 @@ async function buildAndWrite(webstrateId) {
 	fs.writeFileSync(tmp, compressed);
 	fs.renameSync(tmp, file);
 
-	// Small sidecar with the cached version, so the ?snapshot route can stamp
-	// an ETag / debug header without decompressing the payload.
-	fs.writeFileSync(metaPath(webstrateId), JSON.stringify({ v: snapshot.v, bytes: json.length }));
-
 	return { webstrateId, v: snapshot.v, uncompressedBytes: json.length,
 		compressedBytes: compressed.length };
 }
@@ -145,10 +140,11 @@ async function buildAndWrite(webstrateId) {
  * refreshed — "occasionally"). Deletes remove the entry immediately.
  * Under continuous editing the debounce is bounded by maxStalenessMs.
  *
- * A miss-triggered rebuild (op === null, from the ?snapshot route) is NOT
- * debounced: the requester polls ?snapshot until the entry appears, and
- * every poll would re-arm — i.e. indefinitely postpone — the write debounce.
- * It runs immediately instead (deduplicated while a build is in flight).
+ * A miss-triggered rebuild (op === null, from a client's websocket fetchSnapshot
+ * request that missed the cache) is NOT debounced: the client re-requests the
+ * snapshot until the entry appears, and every miss would re-arm — i.e.
+ * indefinitely postpone — the write debounce. It runs immediately instead
+ * (deduplicated while a build is in flight).
  * @param {string} webstrateId Webstrate id.
  * @param {object} op         The committed op (del/create detection), or null
  *   for a lazy build after a cache miss.
@@ -231,23 +227,17 @@ module.exports.removeEntry = function(webstrateId) {
 
 /**
  * Read a cached payload for serving. Reads the compressed file straight
- * from disk (no decompression here — the response carries Content-Encoding:
- * br and the browser's network stack decompresses it).
+ * from disk (no decompression here — the binary websocket frame is decoded
+ * by the client's brotli decoder, or the browser's network stack).
  * @param  {string} webstrateId Webstrate id.
- * @return {{v: number, uncompressedBytes: number, buffer: Buffer}|null}
- *   Cache entry, or null on a miss.
+ * @return {Buffer|null} The compressed payload, or null on a miss.
  * @public
  */
 module.exports.readEntry = function(webstrateId) {
 	if (!isEnabled()) return null;
 	try {
-		const buffer = fs.readFileSync(cachePath(webstrateId));
-		const meta = JSON.parse(fs.readFileSync(metaPath(webstrateId), 'utf8'));
-		return { v: meta.v, uncompressedBytes: meta.bytes, buffer };
+		return fs.readFileSync(cachePath(webstrateId));
 	} catch (err) {
 		return null;
 	}
 };
-
-// Test hook (never used in production paths).
-module.exports._buildAndWrite = buildAndWrite;

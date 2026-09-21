@@ -537,24 +537,6 @@ module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 };
 
 /**
- * Find potential tag for a snapshot and add it.
- * @param {Snapshot} snapshot    Document snapshot.
- * @param {string}   webstrateId WebstrateId.
- * @param {string}   version     Version.
- * @param {Function} next        Callback (optional).
- * @public
- */
-module.exports.addTagToSnapshot = function(snapshot, next) {
-	module.exports.getTag(snapshot.id, snapshot.v, function(err, tag) {
-		if (err) return next && next(err);
-		if (tag) {
-			snapshot.tag = tag.label;
-		}
-		next && next(err, snapshot);
-	});
-};
-
-/**
  * Transforms a document to a specific version.
  * @param  {string}   options.webstrateId WebstrateId.
  * @param  {string}   options.snapshot    Snapshot to be transformed from (optional).

@@ -134,18 +134,6 @@ module.exports.getAccessTokens = function(webstrateId) {
 };
 
 /**
- * Expire an access token.
- * @param {[type]} webstrateId WebstrateId.
- * @param {string} token       Access token.
- * @public
- */
-module.exports.expireAccessToken = function(webstrateId, token) {
-	if (accessTokens[webstrateId]) {
-		delete accessTokens[webstrateId][token];
-	}
-};
-
-/**
  * Expire all access token.
  * @param {[type]} webstrateId WebstrateId.
  * @public
