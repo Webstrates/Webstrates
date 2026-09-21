@@ -489,10 +489,6 @@ coreOpCreator.addWidToElement = node => {
 	}
 };
 
-coreOpCreator.ensureExistenceOfWids = targetElement => {
-	coreUtils.recursiveForEach(targetElement, node => coreOpCreator.addWidToElement(node));
-};
-
 coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
 	// If local is set, this node was inserted by ourself and thus already has a wid (if it needs to).
 	if (!local) coreOpCreator.addWidToElement(node);

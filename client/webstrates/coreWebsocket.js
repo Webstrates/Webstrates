@@ -95,11 +95,6 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 		}
 	};
 
-	websocket.onconnecting = event => {
-		copies.forEach(({ websocket }) =>
-			typeof websocket.onconnecting === 'function' && websocket.onconnecting(event));
-	};
-
 	websocket.onmessage = event => {
 		let parsedData;
 

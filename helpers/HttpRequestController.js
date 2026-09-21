@@ -1648,7 +1648,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 								createdWebstrate = true;
 							});
 						} else {
-							crypto.pseudoRandomBytes(16, (err, raw) => {
+							crypto.randomBytes(16, (err, raw) => {
 								if (aborted) return;
 								const fileName =  raw.toString('hex');
 								const filePath = assetManager.UPLOAD_DEST + fileName;
