@@ -44,6 +44,8 @@ const brotliWasmPath = path.resolve(__dirname,
 fs.writeFileSync(path.resolve(__dirname, 'client/webstrates/brotli-wasm-bytes.b64'),
         fs.readFileSync(brotliWasmPath).toString('base64'));
 
+const isProduction = process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production';
+
 const config = {
         entry: './client/index.js',
         output: {
@@ -53,7 +55,10 @@ const config = {
                 // An explicit publicPath skips webpack's auto-detection
                 publicPath: '/'
         },
-        devtool: 'eval',
+        // Allow the minifier to run in production but keep eval-source in dev
+        // (the eval wrapper defeats the minifier, so an unconditional
+        // 'eval' shipped every production build un-minified).
+        devtool: isProduction ? false : 'eval',
         module: {
                 rules: [
                         // Base64-embedded binaries (the brotli decoder's wasm bytes,
@@ -124,7 +129,7 @@ const config = {
 };
 
 // In production
-if (process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production') {
+if (isProduction) {
         // Minify the code.
         config.plugins.push(
             new MinimizerPlugin({

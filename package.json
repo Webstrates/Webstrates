@@ -69,8 +69,6 @@
     "passport-google-oauth2": "0.2.0",
     "passport-oauth2-profilemap": "0.0.1",
     "setimmediate": "^1.0.5",
-    "sharedb": "6.0.3",
-    "sharedb-mongo": "6.0.0",
     "shortid": "2.2.17",
     "tmp": "0.2.7",
     "url": "0.11.4",
@@ -86,6 +84,7 @@
     "mocha": "^12.0.1",
     "passport-local": "1.0.0",
     "puppeteer": "^25.11.0",
+    "sharedb": "6.0.3",
     "webpack-cli": "^7.2.3"
   }
 }
