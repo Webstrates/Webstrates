@@ -206,9 +206,13 @@ module.exports.triggerJoin = function(socketId) {
  * Add client to Webstrate and broadcast join.
  * @param {string} socketId    SocketId.
  * @param {string} webstrateId WebstrateId.
+ * @param {number} headRevision Document head revision to include in the hello
+ *                              (optional; a client that opens a socket is
+ *                              subscribed without sending anything and learns
+ *                              the head from the hello).
  * @public
  */
-module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
+module.exports.addClientToWebstrate = function(socketId, userId, webstrateId, headRevision) {
 	if (isInvalidName(webstrateId)) {
 		return;
 	}
@@ -256,11 +260,15 @@ module.exports.addClientToWebstrate = function(socketId, userId, webstrateId) {
 		});
 	}
 
-	// Message to be sent to client joining the webstrate.
+	// Message to be sent to client joining the webstrate. The hello always
+	// carries the document id (the one message that does) and, when known, the
+	// head revision — a client that merely opens its websocket is subscribed
+	// and can adopt from this without sending a single message.
 	const helloMsgObj = {
 		wa: 'hello',
 		id: socketId,
 		d: webstrateId,
+		v: headRevision,
 		defaultPermissions: global.config.auth.defaultPermissions,
 		user: user,
 		clients: Array.from(webstrates[webstrateId].keys()),
@@ -695,6 +703,21 @@ module.exports.sendToClient = function(socketId, message) {
 	// the message, and that's fine.
 	if (!clients[socketId]) {
 		return false;
+	}
+
+	// The webstrate is part of the socket's URL, so a message about the
+	// socket's OWN document never names it — the client already knows. A `d`
+	// on an outbound frame only ever addresses a different document (a
+	// secondary subscription or a cross-document reply). Two exceptions: the
+	// hello always carries its document id (so a client can confirm which
+	// webstrate its socket is bound to), and a cookieUpdate uses the PRESENCE
+	// of `d` to tell a document-scoped cookie ("here") from a user-global one
+	// ("anywhere") — it is a flag, not a document name.
+	if (message.d !== undefined && message.wa !== 'hello'
+		&& message.wa !== 'cookieUpdate'
+		&& clients[socketId].userClient.webstrateId === message.d) {
+		message = Object.assign({}, message);
+		delete message.d;
 	}
 
 	try {

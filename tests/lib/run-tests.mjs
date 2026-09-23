@@ -138,7 +138,12 @@ const run = async () => {
 		console.log('Running as root: puppeteer launches chromium through tests/lib/chrome-wrapper.');
 	}
 
-	const mocha = spawn(process.execPath, [MOCHA_BIN, ...mochaArgs], {
+	// --exit forces mocha to quit once the summary is printed. Without it, a hook that times
+	// out with a still-pending puppeteer promise (e.g. a goto wedged on a redirect) keeps
+	// mocha's event loop alive forever: the runner then waits on the exited-but-not-dead
+	// child indefinitely — no database drop, no server teardown — and sequential campaigns
+	// stall on it. Test failures themselves can't hang mocha, only open handles can.
+	const mocha = spawn(process.execPath, [MOCHA_BIN, '--exit', ...mochaArgs], {
 		cwd: REPO_ROOT,
 		env: { ...process.env, WEBSTRATES_HARNESS_STATE: stateFile, ...chromeEnv },
 		stdio: 'inherit'

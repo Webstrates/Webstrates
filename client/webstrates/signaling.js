@@ -30,8 +30,9 @@ signalingModule.subscribe = wid => subscribe(wid);
 signalingModule.unsubscribe = wid => unsubscribe(wid);
 
 websocket.onjsonmessage = payload => {
-	// Ignore message intended for other webstrates sharing the same websocket.
-	if (payload.d !== webstrateId) return;
+	// Ignore messages for other webstrates sharing the same websocket (a
+	// frame without a `d` is for this socket's own document, the one in its URL).
+	if (payload.d !== undefined && payload.d !== webstrateId) return;
 
 	let intercepted = false;
 	interceptors.forEach(interceptor => {
@@ -65,7 +66,6 @@ const subscriptions = {};
 function signal(wid, message, recipients) {
 	const msgObj = {
 		wa: 'publish',
-		d: webstrateId,
 		id: wid,
 		m: message
 	};
@@ -78,7 +78,6 @@ function signal(wid, message, recipients) {
 function subscribe(wid) {
 	const msgObj = {
 		wa: 'subscribe',
-		d: webstrateId,
 		id: wid
 	};
 	websocket.send(msgObj);
@@ -90,7 +89,6 @@ function unsubscribe(wid) {
 	if (subscriptions[wid] < 1) {
 		const msgObj = {
 			wa: 'unsubscribe',
-			d: webstrateId,
 			id: wid
 		};
 		websocket.send(msgObj);

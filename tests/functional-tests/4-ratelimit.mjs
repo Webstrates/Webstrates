@@ -113,7 +113,27 @@ describe('Rate limiting', function() {
 	const signalRoundTrip = async (socket, marker) => {
 		send(socket, { a: 's', c: 'webstrates', d: webstrateId });
 		await nextMessage(socket, message => message.a === 's');
+		// The subscribe registration is asynchronous: it can lag the wa:subscribe message (the
+		// shareDB join completing late, or the permission lookup the wa: handlers each await),
+		// and a publish dispatched before the registration lands echoes to nobody — a counted
+		// round trip right after the subscribe can therefore time out on its own echo. Probe
+		// with warmup publishes until one echoes back: the first echo proves the subscription
+		// is in effect, and only then is the counted marker sent. (The flood test below warms
+		// up its subscription for the same reason.)
 		send(socket, { wa: 'subscribe', d: webstrateId, id: nodeId });
+		let warmupEcho = null;
+		for (let attempt = 0; attempt < 10 && warmupEcho === null; attempt++) {
+			send(socket, { wa: 'publish', d: webstrateId, id: nodeId, m: 'warmup' });
+			// Warmup echoes lost to the registration race are expected (that's what we're
+			// probing for); a timeout here means "not registered yet", not failure.
+			try {
+				warmupEcho = await nextMessage(socket, message =>
+					message.wa === 'publish' && message.m === 'warmup', 1);
+			} catch {
+				/* keep probing */
+			}
+		}
+		assert.isNotNull(warmupEcho, 'signal subscription did not take effect (no warmup echo)');
 		send(socket, { wa: 'publish', d: webstrateId, id: nodeId, m: marker });
 		return await nextMessage(socket, message =>
 			message.wa === 'publish' && message.m === marker);

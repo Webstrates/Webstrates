@@ -38,9 +38,11 @@
     "autotagInterval": 3600,
     "tagPrefix": "Session of "
   },
-  "compressedSnapshots": true,
-  "compressedSnapshotCacheDir": "snapshot-cache",
-  "compressedSnapshotBrotliQuality": 11,
-  "compressedSnapshotDebounceMs": 5000,
-  "compressedSnapshotMaxStalenessMs": 60000
+  "sqliteDataDir": "document-data",
+  "_sqliteDataDir": "Directory for the per-webstrate SQLite databases (<id>.current + <id>.history). Defaults to <repo>/document-data.",
+  "snapshotCacheDir": "snapshot-cache",
+  "snapshotCacheBrotliQuality": 11,
+  "snapshotCacheInlineBrotliQuality": 5,
+  "snapshotCacheDebounceMs": 5000,
+  "snapshotCacheMaxStalenessMs": 60000
 }

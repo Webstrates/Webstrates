@@ -626,13 +626,18 @@ module.exports.requestHandler = async function(req, res) {
 	}
 
 	// Support for legacy syntax: /<webstrateId>?v=<versionOrTag>, which is equivalent to
-	// /<webstrateId>/<versionOrTag>/?copy.
+	// /<webstrateId>/<versionOrTag>/.
 	if (req.query.v && !req.params.versionOrTag) {
 		const version = req.query.v;
-		delete req.query.v;
+		// Destructure v out rather than deleting it from req.query: Express 5's req.query is
+		// re-parsed from the URL on every access, so a delete would only affect a throwaway
+		// object and the ?v parameter would ride along on the redirect. That made the
+		// redirected page hit the "current version number" API below (?v is that request)
+		// and get served JSON instead of the document.
+		const { v: _v, ...restQuery } = req.query;
 		return res.redirect(url.format({
 			pathname: `/${req.params.webstrateId}/${version}/`,
-			query: req.query
+			query: restQuery
 		}));
 	}
 
@@ -726,12 +731,25 @@ module.exports.requestHandler = async function(req, res) {
 						});
 				}
 
+				// An asset record can outlive its file (the file system and the database can
+				// lose sync). Serving such a record would 500 through sendFile's error
+				// path; report it as what it is — a missing asset — and lazily drop the
+				// dead record, the same way the ?dl download path does. A re-upload of the
+				// same content resurrects the file (see AssetManager.addAsset).
+				const assetFilePath = APP_PATH + '/uploads/' + asset.fileName;
+				if (!fs.existsSync(assetFilePath)) {
+					// No reason to make the user wait for the record cleanup.
+					assetManager.deleteAssetFromDatabase(asset.fileName);
+					return res.status(404).send(`Asset "${req.params.assetName}" is no longer ` +
+						'available (its file is missing).');
+				}
+
 				// `/<webstrateId>/<asset>` may not always refer to the same asset, but to optimize rapid
 				// requests, we set a maxAge anyway. If the requested asset includes a specific version,
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
 				var maxAge = req.params.version ? '1y' : (config.maxAge || '1m');
 				res.type(asset.mimeType);
-				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
+				return res.sendFile(assetFilePath, { maxAge });
 			} catch (error) {
 				console.error(error);
 				return res.status(409).send(String(error));
@@ -857,7 +875,7 @@ module.exports.requestHandler = async function(req, res) {
 
 		// We don't need to check for "static" in req.query, because this happens on the client side.
 
-		return serveWebstrate(req, res);
+		return serveWebstrate(req, res, snapshot);
 	} catch (err){
 		console.error(err);
 		return res.status(409).send(String(err));
@@ -1145,13 +1163,94 @@ async function deleteWebstrate(req, res) {
 
 /**
  * Requesting a webstrate by calling /<id>.
- * @param {obj} req Express request object.
+ *
+ * Head requests of existing documents are served as a pre-rendered page: the
+ * document's own HTML on the v2 painted wire (identity-carrying `_`
+ * attributes and eid,x_ content prefixes — see DocumentStore.toHTML), with
+ * the sync client bundle and script preloads injected into the temporary
+ * real <head>, brotli-compressed, from the snapshot cache (or rendered
+ * inline at a lower compression quality when no fresh entry exists). The
+ * client adopts the painted DOM in place as it streams in instead of
+ * rebuilding from a snapshot.
+ *
+ * Versioned/tagged requests and empty documents get the plain client shell:
+ * the pre-rendered page only exists for the head revision, and an empty
+ * document has nothing to render (the client bootstraps html/head/body
+ * through a commit).
+ * @param {obj}      req      Express request object.
+ * @param {obj}      res      Express response object.
+ * @param {snapshot} snapshot Document snapshot.
+ * @private
+ */
+function serveWebstrate(req, res, snapshot) {
+	// Old versions and tags: serve the shell, the client fetches the snapshot.
+	if (req.params.version !== undefined || req.params.tag !== undefined) {
+		return sendClientShell(res);
+	}
+
+	// Empty document: the client creates the basic DOM structure through a commit.
+	if (!snapshot || !snapshot.type) {
+		return sendClientShell(res);
+	}
+
+	let page = null;
+	try {
+		page = snapshotCacheManager.readEntry(req.params.webstrateId);
+		if (!page) {
+			// No fresh entry: render inline (fast compression quality) and
+			// refresh the cache in the background.
+			page = snapshotCacheManager.renderInline(req.params.webstrateId);
+			if (page) {
+				snapshotCacheManager.scheduleRebuild(req.params.webstrateId);
+			}
+		}
+	} catch (err) {
+		console.error(err);
+	}
+	if (!page) return sendClientShell(res);
+
+	const acceptsBr = (req.headers['accept-encoding'] || '').includes('br');
+	const etag = `"wsv${page.v}${acceptsBr ? '-br' : ''}"`;
+	if (req.headers['if-none-match'] === etag) {
+		return res.status(304).set('ETag', etag).set('Vary', 'Accept-Encoding').end();
+	}
+
+	res.status(200);
+	res.set('Content-Type', 'text/html; charset=UTF-8');
+	// The page content changes with every commit, so it must be revalidated —
+	// but the ETag makes that cheap for repeated loads.
+	res.set('Cache-Control', 'no-cache');
+	res.set('ETag', etag);
+	res.set('Vary', 'Accept-Encoding');
+
+	if (acceptsBr) {
+		res.set('Content-Encoding', 'br');
+		return res.send(page.buffer);
+	}
+
+	// Client doesn't accept brotli: decompress the page and send it plain.
+	return zlib.brotliDecompress(page.buffer, (err, html) => {
+		if (err) {
+			console.error(err);
+			return res.send('<html><body><h1>Internal server error.</h1></body></html>');
+		}
+		res.send(html);
+	});
+}
+
+/**
+ * Send the plain client shell (static/client.html) — the fallback for empty
+ * documents, versioned/tagged requests, and render failures.
  * @param {obj} res Express response object.
  * @private
  */
-function serveWebstrate(req, res) {
-	var maxAge = config.maxAge || '1d';
-	return res.sendFile(APP_PATH + '/static/client.html', { maxAge });
+function sendClientShell(res) {
+	// The shell is what an empty document serves; the very same URL serves the
+	// pre-rendered page once the document exists. Caching it for longer than a
+	// revalidation would pin returning visitors to the shell and cost them the
+	// adoption fast path (max-age=0 keeps the ETag revalidation, so an
+	// unchanged shell still comes back as a cheap 304).
+	return res.sendFile(APP_PATH + '/static/client.html', { maxAge: 0 });
 }
 
 /**

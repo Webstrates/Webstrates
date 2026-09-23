@@ -117,7 +117,10 @@ if (!coreUtils.getLocationObject().staticMode) {
 	 * @private
 	 */
 	const permissionsChanged = (ops) => {
-		return ops.some(op => op.p[0] && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
+		// Wire-only ops (the leak-recovery sr markers) have no .p — guard
+		// before dereferencing, or a dropped entry crashes this listener
+		// (and, via setImmediate dispatch, the whole event fan-out).
+		return ops.some(op => op.p && op.p[0] === 1 && op.p[1] && op.p[1] === 'data-auth');
 	};
 		
 

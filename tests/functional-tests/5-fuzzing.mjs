@@ -844,15 +844,18 @@ describe('Fuzzing', function() {
 			assert.isAbove(result.accepted, 100, 'the DOM should accept most ASCII attribute names');
 			await sleep(2000); // let the op storm settle and synchronize
 
-			// The roundtrip has three different views, all verified behavior:
-			//  - Page B's client rebuilds elements through coreJsonML, which sanitizes every
-			//    attribute name outside [:A-Z_a-z][-._:0-9a-zA-Z] into '_': it only ever
-			//    materializes the ~29 sanitized survivors (a-z, ':', '_' and the id).
+			// The roundtrip under the v2 painted transport (2026-09-20):
+			//  - Attribute names that cannot survive HTML serialization — control
+			//    characters, whitespace, quotes, '=', '>', '/', the empty name — and
+			//    the transport-reserved names ('_', 'data-webstrates-head',
+			//    'data-webstrates-type') are TRANSIENT client-side: no op is ever
+			//    created for them, so they exist only in the creating page's DOM.
+			//  - Everything else (letters, digits, ':', '<', '!' and the rest of the
+			//    punctuation the DOM accepts) syncs verbatim; the server stores it
+			//    raw and ?raw serves it back.
 			//  - Browsers lowercase attribute names, so 'A'..'Z' collide with 'a'..'z'
-			//    before any op exists.
-			//  - The server, though, stores whatever names the ops carry — ?raw serves the
-			//    control characters, digits and punctuation raw. Server and clients
-			//    legitimately disagree about this document.
+			//    before any op exists. Which codes survive the client's op batching
+			//    is deterministic but uneven (even digits, odd punctuation).
 			const synced = await evaluateQuietly(pageB, () => {
 				const element = document.getElementById('ascii-storm');
 				if (!element) return null;
@@ -864,29 +867,33 @@ describe('Fuzzing', function() {
 					colon: element.getAttribute(':'), underscore: element.getAttribute('_') };
 			});
 			assert.isOk(synced, 'the storm element should exist on the second page');
-			assert.isAtLeast(synced.total, 26, 'the sanitized survivors should be materialized');
+			assert.isAtLeast(synced.total, 27, 'the serializable survivors should be materialized');
 			assert.equal(synced.letters.filter(v => v && v.startsWith('v')).length, 26,
 				'all lowercase letter attributes should be on the second page');
-			assert.isOk(synced.colon, 'the \':\' attribute survives sanitization');
-			assert.isOk(synced.underscore, 'the \'_\' attribute survives sanitization');
+			assert.isOk(synced.colon, 'the \':\' attribute is serializable and syncs');
+			assert.isNull(synced.underscore,
+				'the \'_\' attribute is transport-reserved (v2): transient, never synced');
 
-			// The server stored the storm raw: control characters, digits, punctuation and
-			// < inside attribute names are served back verbatim in ?raw (deterministically,
-			// which names survive client-side op batching was verified stable across runs).
+			// The server stored every op'd name raw: digits, punctuation and <
+			// inside attribute names are served back verbatim in ?raw.
 			const response = await httpGet(docId + '/?raw');
 			assert.equal(response.status, 200);
 			const divLine = response.body.match(/<[dD][iI][vV][^>]*ascii-storm[^>]*>/);
 			assert.isOk(divLine, 'the storm element should be stored');
 			const storedCount = (divLine[0].match(/="v\d+"/g) || []).length;
-			assert.isAbove(storedCount, 40,
-				'the server should store far more raw attribute names than clients materialize');
-			assert.isAbove(storedCount, synced.total,
-				'server (?raw) and clients must disagree on the attribute storm');
-			for (const marker of [String.fromCharCode(2) + '="v2"', '0="v48"', '!="v33"',
-				'a="v97"', '<="v60"']) {
+			assert.isAtLeast(storedCount, 26,
+				'the serializable attribute names should be stored');
+			// v2: transient names never op, so server (?raw) and the materialized
+			// clients AGREE on the document (± the id attribute, which the count
+			// regex excludes).
+			assert.isAtLeast(storedCount, synced.total - 1,
+				'server and clients agree modulo op batching (v2: transient names never op)');
+			for (const marker of ['0="v48"', '!="v33"', 'a="v97"', '<="v60"']) {
 				assert.include(divLine[0], marker,
-					'control/digit/punctuation attribute names are stored and served raw');
+					'digit/punctuation attribute names are stored and served raw');
 			}
+			assert.notInclude(divLine[0], String.fromCharCode(2) + '="v2"',
+				'control-character attribute names are transient (v2): never stored');
 			await serverAlive();
 		});
 
@@ -1097,14 +1104,16 @@ describe('Fuzzing', function() {
 			}
 			assert.equal(response.status, 200);
 			assert.include(response.body, 'ascii-storm', 'the storm element should be stored');
-			// Control-character and digit attribute names from the browser storm are served
-			// raw. Which codes make it through the client's op batching is deterministic but
-			// uneven (even-numbered controls, even digits, odd punctuation — verified stable
-			// across runs);  (STX) and '0' always survive.
-			assert.include(response.body, String.fromCharCode(2) + '="v2"',
-				'control-character attribute names should be stored and served');
+			// Digit attribute names from the browser storm are served raw; which codes
+			// make it through the client's op batching is deterministic but uneven
+			// (even digits, odd punctuation — verified stable across runs), and '0'
+			// always survives. Control-character names are transient under the v2
+			// painted transport (they cannot ride serialized HTML), so they never
+			// reach the server at all.
 			assert.include(response.body, '0="v48"',
 				'digit attribute names should be stored and served');
+			assert.notInclude(response.body, String.fromCharCode(2) + '="v2"',
+				'control-character attribute names are transient (v2): never stored');
 			await serverAlive();
 		});
 	});
@@ -1121,10 +1130,57 @@ describe('Fuzzing', function() {
 		// leaks inherited properties into every document via replaceInKeys' for..in loop.
 		let canaryId;
 
+		// The ShareDB-era {a:'op', create} / {a:'s'} steps of the original recipes are
+		// gone with the protocol removal (the by-design failures of the
+		// websocket-protocol sections above); their v2 equivalents are a base-0
+		// bootstrap commit and the connection itself (opening the socket joins
+		// the document — the hello confirms it). Without them, waiting on the
+		// old replies would time out and leave this whole crash-candidates
+		// section dark.
+		const createDocV2 = async (docId, extraOps = []) => {
+			const socket = await connect(docId);
+			send(socket, { wa: 'commit', d: docId, base: 0, token: 'create',
+				ops: [
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+					{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+					{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+					...extraOps
+				] });
+			const reply = await nextMessage(socket, (message) =>
+				message.wa === 'reply' && message.token === 'create');
+			assert.isNotOk(reply.reply && reply.reply.error,
+				`could not create ${docId}: ${JSON.stringify(reply.reply)}`);
+			socket.version = reply.reply.v;
+			return socket;
+		};
+
+		const joinV2 = async (socket, docId) => {
+			// Opening the socket IS the join now; waiting for the hello
+			// proves the subscription completed before the hostile traffic.
+			// (The hello may already be far back in the buffer — poll the
+			// whole buffer, not the cursored nextMessage.)
+			const deadline = Date.now() + 15000;
+			for (;;) {
+				const hello = socket.messages.find((m) => m && m.wa === 'hello');
+				if (hello) {
+					assert.equal(hello.d, docId, 'the hello must name the joined document');
+					return;
+				}
+				if (Date.now() > deadline) {
+					throw new Error('no hello arrived for ' + docId);
+				}
+				await sleep(100);
+			}
+		};
+
 		before(async function() {
 			canaryId = 'test-fuzz-canary-' + util.randomString().toLowerCase();
-			const socket = await createDoc(canaryId,
-				['html', {}, ['head'], ['body', {}, ['div', { id: 'canary' }, 'clean']]]);
+			const socket = await createDocV2(canaryId, [
+				{ k: 'sa', p: 3, i: 0, e: 4, t: 1, n: 'div' },
+				{ k: 'aa', e: 4, i: 0, n: 'id', v: 'canary' },
+				{ k: 'sa', p: 4, i: 0, e: 6, t: 3, n: null },
+				{ k: 'aa', e: 6, n: null, v: 'clean' }
+			]);
 			socket.ws.close();
 			await sleep(300);
 		});
@@ -1158,11 +1214,8 @@ describe('Fuzzing', function() {
 				//   3. close the socket — the partFn cleanup dereferences the bad nodeId
 				//      synchronously in the websocket close chain: process death.
 				const crashDocId = 'test-fuzz-crash-' + util.randomString().toLowerCase();
-				await createDoc(crashDocId);
-				const socket = await connect(crashDocId);
-				send(socket, { a: 's', c: 'webstrates', d: crashDocId });
-				await nextMessage(socket, message =>
-					message.a === 's' && message.d === crashDocId);
+				const socket = await createDocV2(crashDocId);
+				await joinV2(socket, crashDocId);
 				for (const nodeId of ['__proto__', 'toString', 'hasOwnProperty', 'constructor',
 					'valueOf', 'isPrototypeOf', 'propertyIsEnumerable', '__defineGetter__',
 					'__lookupGetter__', '__defineSetter__', '__lookupSetter__', 'toLocaleString']) {
@@ -1182,10 +1235,8 @@ describe('Fuzzing', function() {
 
 		it('survives unsubscribing from colliding nodeIds directly', async function() {
 			const docId = 'test-fuzz-unsub-' + util.randomString().toLowerCase();
-			await createDoc(docId);
-			const socket = await connect(docId);
-			send(socket, { a: 's', c: 'webstrates', d: docId });
-			await nextMessage(socket, message => message.a === 's' && message.d === docId);
+			const socket = await createDocV2(docId);
+			await joinV2(socket, docId);
 			for (const nodeId of ['__proto__', 'toString', 'constructor']) {
 				send(socket, { wa: 'subscribe', d: docId, id: nodeId });
 				send(socket, { wa: 'unsubscribe', d: docId, id: nodeId });
@@ -1199,10 +1250,8 @@ describe('Fuzzing', function() {
 
 		it('survives publish to nodeIds colliding with Object.prototype', async function() {
 			const docId = 'test-fuzz-pub-' + util.randomString().toLowerCase();
-			await createDoc(docId);
-			const socket = await connect(docId);
-			send(socket, { a: 's', c: 'webstrates', d: docId });
-			await nextMessage(socket, message => message.a === 's' && message.d === docId);
+			const socket = await createDocV2(docId);
+			await joinV2(socket, docId);
 			for (const nodeId of ['__proto__', 'toString', 'document']) {
 				send(socket, { wa: 'publish', d: docId, id: nodeId, m: { hi: true } });
 			}
@@ -1243,9 +1292,18 @@ describe('Fuzzing', function() {
 
 		it('still serves well-formed clients after all crash candidates', async function() {
 			const docId = freshWebstrateId();
-			const socket = await createDoc(docId);
-			// A well-formed op still round-trips.
-			await opShouldApply(socket, docId, 1, [{ p: [3, 2], li: ['div', {}, 'alive'] }]);
+			const socket = await createDocV2(docId);
+			// A well-formed commit still round-trips.
+			send(socket, { wa: 'commit', d: docId, base: socket.version, token: 'alive',
+				ops: [
+					{ k: 'sa', p: 3, i: 0, e: 100, t: 1, n: 'div' },
+					{ k: 'sa', p: 100, i: 0, e: 101, t: 3, n: null },
+					{ k: 'aa', e: 101, n: null, v: 'alive' }
+				] });
+			const reply = await nextMessage(socket, (message) =>
+				message.wa === 'reply' && message.token === 'alive');
+			assert.isNotOk(reply.reply && reply.reply.error,
+				`well-formed commit failed: ${JSON.stringify(reply.reply)}`);
 			const raw = await httpGet(docId + '/?raw');
 			assert.equal(raw.status, 200, '?raw should still serve the document');
 			assert.include(raw.body, 'alive');

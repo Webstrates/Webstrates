@@ -26,11 +26,11 @@ coreEvents.triggerEvent('allModulesLoaded');
 if (request.staticMode) {
 	coreDatabase.fetch(request.webstrateId, request.tagOrVersion).then(doc => {
 		corePopulator.populate(coreDOM.externalDocument, doc);
-	});
+	}).catch(err => console.error('webstrates: static boot failed:', err));
 }
 else {
 	coreDatabase.subscribe(request.webstrateId).then(doc => {
-		
+
 		//Start listening for ops, will get applied when setRootElement has been called
 		coreOpApplier.listenForOps();
 
@@ -42,9 +42,17 @@ else {
 			// Emits ops from the mutations emitted by coreMutation.
 			coreOpCreator.emitOpsFromMutations();
 
-			// Apply changes on <html>, not coreDOM.externalDocument.
-			const targetElement = coreDOM.externalDocument.childNodes[0];
+			// Apply changes on <html>, not coreDOM.externalDocument. An adopted
+			// (painted) page keeps the parsed doctype, so childNodes[0] would be
+			// the doctype node — documentElement is the html element on every
+			// population path.
+			const targetElement = coreDOM.externalDocument.documentElement;
 			coreOpApplier.setRootElement(targetElement);
+
+			// Resync the adopted revision to the subscribed head (replaying
+			// the commits in between), drain the frames buffered during
+			// population, and let the commit queue pump.
+			return coreDatabase.startLive();
 		});
-	});
+	}).catch(err => console.error('webstrates: boot failed:', err));
 }

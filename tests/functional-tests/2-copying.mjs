@@ -24,7 +24,10 @@ describe('Copying', function() {
 	});
 
 	after(async () => {
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		// Slashed delete URL + disabled browser cache, so the goto can't hang on a redirect
+		// (302) to a cached document (see DOM-STRESS-FLAKE.md).
+		await page.setCacheEnabled(false);
+		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 		await browser.close();
 	});
 

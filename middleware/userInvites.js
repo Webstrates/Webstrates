@@ -166,7 +166,10 @@ exports.onmessage = async (ws, req, data, next) => {
     const actions = [...Object.keys(exports.invitee), ...Object.keys(exports.admin)];
     if (!data.wa || !actions.includes(data.wa)) return next();
 
-    const webstrateId = data.d;
+    // The webstrate is in the socket's URL: a `d` names another document,
+    // an absent one means the socket's own.
+    const webstrateId = (data.d !== undefined && data.d !== req.params.webstrateId)
+        ? data.d : req.params.webstrateId;
     const responseObj = {
         wa: 'reply',
         token: data.token

@@ -165,10 +165,20 @@ coreUtilsModule.recursiveForEach = function(node, callback, parent = null) {
  */
 coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement, referenceNode) =>
 {
+	// Children of a <template> live in its content fragment, not in the
+	// element's own child list: the parser puts them there, toHTML builds
+	// them there, and the path tree resolves them there — so a reference
+	// node may live in the fragment. Inserting through the element itself
+	// would both land the child in the wrong place and crash on any
+	// content-resolved reference node.
+	const insertParent = parentElement.tagName === 'TEMPLATE' && parentElement.content
+		? parentElement.content
+		: parentElement;
+
 	// We just insert text nodes right away, we're only interested in doing fancy stuff with elements
 	// that may have scripts as children.
 	if (!(childElement instanceof HTMLElement)) {
-		return parentElement.insertBefore(childElement, referenceNode || null);
+		return insertParent.insertBefore(childElement, referenceNode || null);
 	}
 
 	// To prevent scripts from being executed when inserted, we use a little hack. Before inserting
@@ -192,7 +202,7 @@ coreUtilsModule.appendChildWithoutScriptExecution = (parentElement, childElement
 		scriptMap.set(script, [ attrs, text ]);
 	});
 
-	parentElement.insertBefore(childElement, referenceNode || null);
+	insertParent.insertBefore(childElement, referenceNode || null);
 
 	scripts.forEach(script => {
 		const [ attrs, text ] = scriptMap.get(script);
@@ -343,7 +353,16 @@ coreUtilsModule.escapeDots = value => value && value.replace(/\./g, '&dot;');
  */
 coreUtilsModule.unescapeDots = value => value && value.replace(/&dot;/g, '.');
 
+// wid → WeakRef of the node. Weak on purpose: a node nothing else anchors
+// (removed from the document, no queued op carrying it as __node) must be
+// collectable — the old strong map pinned every element that ever got a wid
+// for the lifetime of the page (the subtree-removal benchmark wedge:
+// repeated churn of a 100-node subtree grew the heap ~0.3 MB per cycle until
+// the renderer died). getElementByWid is only ever asked about live elements
+// (signal routing, wid lookups); live elements are anchored by the document
+// itself, so they always deref. Entry pruning is lazy, on dead lookups.
 const widMap = new Map();
+
 /**
  * Add a wid to a node and make it (easily) non-modifiable.
  * @param  {DOMNode} node Node to set wid on.
@@ -351,7 +370,7 @@ const widMap = new Map();
  * @public
  */
 coreUtilsModule.setWidOnElement = (node, wid) => {
-	widMap.set(wid, node);
+	widMap.set(wid, new WeakRef(node));
 	Object.defineProperty(node, '__wid', {
 		value: wid,
 		writable: false, // No overwriting
@@ -373,6 +392,38 @@ coreUtilsModule.removeWidFromElement = wid => widMap.delete(wid);
  * @return {DOMNode}     DOM Element with given wid.
  * @public
  */
-coreUtilsModule.getElementByWid = wid => widMap.get(wid);
+coreUtilsModule.getElementByWid = (wid) => {
+	const ref = widMap.get(wid);
+	if (ref === undefined) return undefined;
+	const node = ref.deref();
+	if (node === undefined) widMap.delete(wid); // pruned: entry was dead
+	return node;
+};
+
+/**
+ * Empty a document (or document container) while KEEPING its doctype — the
+ * clear used by the bootstrap, static and rebuild population paths. An
+ * adopted painted page keeps the parser's doctype; a cleared document must
+ * keep it too, and a container without one (or one that lost it) gets
+ * `<!DOCTYPE html>` re-created so every population path ends up with a
+ * document the served serialization expects.
+ * @param {Node} rootElement The document (its other children are removed).
+ */
+coreUtilsModule.clearPreservingDoctype = (rootElement) => {
+	let doctype = null;
+	for (const child of Array.from(rootElement.childNodes)) {
+		if (child.nodeType === Node.DOCUMENT_TYPE_NODE) {
+			doctype = child;
+			continue;
+		}
+		rootElement.removeChild(child);
+	}
+	if (!doctype) {
+		try {
+			doctype = document.implementation.createDocumentType('html', '', '');
+			rootElement.insertBefore(doctype, rootElement.firstChild);
+		} catch (err) { /* not a document: nothing to keep */ }
+	}
+};
 
 module.exports = coreUtilsModule;

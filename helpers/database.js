@@ -5,17 +5,13 @@ const db = {};
 
 module.exports = db;
 
+// Documents, ops and tags live in per-webstrate SQLite databases (see
+// helpers/DocumentStore.js); MongoDB keeps only the non-document collections
+// below.
 MongoClient.connect(global.config.db).then(client =>{
 	let _db = client.db();
 
 	db.sessionLog = _db.collection('sessionLog');
-	db.webstrates = _db.collection('webstrates');
-
-	db.ops = _db.collection('ops');
-
-	db.tags = _db.collection('tags');
-	db.tags.createIndex({ webstrateId: 1, label: 1 }, { unique: true });
-	db.tags.createIndex({ webstrateId: 1, v: 1 }, { unique: true });
 
 	db.assets = _db.collection('assets');
 	db.assets.createIndex({ webstrateId: 1, originalFileName: 1, v: 1 }, { unique: true });

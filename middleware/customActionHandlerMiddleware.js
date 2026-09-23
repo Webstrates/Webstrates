@@ -4,7 +4,7 @@ const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const messagingManager = require(APP_PATH + '/helpers/MessagingManager.js');
 const searchableAssets = require(APP_PATH + '/helpers/SearchableAssets.js');
-const snapshotCacheManager = require(APP_PATH + '/helpers/SnapshotCacheManager.js');
+const documentMiddleware = require(APP_PATH + '/middleware/documentMiddleware.js');
 
 // Per-sender rate limit for sendMessage, so a client gone haywire or a malicious user
 // cannot flood other users' inboxes. Configurable as config.messageRateLimit =
@@ -37,22 +37,57 @@ function withinMessageRateLimit(senderId) {
 }
 
 exports.onmessage = async (ws, req, data, next) => {
-	if (!data.wa || 'noop' in req.query) return next();
+	if (!data.wa || 'noop' in req.query) {
+		// Legacy ShareDB create (old tooling and the test suite seed documents
+		// this way): {a:'op', c:'webstrates', d, v:0, seq, create:{type, data}}.
+		// Handled by the document middleware; every other non-'wa' message
+		// still falls through.
+		if (data.a === 'op' && data.c === 'webstrates' && data.create) {
+			return documentMiddleware.legacyCreate(ws, req, req.user, data.d, data);
+		}
+		return next();
+	}
 
-	const webstrateId = data.d;
+	// The webstrate is in the socket's URL: a message about that document
+	// never names it. A `d` that differs from the socket's own document
+	// addresses another webstrate (a secondary subscription, or a cross-
+	// document fetch) — permission-checked as before, against that document.
+	const webstrateId = (data.d !== undefined && data.d !== req.params.webstrateId)
+		? data.d : req.params.webstrateId;
 	const socketId = req.socketId;
 	let user = req.user;
 
 	if (req.query.token) {
-		user = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
+		// The message may name a webstrate other than the socket's own; the
+		// token must cover the MESSAGE's webstrate (data.d), exactly like the
+		// old ShareDBWrapper resolved per-message tokens. A token that does not
+		// resolve leaves no user to check permissions against — reject rather
+		// than dereferencing undefined below.
+		const tokenUser = permissionManager.getUserFromAccessToken(webstrateId, req.query.token);
+		if (!tokenUser) return; // matches upstream's next('Forbidden')
+		user = tokenUser;
 	}
 
-	// Here we handle all requests which do not require any sort of permissions.
+	// Here we handle all requests which do not require any sort of permissions
+	// beyond what the handlers verify themselves (write/create permissions are
+	// resolved inside the handlers, like the old ShareDB submit middleware —
+	// a document write must not depend on the read gate below).
 	switch (data.wa) { // 'wa' for 'webstrates action'.
 		// When the ws is ready.
 		case 'ready': {
 			clientManager.triggerJoin(socketId);
 			return;
+		}
+		// Submit a transaction based on revision data.base: server-side
+		// OT-lite transform, idempotent application, broadcast to all clients
+		// (originator included) and ack {v, firstOpid, xformed}.
+		case 'commit': {
+			return documentMiddleware.commit(ws, req, user, webstrateId, data);
+		}
+		// Allocate a block of ids from the document's global counter; clients
+		// mint element ids and attribute indexes from their block.
+		case 'allocids': {
+			return documentMiddleware.allocids(ws, req, user, webstrateId, data);
 		}
 		case 'sendMessage': {
 			// Messaging writes into other users' inboxes, so it is gated: the sender
@@ -101,7 +136,11 @@ exports.onmessage = async (ws, req, data, next) => {
 			try {
 				if (user.userId === 'anonymous:') throw new Error("Must be logged in to set user cookies");
 				if (!data.update) throw new Error("Must be provide update info");
-				await clientManager.updateCookie(user.userId, webstrateId,
+				// Cookies are not document-addressed like everything else: a
+				// PRESENT d scopes the cookie to that document ("here"), an
+				// absent d means the user-global cookie ("anywhere"). data.d is
+				// used verbatim, so the absence survives.
+				await clientManager.updateCookie(user.userId, data.d,
 					data.update.key, data.update.value);
 				responseObj.reply = true;;
 			} catch (err){
@@ -113,12 +152,13 @@ exports.onmessage = async (ws, req, data, next) => {
 			const responseObj = { wa: 'reply', token: data.token };
 			try {
 				if (user.userId === 'anonymous:') throw new Error("Must be logged in to fetch user cookies");
-				responseObj.reply = await clientManager.fetchCookie(user.userId, webstrateId, data.cookie);
+				// See cookieUpdate: d present = "here", absent = "anywhere".
+				responseObj.reply = await clientManager.fetchCookie(user.userId, data.d, data.cookie);
 			} catch (err){
 				responseObj.error = err.message;
 			}
 			return ws.send(JSON.stringify(responseObj));
-		}		
+		}
 	}
 
 	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
@@ -129,29 +169,24 @@ exports.onmessage = async (ws, req, data, next) => {
 	}
 
 	switch (data.wa) {
-		// Request a brotli-compressed snapshot from the server's cache over the
-		// websocket
-		// The reply is a single BINARY frame with a tiny envelope
-		// [0x01][tokenLen:uint8][token utf8][brotli payload] — the token correlates
-		// it like any other reply (see client/webstrates/coreWebsocket.js). A 
-		// cache miss is reported as a regular reply with
-		// no `reply` field, and triggers an immediate (deduplicated) cache rebuild
-		// so the next load is warm.
-		case 'fetchSnapshot': {
-			if (!data.token) break;
-			const entry = snapshotCacheManager.readEntry(webstrateId);
-			if (!entry) {
-				snapshotCacheManager.scheduleRebuild(webstrateId, null);
+		// Unsubscribe from a document's op stream (the old ShareDB 'u'). The
+		// subscribe itself needs no action anymore: the connection joins its
+		// own document when it is established (see autoJoin).
+		case 'dunsubscribe': {
+			documentMiddleware.dunsubscribe(req, webstrateId);
+			if (data.token) {
 				ws.send(JSON.stringify({ wa: 'reply', token: data.token }));
-				break;
 			}
-			const token = Buffer.from(String(data.token), 'utf8');
-			if (token.length === 0 || token.length > 255) {
-				ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: 'Invalid token.' }));
-				break;
-			}
-			ws.send(Buffer.concat([Buffer.from([1, token.length]), token, entry.buffer]));
 			break;
+		}
+		// Request the document structure as a brotli binary frame
+		// {v, struct, state} — the clean-rebuild fallback for clients whose
+		// parsed DOM disagrees with the server's structure. The reply is a
+		// single BINARY frame with the envelope
+		// [0x01][tokenLen:uint8][token utf8][brotli payload] (see
+		// client/webstrates/coreWebsocket.js).
+		case 'fetchStructure': {
+			return documentMiddleware.fetchStructure(ws, webstrateId, data);
 		}
 		// Request a snapshot.
 		case 'fetchdoc': {

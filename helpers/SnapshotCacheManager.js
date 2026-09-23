@@ -1,72 +1,246 @@
 'use strict';
 
 /**
- * SnapshotCacheManager — server-side cache of heavily brotli-compressed
- * webstrate snapshots ("compressed load events").
+ * SnapshotCacheManager — server-side cache of the pre-rendered webstrate
+ * pages (the "initial load" fast path).
  *
- * Motivation: on an initial load the client currently receives the full
- * JsonML snapshot as uncompressed JSON over the websocket and then
- * reconstructs the DOM from it node-by-node in JS (coreJsonML.toHTML on the
- * client). For a large document that is (a) a big uncompressed transfer, (b)
- * a full JsonML -> DOM reconstruction in JavaScript, and (c) server-side, a
- * BSON deserialize + JSON.stringify of the whole snapshot per new client.
+ * On an initial load the server serves the document as HTML rendered straight
+ * from the document's SQLite state: every node rides natively — elements
+ * carry _="<eid>[,<attrIndex>…]" attributes, text/comment nodes carry an
+ * "<eid>,<attrIndex>_" prefix the client trims with deleteData — inside a
+ * temporary real <head> (holding only the sync client bundle) followed by a
+ * <head_> element carrying the mirror head. Scripts are neutered
+ * (type="webstrates/x") so nothing executes before the client bundle has
+ * booted. The client adopts the already-painted DOM (the browser's parser
+ * has done virtually all the work), checks the content digest carried in
+ * data-d, then subscribes and replays the few commits since the render.
  *
- * This manager occasionally (debounced after ops settle) stores, per
- * webstrate, a file
+ * The paint of a revision is only served stable: on first render the server
+ * re-parses its own paint with parse5 (the WHATWG algorithm browsers run)
+ * and commits any divergence as the document's own ops — see
+ * PaintNormalizer. The digest check is therefore an integrity assert that
+ * cannot fire from a server-made paint; it exists for extension
+ * interference and parser divergences.
  *
- *   <cacheDir>/<encodeURIComponent(id)>.json.br
+ * Rendering + brotli compressing that page takes a moment, so after ops
+ * settle (debounced) the fully-built page is cached per webstrate:
  *
- * containing a brotli-compressed (default quality 11) JSON payload
+ *   <cacheDir>/<encodeURIComponent(id)>.html.br   brotli-compressed page
+ *   <cacheDir>/<encodeURIComponent(id)>.html.meta {v, bytes}
  *
- *   { v: <version>, type: <sharedb type URI>, data: <JsonML snapshot> }
- *
- * - `data` is stored VERBATIM as it would arrive over the websocket (with
- *   `&dot;`-encoded attribute keys etc.), so a client that ingests it via
- *   sharedb's Doc.ingestSnapshot() holds exactly the state the normal
- *   snapshot fetch would have given it. A client that has ingested version v
- *   can then call doc.subscribe() — sharedb's subscribe message carries
- *   doc.version, and the server answers with ONLY the ops since v (see
- *   Agent._subscribe: "Snapshot is returned only when subscribing from a
- *   null version"). No snapshot ever crosses the wire again. The client
- *   builds the DOM from the JsonML via coreJsonML.toHTML, as it always did.
- *
+ * A request either finds a fresh entry (v === current revision) and streams
+ * it with Content-Encoding: br, or renders one inline (fast compression
+ * quality) and serves that while scheduling a high-quality rebuild.
  */
 
 const fs = require('fs');
 const path = require('path');
 const zlib = require('zlib');
-const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
+const documentStore = require(APP_PATH + '/helpers/DocumentStore.js');
+const paintNormalizer = require(APP_PATH + '/helpers/PaintNormalizer.js');
 
-// The feature is opt-in: it activates when config.compressedSnapshots === true.
-const isEnabled = () => global.config.compressedSnapshots === true;
+const cacheDir = () => {
+	const configured = global.config.snapshotCacheDir;
+	// A relative path (as in the sample config) is anchored to the
+	// application, not to whatever directory the process was started from.
+	if (!configured) return path.join(APP_PATH, 'snapshot-cache');
+	return path.isAbsolute(configured) ? configured : path.join(APP_PATH, configured);
+};
 
-const cacheDir = () => global.config.compressedSnapshotCacheDir
-	|| path.join(APP_PATH, 'snapshot-cache');
-
+// Quality of the asynchronous (post-op, debounced) cache build.
 const brotliQuality = () => {
-	const q = Number(global.config.compressedSnapshotBrotliQuality);
+	const q = Number(global.config.snapshotCacheBrotliQuality);
 	return (Number.isFinite(q) && q >= 0 && q <= 11) ? q : 11;
 };
 
+// Quality of the inline (cache-miss) render served to the current requester.
+const inlineBrotliQuality = () => {
+	const q = Number(global.config.snapshotCacheInlineBrotliQuality);
+	return (Number.isFinite(q) && q >= 0 && q <= 11) ? q : 5;
+};
+
 const debounceMs = () => {
-	const d = Number(global.config.compressedSnapshotDebounceMs);
+	const d = Number(global.config.snapshotCacheDebounceMs);
 	return (Number.isFinite(d) && d >= 0) ? d : 5000;
 };
 
-// Even under continuous editing (the debounce above would otherwise be
-// pushed out forever), a cache entry never gets older than this before it is
-// rebuilt. A stale entry stays *correct* (the client catches up through the
-// ops since the cached version), but an arbitrarily old one would eventually
-// cost more op-stream bytes than a fresh snapshot.
+// Even under continuous editing, a cache entry never gets older than this
+// before it is rebuilt.
 const maxStalenessMs = () => {
-	const m = Number(global.config.compressedSnapshotMaxStalenessMs);
+	const m = Number(global.config.snapshotCacheMaxStalenessMs);
 	return (Number.isFinite(m) && m >= 0) ? m : 60000;
 };
 
 const cachePath = (webstrateId) =>
-	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.json.br');
+	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.html.br');
 const metaPath = (webstrateId) =>
-	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.json.meta');
+	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.html.meta');
+
+// The paint format this build renders (v2: native nodes, temp head, <head_>,
+// identity prefixes). Entries stamped with a different format are stale
+// however fresh their revision — their bytes were rendered by an older
+// serializer and would not adopt.
+const CACHE_FORMAT = 2;
+
+// ---------------------------------------------------------------------------
+// Page rendering (shared by the cache build and the inline miss path)
+// ---------------------------------------------------------------------------
+
+// The hashed client bundle reference from the built static/client.html
+// (webpack stamps the hash into it). Read once and cached, keyed on the
+// file's mtime.
+let bundleRef = null;
+let bundleRefMtime = null;
+
+/**
+ * The <script src> reference of the client bundle, exactly as the shell page
+ * serves it (e.g. "/webstrates.js?8c33e0…"). Falls back to the unhashed path
+ * if the built client.html cannot be read.
+ * @return {string} Script src.
+ * @private
+ */
+function clientBundleSrc() {
+	const clientHtmlPath = path.join(APP_PATH, 'static', 'client.html');
+	try {
+		const mtime = fs.statSync(clientHtmlPath).mtimeMs;
+		if (bundleRef && bundleRefMtime === mtime) return bundleRef;
+		const html = fs.readFileSync(clientHtmlPath, 'utf8');
+		const match = html.match(/<script[^>]+src="(\/webstrates\.js\?[^"]+)"/);
+		bundleRef = match ? match[1] : '/webstrates.js';
+		bundleRefMtime = mtime;
+	} catch (err) {
+		bundleRef = '/webstrates.js';
+	}
+	return bundleRef;
+}
+
+/**
+ * The boot style: while the paint streams and the client adopts it, the
+ * document itself must not render — a mid-parse layout of the half-adopted
+ * tree is wasted work that also blocks the DOMContentLoaded dispatch (and
+ * with it the adoption's completion). The body is hidden with display:none
+ * (subtree layout skipped entirely, not merely unpainted) and the shell
+ * loading UI from static/client.html — the green rotating plane and
+ * "Loading Webstrates" — rides as html pseudo-elements, so no DOM node is
+ * needed. The style is wire-only (data-webstrates-boot, a name validOp
+ * rejects, so a mirror node can never collide with it): the client strips
+ * it when the document is revealed — at 'populated' for a plain document,
+ * or once a boot loader (paintAdoption's BOOTLOADER_RE) reports completion
+ * on a codestrate; the paint digest never
+ * sees it. Same !important caveat as any author sheet vs. document styles:
+ * a document style that fights the boot hide wins only the reveal's
+ * exactness, never correctness.
+ * @return {string} <style> markup for the temporary real head.
+ * @private
+ */
+function bootStyle() {
+	// The bare `transient` attribute keeps the style out of the client's
+	// path tree and model (config.isTransientElement matches [transient]),
+	// so the reveal's deferred removal (see paintAdoption) is op-free: no
+	// commit, no version bump, no mirror divergence.
+	return '<style transient data-webstrates-boot="1">'
+		+ 'body{visibility:hidden}'
+		+ 'body>*{display:none!important}'
+		+ 'html::before{content:"";position:fixed;top:calc(50% - 60px);'
+		+ 'left:calc(50% - 20px);width:40px;height:40px;'
+		+ 'background-color:#31a46f;z-index:2147483647;'
+		+ 'animation:wsp-rotateplane 1.2s infinite ease-in-out}'
+		+ 'html::after{content:"Loading Webstrates";position:fixed;'
+		+ 'top:calc(50% + 30px);left:0;right:0;text-align:center;'
+		+ 'font:200 16px sans-serif;-webkit-font-smoothing:antialiased;'
+		+ 'color:#333;z-index:2147483647}'
+		+ '@keyframes wsp-rotateplane{0%{transform:perspective(120px) '
+		+ 'rotateX(0deg) rotateY(0deg)}'
+		+ '50%{transform:perspective(120px) rotateX(-180.1deg) rotateY(0deg)}'
+		+ '100%{transform:perspective(120px) rotateX(-180deg) rotateY(-179.9deg)}}'
+		+ '</style>';
+}
+
+/**
+ * One preload link per sourced document script (early fetch). The links are
+ * wire-only — no `_`, stripped at adoption together with the bundle script.
+ * Template contents are skipped: their scripts never execute, preloading
+ * them would only be noise.
+ * @param  {Handle} handle DocumentStore handle.
+ * @return {[string]}      <link> strings.
+ * @private
+ */
+function preloadLinks(handle) {
+	const escapeAttr = (v) => String(v).replace(/&/g, '&amp;')
+		.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+	const links = [];
+	const walk = (eid) => {
+		const node = handle.nodes.get(eid);
+		if (!node || node.t !== 1) return; // NODE_ELEMENT
+		const name = String(node.n).toLowerCase();
+		if (name === 'template') return;
+		if (name === 'script') {
+			const srcAttr = node.attrs.find((a) => a.n === 'src');
+			if (srcAttr) {
+				links.push(`<link rel="preload" as="script" href="${escapeAttr(srcAttr.v)}">`);
+			}
+			return; // scripts have no element children
+		}
+		for (const child of node.kids) walk(child);
+	};
+	const root = handle.nodes.get(0);
+	const htmlEid = root && root.kids[0];
+	if (htmlEid !== undefined) {
+		for (const child of handle.nodes.get(htmlEid).kids) walk(child);
+	}
+	return links;
+}
+
+/**
+ * Render the full servable page for a webstrate at its current revision:
+ * normalized (see PaintNormalizer.ensureStable — the first render of a
+ * revision commits the browser-canonical normalization ops when the
+ * document holds an unparseable shape), then the wire with the sync client
+ * bundle (revision in its URL fragment, content digest in data-d) and the
+ * script preloads injected into the temporary real <head>.
+ * @param  {Handle}  handle    DocumentStore handle (at head).
+ * @return {string|null}       Page HTML, or null when the document is empty.
+ * @private
+ */
+function renderPage(handle) {
+	if (handle.revision === 0) return null;
+	paintNormalizer.ensureStable(handle);
+	// The digest and the wire are both read from the (possibly just
+	// normalized) mirror, so the served paint always describes the revision
+	// named in the bundle URL.
+	const digest = handle.paintDigest();
+	const bundleScript = '<script id="__webstrates_client" '
+		+ `src="${clientBundleSrc()}#${handle.revision}" data-d="${digest}">`
+		+ '</script>' + bootStyle();
+	return handle.toHTML(handle.nodes, { bundle: bundleScript,
+		preloads: preloadLinks(handle) });
+}
+
+/**
+ * Render the page for a webstrate and compress it (async brotli on the libuv
+ * threadpool).
+ * @param  {string}  webstrateId Webstrate id.
+ * @param  {number}  quality     Brotli quality.
+ * @return {Promise<{v, buffer, bytes}|null>} Compressed page, or null when
+ *   the document is empty.
+ * @public
+ */
+async function buildPage(webstrateId, quality = brotliQuality()) {
+	const handle = documentStore.getHandle(webstrateId);
+	try {
+		const html = renderPage(handle);
+		if (html === null) return null;
+		const v = handle.revision;
+		const compressed = await new Promise((resolve, reject) => {
+			zlib.brotliCompress(Buffer.from(html, 'utf8'), {
+				params: { [zlib.constants.BROTLI_PARAM_QUALITY]: quality }
+			}, (err, out) => err ? reject(err) : resolve(out));
+		});
+		return { v, buffer: compressed, bytes: html.length };
+	} finally {
+		documentStore.releaseHandle(webstrateId);
+	}
+}
 
 // ---------------------------------------------------------------------------
 // Cache maintenance
@@ -86,103 +260,50 @@ function removeCacheEntry(webstrateId) {
 }
 
 /**
- * Build the cache payload for a webstrate and write it (brotli-compressed)
- * atomically: `{v, type, data}` — the JsonML verbatim, nothing else. The
- * client rebuilds the DOM from it via coreJsonML.toHTML, as on a normal load;
- * the cache only removes the snapshot bytes from the wire.
+ * Build the cache entry for a webstrate atomically: brotli-compressed page
+ * plus a small meta sidecar ({v, bytes, fmt}) so freshness (and the wire
+ * format version) can be checked without decompressing.
  * @param {string} webstrateId Webstrate id.
- * @return {object|null} The stored payload (for logging), or null if the
- *   document doesn't exist (entry removed).
+ * @return {Promise<object|null>} Build info, or null for empty documents.
  * @private
  */
 async function buildAndWrite(webstrateId) {
-	if (!isEnabled()) return null;
-
-	let snapshot;
-	try {
-		snapshot = await documentManager.getDocument({ webstrateId });
-	} catch (err) {
-		console.error(`SnapshotCache: failed to fetch "${webstrateId}":`, err.message);
-		return null;
-	}
-
-	if (!snapshot || !snapshot.type || !snapshot.data) {
+	const info = await buildPage(webstrateId, brotliQuality());
+	if (!info) {
 		// Document deleted or empty: no cache entry.
 		removeCacheEntry(webstrateId);
 		return null;
 	}
 
-	const payload = { v: snapshot.v, type: snapshot.type, data: snapshot.data };
-
-	const json = JSON.stringify(payload);
-	// Async brotli (libuv threadpool): quality 11 takes seconds for large
-	// documents, and the synchronous variant would block the server's event
-	// loop for that entire time — stalling every concurrent client load
-	// whenever a rebuild runs.
-	const compressed = await new Promise((resolve, reject) => {
-		zlib.brotliCompress(json, {
-			params: { [zlib.constants.BROTLI_PARAM_QUALITY]: brotliQuality() }
-		}, (err, out) => err ? reject(err) : resolve(out));
-	});
-
 	ensureCacheDir();
 	const file = cachePath(webstrateId);
 	const tmp = file + '.tmp' + process.pid;
-	fs.writeFileSync(tmp, compressed);
+	fs.writeFileSync(tmp, info.buffer);
 	fs.renameSync(tmp, file);
+	fs.writeFileSync(metaPath(webstrateId), JSON.stringify({ v: info.v,
+		bytes: info.bytes, fmt: CACHE_FORMAT }));
 
-	// Small sidecar with the cached version, so the ?snapshot route can stamp
-	// an ETag / debug header without decompressing the payload.
-	fs.writeFileSync(metaPath(webstrateId), JSON.stringify({ v: snapshot.v, bytes: json.length }));
-
-	return { webstrateId, v: snapshot.v, uncompressedBytes: json.length,
-		compressedBytes: compressed.length };
+	return { webstrateId, v: info.v, uncompressedBytes: info.bytes,
+		compressedBytes: info.buffer.length };
 }
 
 /**
- * Schedule a debounced cache rebuild for a webstrate (typically from the
- * sharedb afterWrite hook: some quiet time after the last op, the cache is
- * refreshed — "occasionally"). Deletes remove the entry immediately.
+ * Schedule a debounced cache rebuild for a webstrate (from the commit path:
+ * some quiet time after the last commit, the cached page is refreshed).
  * Under continuous editing the debounce is bounded by maxStalenessMs.
- *
- * A miss-triggered rebuild (op === null, from the ?snapshot route) is NOT
- * debounced: the requester polls ?snapshot until the entry appears, and
- * every poll would re-arm — i.e. indefinitely postpone — the write debounce.
- * It runs immediately instead (deduplicated while a build is in flight).
  * @param {string} webstrateId Webstrate id.
- * @param {object} op         The committed op (del/create detection), or null
- *   for a lazy build after a cache miss.
  * @public
  */
-module.exports.scheduleRebuild = function(webstrateId, op) {
-	if (!webstrateId || !isEnabled()) return;
-
-	if (op && op.del) {
-		// A deleted document must not be served from the cache.
-		const pending = pendingRebuilds.get(webstrateId);
-		if (pending) clearTimeout(pending.timer);
-		pendingRebuilds.delete(webstrateId);
-		removeCacheEntry(webstrateId);
-		return;
-	}
-
-	if (!op) {
-		// Cache-miss lazy build: run now (unless one is already in flight or
-		// an op-triggered debounced rebuild is pending — the freshest data
-		// wins either way).
-		if (buildingNow.has(webstrateId)) return;
-		const pending = pendingRebuilds.get(webstrateId);
-		if (pending && pending.timer) return;
-		return runRebuild(webstrateId);
-	}
+module.exports.scheduleRebuild = function(webstrateId) {
+	if (!webstrateId) return;
 
 	let entry = pendingRebuilds.get(webstrateId);
 	if (!entry) {
 		entry = { timer: null, scheduledAt: Date.now() };
 		pendingRebuilds.set(webstrateId, entry);
 	} else if (entry.timer && Date.now() - entry.scheduledAt > maxStalenessMs()) {
-		// The entry is already due (continuous editing has pushed the debounce
-		// out for longer than the staleness bound): rebuild now.
+		// The rebuild is already due (continuous editing has pushed the
+		// debounce out past the staleness bound): rebuild now.
 		clearTimeout(entry.timer);
 		return runRebuild(webstrateId);
 	}
@@ -210,14 +331,7 @@ function runRebuild(webstrateId) {
 
 /**
  * Remove a webstrate's cache entry immediately (and cancel any pending
- * rebuild). Used by non-sharedb delete paths (the ?delete HTTP route deletes
- * straight from Mongo, so the afterWrite hook never sees it).
- *
- * NOTE: a rebuild already in flight for the id can still land (and re-create
- * the entry) if its getDocument resolved before the deletion; a client
- * loading that stale entry fails the ops-only subscribe, discards it and
- * subscribes cleanly (coreDatabase's retry path), and the next write to the
- * recreated document rebuilds a fresh entry.
+ * rebuild). Used by the delete paths.
  * @param {string} webstrateId Webstrate id.
  * @public
  */
@@ -230,20 +344,25 @@ module.exports.removeEntry = function(webstrateId) {
 };
 
 /**
- * Read a cached payload for serving. Reads the compressed file straight
- * from disk (no decompression here — the response carries Content-Encoding:
- * br and the browser's network stack decompresses it).
+ * Read a cached page for serving, but only when it is fresh (its version
+ * matches the document's current revision). A stale entry is dropped and a
+ * rebuild scheduled.
  * @param  {string} webstrateId Webstrate id.
- * @return {{v: number, uncompressedBytes: number, buffer: Buffer}|null}
- *   Cache entry, or null on a miss.
+ * @return {{v: number, buffer: Buffer}|null} Fresh cache entry, or null.
  * @public
  */
 module.exports.readEntry = function(webstrateId) {
-	if (!isEnabled()) return null;
 	try {
-		const buffer = fs.readFileSync(cachePath(webstrateId));
 		const meta = JSON.parse(fs.readFileSync(metaPath(webstrateId), 'utf8'));
-		return { v: meta.v, uncompressedBytes: meta.bytes, buffer };
+		const currentRevision = documentStore.getHandle(webstrateId).revision;
+		documentStore.releaseHandle(webstrateId);
+		if (meta.fmt !== CACHE_FORMAT || meta.v !== currentRevision) {
+			// Stale: drop it now and refresh it in the background.
+			removeCacheEntry(webstrateId);
+			module.exports.scheduleRebuild(webstrateId);
+			return null;
+		}
+		return { v: meta.v, buffer: fs.readFileSync(cachePath(webstrateId)) };
 	} catch (err) {
 		return null;
 	}
@@ -251,3 +370,26 @@ module.exports.readEntry = function(webstrateId) {
 
 // Test hook (never used in production paths).
 module.exports._buildAndWrite = buildAndWrite;
+
+/**
+ * Render a page synchronously (inline miss path) — compressed at the lower
+ * inline quality, which stays in the low milliseconds even for large
+ * documents.
+ * @param  {string} webstrateId Webstrate id.
+ * @return {{v: number, buffer: Buffer}|null}
+ * @public
+ */
+module.exports.renderInline = function(webstrateId) {
+	const handle = documentStore.getHandle(webstrateId);
+	try {
+		if (handle.revision === 0) return null;
+		const html = renderPage(handle);
+		if (html === null) return null;
+		const compressed = zlib.brotliCompressSync(Buffer.from(html, 'utf8'), {
+			params: { [zlib.constants.BROTLI_PARAM_QUALITY]: inlineBrotliQuality() }
+		});
+		return { v: handle.revision, buffer: compressed };
+	} finally {
+		documentStore.releaseHandle(webstrateId);
+	}
+};

@@ -20,6 +20,104 @@ const globalObject = require('./globalObject');
 
 const protectedModeModule = {};
 
+/**
+ * Approves a node to make it persist on the server. Also, overriding innerHTML of the node to
+ * approve all descendents when set through innerHTML.
+ *
+ * @param {Node} node An object eventually having a property approved set to true.
+ */
+const approveNode = node => {
+
+	// No need to reapprove node, and no need to override innerHTML again.
+	if (node.__approved) return;
+
+	// Use defineProperty and enumerable false to disallow overriding it and
+	// hide it during enumeration.
+	Object.defineProperty(node, '__approved', {
+		get: () => { return true; },
+		enumerable: false
+	});
+
+	// overriding the innerHTML property of the node to approve its children when
+	// innerHTML is used
+	if (node.nodeType === Node.ELEMENT_NODE) {
+		const innerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
+
+		Object.defineProperty(node, 'innerHTML', {
+			set: value => {
+				innerHTMLDescriptor.set.call(node, value);
+
+				// Approve all children and their attributes.
+				// Combine approveNode and approveElementAttribute to avoid performing the
+				// recursiveForEach twice.
+				coreUtils.recursiveForEach(node, (childNode) => {
+					approveNode(childNode);
+
+					// Only an Element has attributes.
+					if (childNode.nodeType === Node.ELEMENT_NODE) {
+						Array.from(childNode.attributes).forEach(attr => {
+							approveElementAttribute(childNode, attr.name);
+						});
+					}
+				});
+			},
+			get: () => innerHTMLDescriptor.get.call(node),
+			configurable: true
+		});
+	}
+};
+
+/**
+ * Approve an element's attribute to make it persist on the server.
+ *
+ * @param {Element} element An element.
+ * @param {string} attrName Attribute name that will be approved.
+ */
+const approveElementAttribute = (element, attrName) => {
+	if (!element.__approvedAttributes) {
+		const approvedAttributes = new Set();
+
+		// Use defineProperty and enumerable false to disallow overriding it and
+		// hide it during enumeration.
+		Object.defineProperty(element, '__approvedAttributes', {
+			get: () => { return approvedAttributes; },
+			enumerable: false
+		});
+	}
+
+	if (!element.__approvedAttributes.has(attrName)) {
+		element.__approvedAttributes.add(attrName);
+	}
+};
+
+// A painted (adopted) document arrives as a browser-parsed DOM: none of its
+// nodes passed through the internal createElement/importNode/createComment
+// overrides below, so nothing marked them __approved — unlike the bootstrap
+// and rebuild paths, which create their DOM through those overrides. But
+// everything present at adoption time is server-persisted state by
+// definition. The populator fires this event before userland scripts run,
+// and we cannot wait for our own receivedDocument activation (which fires
+// after the adoption finished): read the protection state straight off the
+// adopted root — the served page carries the data-protected attribute — and
+// approve the whole tree and its existing attributes, so the path tree
+// admits the root and attribute edits on pre-existing nodes are
+// non-transient. Elements that userland scripts create afterwards are not
+// approved, matching the semantics of every other population path.
+coreEvents.addEventListener('adoptingDocument', (rootElement) => {
+	const dataProtected = rootElement.getAttribute('data-protected');
+	if (!['all', 'elements', 'attributes', ''].includes(dataProtected)) return;
+
+	coreUtils.recursiveForEach(rootElement, (node) => {
+		approveNode(node);
+		// Only an Element has attributes.
+		if (node.nodeType === Node.ELEMENT_NODE) {
+			Array.from(node.attributes).forEach((attribute) => {
+				approveElementAttribute(node, attribute.name);
+			});
+		}
+	});
+});
+
 coreEvents.addEventListener('receivedDocument', (doc, options) => {
 	const dataProtectedAttribute = doc.data && doc.data[1] && doc.data[1]['data-protected'];
 	const elementsProtected = ['all', 'elements', ''].includes(dataProtectedAttribute);
@@ -92,76 +190,6 @@ coreEvents.addEventListener('receivedDocument', (doc, options) => {
 
 		// Otherwise it is transient if not approved
 		return !isApprovedAttribute(DOMNode, attributeName); 
-	};
-
-	/**
-	 * Approves a node to make it persist on the server. Also, overriding innerHTML of the node to
-	 * approve all descendents when set through innerHTML.
-	 * 
-	 * @param {Node} node An object eventually having a property approved set to true.
-	 */
-	const approveNode = node => {
-
-		// No need to reapprove node, and no need to override innerHTML again.
-		if (node.__approved) return;
-
-		// Use defineProperty and enumerable false to disallow overriding it and
-		// hide it during enumeration.
-		Object.defineProperty(node, '__approved', {
-			get: () => { return true; },
-			enumerable: false
-		});
-
-		// overriding the innerHTML property of the node to approve its children when
-		// innerHTML is used
-		if (node.nodeType === Node.ELEMENT_NODE) {
-			const innerHTMLDescriptor = Object.getOwnPropertyDescriptor(Element.prototype, 'innerHTML');
-
-			Object.defineProperty(node, 'innerHTML', {
-				set: value => {
-					innerHTMLDescriptor.set.call(node, value);
-
-					// Approve all children and their attributes.
-					// Combine approveNode and approveElementAttribute to avoid performing the
-					// recursiveForEach twice.
-					coreUtils.recursiveForEach(node, (childNode) => {
-						approveNode(childNode);
-
-						// Only an Element has attributes.
-						if (childNode.nodeType === Node.ELEMENT_NODE) {
-							Array.from(childNode.attributes).forEach(attr => {
-								approveElementAttribute(childNode, attr.name);
-							});
-						}
-					});
-				},
-				get: () => innerHTMLDescriptor.get.call(node),
-				configurable: true
-			});
-		}
-	};
-
-	/**
-	 * Approve an element's attribute to make it persist on the server.
-	 * 
-	 * @param {Element} element An element.
-	 * @param {string} attrName Attribute name that will be approved.
-	 */
-	const approveElementAttribute = (element, attrName) => {
-		if (!element.__approvedAttributes) {
-			const approvedAttributes = new Set();
-
-			// Use defineProperty and enumerable false to disallow overriding it and
-			// hide it during enumeration.
-			Object.defineProperty(element, '__approvedAttributes', {
-				get: () => { return approvedAttributes; },
-				enumerable: false
-			});
-		}
-
-		if (!element.__approvedAttributes.has(attrName)) {
-			element.__approvedAttributes.add(attrName);
-		}
 	};
 
 	/**

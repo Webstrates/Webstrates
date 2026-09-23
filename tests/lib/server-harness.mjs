@@ -104,6 +104,10 @@ const waitForServer = async (server) => {
  */
 const startServer = async ({ label = `server-${servers.length + 1}`, port, config = {} } = {}) => {
 	const port_ = await findFreePort(port);
+	// Every instance gets its own empty document-data directory: the per-webstrate
+	// SQLite databases (<id>.current/<id>.history) must not leak between runs or be
+	// shared by concurrently started instances (WAL files on the same path collide).
+	const dataDir = fs.mkdtempSync(path.join(os.tmpdir(), `webstrates-harness-data-${label}-`));
 	// The effective configuration the server will run: the sample's defaults, overridden
 	// by the base config, overridden by this instance's overrides. Building it here (the
 	// same merge the server applies to a config.json against the sample — see
@@ -114,6 +118,10 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 	// The harness always dictates the port: instances with the same base config (which
 	// carries listeningPort 7007) must not fight over it.
 	fullConfig.listeningPort = port_;
+	fullConfig.sqliteDataDir = dataDir;
+	// Same isolation for the pre-rendered page cache (entries are keyed by
+	// webstrate id, and ids repeat across runs).
+	fullConfig.snapshotCacheDir = path.join(dataDir, 'page-cache');
 
 	const tmp = os.tmpdir();
 	const configFile = path.join(tmp, `webstrates-harness-config-${label}.json`);
@@ -133,6 +141,7 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 		config: fullConfig,
 		child,
 		logFile,
+		dataDir,
 		async stop() {
 			const index = servers.indexOf(server);
 			if (index === -1) return; // already stopped
@@ -149,6 +158,9 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 					server.child.once('exit', () => { clearTimeout(timer); resolve(); });
 				});
 			}
+			// Clean up the instance's SQLite document data (best effort — a lingering
+			// WAL file only wastes temp space).
+			fs.rm(dataDir, { recursive: true, force: true }, () => {});
 		}
 	};
 

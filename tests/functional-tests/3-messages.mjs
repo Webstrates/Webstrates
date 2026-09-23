@@ -51,9 +51,19 @@ describe('Messages', function() {
 	});
 
 	after(async () => {
+		// Delete gotos on bare (unslashed) URLs redirect (302) to the slashed path, and
+		// puppeteer's goto can hang indefinitely when a redirect resolves to a cached
+		// document — an unsettled goto in an after() hook keeps mocha's event loop alive
+		// past the summary and the suite never exits. Break the recipe on both sides: the
+		// slashed URL skips the redirect entirely, and the disabled cache would defeat the
+		// cached-200 leg even if it redirected anyway.
 		await Promise.all([
-			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await Promise.all([
@@ -486,14 +496,22 @@ describe('Messages', function() {
 
 		sockets.forEach(socket => socket.close());
 
+		// Slashed delete URLs + disabled browser cache, so the gotos can't hang on a
+		// redirect to a cached document (see the first describe's after()).
+		await Promise.all([
+			pageA.setCacheEnabled(false),
+			pageD.setCacheEnabled(false),
+			pageE.setCacheEnabled(false)
+		]);
+
 		// Deletes have to be sequential per page, so delete testuser's two webstrates one
 		// after the other.
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-		await pageA.goto(restrictedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await pageA.goto(restrictedUrl + '/?delete', { waitUntil: 'domcontentloaded' });
 
 		await Promise.all([
-			pageD.goto(otherUrl + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageE.goto(floodUrl + '?delete', { waitUntil: 'domcontentloaded' })
+			pageD.goto(otherUrl + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageE.goto(floodUrl + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await Promise.all([

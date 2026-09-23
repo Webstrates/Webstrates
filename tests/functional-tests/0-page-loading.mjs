@@ -64,24 +64,28 @@ describe('Page Loading', function() {
 	});
 
 	it('the webstrate has an initial revision history of 1', async ()=>{
-		// The document's creation commits asynchronously; the ?v snapshot page can be
-		// served before that commit lands and show an earlier state. Poll until the
-		// version settles, with the browser cache disabled so every poll refetches.
-		let version = 0;
-		for (let tries = 0; tries < 20 && version !== 1; tries++) {
+		// The document's creation commits asynchronously; the ops snapshot page can
+		// be served before that commit lands and show an earlier state. Poll until
+		// the creation commit is visible, with the browser cache disabled so every
+		// poll refetches. (Revisions are opids in this storage architecture, so the
+		// "revision history of 1" assertion is on the commit log: exactly one
+		// commit, the bootstrap.)
+		let ops = null;
+		for (let tries = 0; tries < 20 && (ops === null || ops.length === 0); tries++) {
 			await pageA.setCacheEnabled(false);
-			await pageA.goto(url + '?v', { waitUntil: 'domcontentloaded' });
+			await pageA.goto(url + '?ops', { waitUntil: 'domcontentloaded' });
 			try {
-				version = (await pageA.evaluate(() =>
-					JSON.parse(document.querySelector('body').innerText))).version;
+				ops = await pageA.evaluate(() =>
+					JSON.parse(document.querySelector('body').innerText));
 			} catch (err) {
-				// An error body instead of the version snapshot — retry.
-				version = 0;
+				// An error body instead of the ops snapshot — retry.
+				ops = null;
 			}
-			if (version !== 1) await util.sleep(0.25);
+			if (ops === null || ops.length === 0) await util.sleep(0.25);
 		}
 
-		assert.equal(version, 1, 'Version should be 1 after creation');
+		assert.isNotNull(ops, 'Ops should be readable after creation');
+		assert.lengthOf(ops, 1, 'Exactly one commit after creation');
 	});
 
 	it('should be able to delete a webstrate', async () => {

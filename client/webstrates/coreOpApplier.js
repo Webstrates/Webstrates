@@ -689,4 +689,18 @@ coreOpApplier.setRootElement = (rootElement) => {
 	bufferedOps = [];
 };
 
+/**
+ * Apply json0 ops directly to the DOM without firing the receivedOps event —
+ * the commit-error rollback path (coreDatabase inverts a failed batch and
+ * restores the DOM to the last server state).
+ * @param {[op]} ops json0 ops.
+ * @public
+ */
+coreOpApplier.applyOpsDirectly = (ops) => {
+	if (savedRootElement === null || !Array.isArray(ops) || ops.length === 0) {
+		return;
+	}
+	applyOpsFromEvent(ops);
+};
+
 module.exports = coreOpApplier;

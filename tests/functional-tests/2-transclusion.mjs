@@ -28,9 +28,15 @@ describe('Transclusion', function() {
 	});
 
 	after(async () => {
+		// Slashed delete URLs + disabled browser cache, so the parallel delete gotos can't
+		// hang on a redirect (302) to a cached document (see DOM-STRESS-FLAKE.md).
 		await Promise.all([
-			pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlInner + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlInner + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await browser.close();

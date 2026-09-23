@@ -1,8 +1,11 @@
 'use strict';
 const coreConfig = require('./coreConfig');
-const coreDatabase = require('./coreDatabase');
-const corePopulator = require('./corePopulator');
 const coreUtils = require('./coreUtils');
+
+// coreDatabase and corePopulator are required lazily (inside the functions
+// that need them): requiring them here would create the load-time cycle
+// coreDatabase → coreIds → coreWebsocket → globalObject → coreDatabase,
+// whose partial exports leave the populator bound to an empty coreIds.
 
 const globalObjectModule = {};
 
@@ -119,8 +122,10 @@ publicObject.off = (eventName, eventListener) => {
  * @param  {Function} callback Callback.
  */
 publicObject.restore = (tagOrVersion, callback) => {
+	const coreDatabase = require('./coreDatabase');
 	if (publicObject.isStatic) {
 		coreDatabase.fetch(publicObject.webstrateId, tagOrVersion).then(doc => {
+			const corePopulator = require('./corePopulator');
 			corePopulator.populate(document, doc);
 			callback();
 		});
@@ -137,6 +142,7 @@ publicObject.restore = (tagOrVersion, callback) => {
  * @return {Array}                (async) Array of ops in the range.
  */
 publicObject.getOps = (fromVersion, toVersion, callback) => {
+	const coreDatabase = require('./coreDatabase');
 	coreDatabase.getOps(publicObject.webstrateId, fromVersion, toVersion, callback);
 };
 

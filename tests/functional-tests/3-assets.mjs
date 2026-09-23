@@ -127,8 +127,14 @@ describe('Assets', function () {
 			fs.rmdirSync(testDir);
 		}
 
-		await pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' });
-		await pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' });
+		// Slashed delete URLs + disabled browser cache, so the delete gotos can't hang on a
+		// redirect (302) to a cached document (see DOM-STRESS-FLAKE.md).
+		await Promise.all([
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' });
+		await pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' });
 		await Promise.all([
 			browserA.close(),
 			browserB.close()
@@ -682,6 +688,116 @@ describe('Searchable asset cleanup', function () {
 
 		await pageF.close();
 	});
+});
+
+describe('Dangling asset records', function () {
+	this.timeout(60000);
+
+	// An asset record can outlive its file: the database and the uploads directory can
+	// lose sync (files lost from disk, records restored without them). Two behaviors are
+	// covered: re-uploading content whose record points at a missing file must resurrect
+	// the shared name with the fresh copy (before the fix, the dedupe chained every
+	// re-upload onto the dead name and deleted its own fresh copy — a self-propagating
+	// dangling pointer), and requesting an asset whose file is missing must 404 and
+	// lazily drop the dead record rather than 500 through sendFile's error path.
+
+	const webstrateIdA = 'test-' + util.randomString();
+	const webstrateIdB = 'test-' + util.randomString();
+	const urlA = config.server_address + webstrateIdA;
+	const urlB = config.server_address + webstrateIdB;
+
+	let browser, pageA, pageB;
+	let testDir, contentFile;
+
+	const uploadsPath = (identifier) => path.join(process.cwd(), 'uploads', identifier);
+
+	const identifierOf = async (url, fileName) => {
+		const asset = (await (await fetch(url + '?assets')).json())
+			.find(asset => asset.fileName === fileName);
+		assert.isDefined(asset, `The webstrate at ${url} should have an asset ${fileName}`);
+		return asset.identifier;
+	};
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		pageA = await browser.newPage();
+		pageB = await browser.newPage();
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		await pageB.goto(urlB + '/', { waitUntil: 'networkidle2' });
+
+		testDir = path.join(process.cwd(), 'tests', 'test-assets');
+		if (!fs.existsSync(testDir)) {
+			fs.mkdirSync(testDir, { recursive: true });
+		}
+		// Unique name and content per run, so the uploads can never deduplicate against
+		// records left behind by a previous (possibly interrupted) run.
+		contentFile = path.join(testDir, 'dangling-' + util.randomString(10) + '.txt');
+		fs.writeFileSync(contentFile, 'dangling asset content ' + util.randomString(20));
+	});
+
+	after(async () => {
+		// The tests delete their webstrates as they go; delete any left behind by a
+		// failure so no uploaded files outlive the run.
+		await Promise.all([urlA, urlB].map(url =>
+			fetch(url + '?delete').catch(() => {})));
+		await browser.close();
+		if (contentFile && fs.existsSync(contentFile)) fs.unlinkSync(contentFile);
+		if (fs.existsSync(testDir)) {
+			try { fs.rmdirSync(testDir); } catch (err) { /* other suite's files — fine */ }
+		}
+	});
+
+	it('re-uploading content whose file was lost resurrects the shared file', async () => {
+		const fileName = path.basename(contentFile);
+
+		await uploadAssetHelper(pageA, contentFile);
+		const identifier = await identifierOf(urlA, fileName);
+		assert.isTrue(fs.existsSync(uploadsPath(identifier)),
+			'The uploaded file should exist on disk');
+
+		// Simulate the file being lost while its records survive.
+		fs.unlinkSync(uploadsPath(identifier));
+		assert.isFalse(fs.existsSync(uploadsPath(identifier)),
+			'The file should be gone before the re-upload');
+
+		await uploadAssetHelper(pageB, contentFile);
+		assert.equal(await identifierOf(urlB, fileName), identifier,
+			'The re-upload should deduplicate onto the same shared file name');
+		assert.isTrue(fs.existsSync(uploadsPath(identifier)),
+			'The re-upload should have resurrected the shared file on disk');
+
+		const responses = await Promise.all([urlA, urlB].map(url =>
+			fetch(url + '/' + fileName)));
+		assert.equal(responses[0].status, 200,
+			'The asset should serve again on the webstrate it was first uploaded to');
+		assert.equal(responses[1].status, 200,
+			'The asset should serve on the webstrate it was re-uploaded to');
+	});
+
+	it('requesting an asset whose file is missing returns 404 and drops the dead record',
+		async () => {
+			const fileName = path.basename(contentFile);
+			const identifier = await identifierOf(urlA, fileName);
+
+			// Two records point at the shared file (A's and B's); lose the file and
+			// request it. The heal 404s (rather than 500s) and drops dead records
+			// one per request, so poll until the listing no longer advertises the
+			// asset — through A's listing, which is the one being requested.
+			fs.unlinkSync(uploadsPath(identifier));
+			const response = await fetch(urlA + '/' + fileName);
+			assert.equal(response.status, 404,
+				'A missing asset file should be reported as 404, not 500');
+			assert.include(await response.text(), 'missing',
+				'The 404 should say the file is missing, to distinguish it from an unknown asset');
+
+			for (let attempt = 0; attempt < 20; attempt++) {
+				await fetch(urlA + '/' + fileName).catch(() => {});
+				const listing = await (await fetch(urlA + '?assets')).json();
+				if (!listing.some(asset => asset.fileName === fileName)) return;
+				await new Promise(resolve => setTimeout(resolve, 100));
+			}
+			assert.fail('The dead asset record should have been dropped from the listing');
+		});
 });
 
 // Creates a ZIP archive in memory from a list of [name, data] entries. Entries

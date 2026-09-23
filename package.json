@@ -12,7 +12,8 @@
     "build": "NODE_ENV='production' webpack --mode production",
     "watch": "webpack -w",
     "test": "node tests/lib/run-tests.mjs --bail tests/unit-tests tests/functional-tests",
-    "test-all": "node tests/lib/run-tests.mjs tests/unit-tests tests/functional-tests"
+    "test-all": "node tests/lib/run-tests.mjs tests/unit-tests tests/functional-tests",
+    "test-perf": "node tests/lib/run-tests.mjs tests/performance"
   },
   "homepage": "https://www.webstrates.net/",
   "license": "Apache-2.0",
@@ -62,6 +63,7 @@
     "mongodb": "7.6.0",
     "multer": "2.4.0",
     "os": "0.1.2",
+    "parse5": "^8.0.1",
     "passport": "0.7.0",
     "passport-github": "1.1.0",
     "passport-google-oauth2": "0.2.0",

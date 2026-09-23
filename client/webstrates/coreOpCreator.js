@@ -2,6 +2,7 @@
 const coreConfig = require('./coreConfig');
 const coreEvents = require('./coreEvents');
 const coreDatabase = require('./coreDatabase');
+const coreIds = require('./coreIds');
 const corePathTree = require('./corePathTree');
 const coreUtils = require('./coreUtils');
 const coreJsonML = require('./coreJsonML');
@@ -85,7 +86,7 @@ function attributeMutation(mutation, targetPathNode) {
 	if (newValue === null) {
 		coreEvents.triggerEvent('DOMAttributeRemoved', mutation.target, mutation.attributeName,
 			oldValue, newValue, true);
-		return [{ od: oldValue, p: path }];
+		return [{ od: oldValue, p: path, __target: mutation.target }];
 	}
 
 	if (newValue === jsonmlAttrs[cleanAttributeName]) {
@@ -108,6 +109,11 @@ function attributeMutation(mutation, targetPathNode) {
 	} else {
 		ops = patchesToOps(path, jsonmlAttrs[cleanAttributeName], newValue);
 	}
+
+	// Attribute ops collapse to whole values per commit on the wire, and
+	// resolve their target element by node (not by path, which frames may
+	// have shifted since the mutation was recorded).
+	ops.forEach((op) => { op.__target = mutation.target; });
 
 	coreEvents.triggerEvent('DOMAttributeSet', mutation.target, mutation.attributeName, oldValue,
 		newValue, true);
@@ -153,6 +159,11 @@ function characterDataMutation(mutation, targetPathNode) {
 	if (isComment) {
 		ops[0].p.splice(ops[0].p.length - 1, 0, 1);
 	}
+
+	// The op applier never touches the DOM for locally created ops (the DOM
+	// is where they came from), so the target node may move before the
+	// commit is translated: annotate the node, not the position.
+	ops.forEach((op) => { op.__target = mutation.target; });
 
 	// In most cases, we could use mutation.target.parentElement to determine the parentElement, but
 	// when deleting a node from the DOM, the target will no longer have a parentElement. Therefore,
@@ -250,8 +261,12 @@ function childListMutation(mutation, targetPathNode) {
 				// to redefine this. Also, the element can't be transient, i.e. its parent has to be in
 				// the JsonML (targetPathNode must exist) and the element itself can't be transient.
 				if (!childNode.__wid && targetPathNode && !config.isTransientElement(childNode)) {
-					const wid = coreUtils.randomString();
-					coreUtils.setWidOnElement(childNode, wid);
+					// Best effort: mint an eid from the document's id pool. When
+					// the pool runs dry mid-batch, the outgoing translation mints
+					// and registers the rest after a refill (its values carry the
+					// eids anyway, so nothing is lost).
+					const eid = coreIds.mintId();
+					if (eid !== null) coreIds.registerElement(childNode, eid);
 				}
 			}
 		}, parentNode);
@@ -297,7 +312,8 @@ function childListMutation(mutation, targetPathNode) {
 			targetPathNode.children.push(newPathNode);
 		}
 		const path = corePathTree.getPathNode(addedNode, parentNode).toPath();
-		const op = { li: coreJsonML.fromHTML(addedNode), p: path };
+		const op = { li: coreJsonML.fromHTML(addedNode), p: path,
+			__node: addedNode, __parent: parentNode };
 		ops.push(op);
 
 		coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
@@ -309,6 +325,22 @@ function childListMutation(mutation, targetPathNode) {
 		// If an element has no path node, it hasn't been registered in the JsonML at all, so it won't
 		// exist on other clients, and therefore creating an op to delete it wouldn't make sense.
 		if (!removedPathNode) {
+			// Except when the node still carries an eid: it was sent to the
+			// server once (an earlier insert left), so the mirror does know it,
+			// and dropping the removal would leak it into every served paint —
+			// the local model has already lost it (the path node is gone), so a
+			// json0 ld cannot name it. Emit a wire-only sr instead: the server
+			// removes by its own bookkeeping (node.p) and only checks the p
+			// field's shape. Rapid text churn (textContent = json per event)
+			// loses the occasional removal this way; without the recovery the
+			// lost draft texts accumulate as adjacent siblings in the mirror.
+			const leakedEid = coreIds.getEid(removedNode);
+			if (leakedEid !== undefined && leakedEid !== null) {
+				let parentEid = coreIds.eidOfContainer(mutation.target);
+				if (parentEid === undefined || parentEid === null) parentEid = 0;
+				ops.push({ __wireOnly: { k: 'sr', e: leakedEid, p: parentEid },
+					__node: removedNode });
+			}
 			coreEvents.triggerEvent('DOMNodeDeleted', removedNode, mutation.target, true);
 			return;
 		}
@@ -316,14 +348,30 @@ function childListMutation(mutation, targetPathNode) {
 		const path = removedPathNode.toPath();
 		removedPathNode.remove();
 		var jsonmlElement = coreDatabase.elementAtPath(path);
-		// If the element doesn't exist in the JsonML, we can't create an op for its deletion, and we
-		// shouldn't either, so we return. This happens when we replace an unsanitized tag with a
-		// sanitized one.
+		// If the element doesn't exist in the JsonML, we can't create a json0
+		// ld for it. This happens when we replace an unsanitized tag with a
+		// sanitized one — but it also happens when the model's child order
+		// diverged from the path tree (e.g. an own-frame reconciliation moved
+		// the same subtree through different indices in the two structures).
+		// Dropping the removal then leaks the node into the mirror forever:
+		// every record-text replaced under a diverged record element would
+		// pile its previous texts up as server-side ghosts (the tldraw
+		// corruption). The node may still carry its eid — the server does
+		// know it — so fall back to a wire-only sr, like the no-pathNode
+		// branch above.
 		if (!jsonmlElement) {
+			const leakedEid = coreIds.getEid(removedNode);
+			if (leakedEid !== undefined && leakedEid !== null) {
+				let parentEid = coreIds.eidOfContainer(mutation.target);
+				if (parentEid === undefined || parentEid === null) parentEid = 0;
+				ops.push({ __wireOnly: { k: 'sr', e: leakedEid, p: parentEid },
+					__node: removedNode });
+			}
+			coreEvents.triggerEvent('DOMNodeDeleted', removedNode, mutation.target, true);
 			return;
 		}
 
-		const op = { ld: jsonmlElement, p: path };
+		const op = { ld: jsonmlElement, p: path, __node: removedNode };
 		ops.push(op);
 
 		coreEvents.triggerEvent('DOMNodeDeleted', removedNode, mutation.target, true);
@@ -387,18 +435,22 @@ coreOpCreator.emitOpsFromMutations = () => {
 		if (elementTarget && elementTarget.hasAttribute('op-compose')) {
 			const composeDelay = Number(elementTarget.getAttribute('op-compose'));
 
+			// Composed batches are concatenated, not json0-composed: the ops
+			// carry node annotations (DOM references) for the state-based
+			// outgoing translation, which json0.compose would strip (and
+			// cloning would destroy). Sequential application of the raw ops
+			// is exactly what json0.apply does with them anyway.
 			targetPathNode.composedOps = targetPathNode.composedOps
-				? json0.compose(targetPathNode.composedOps, ops)
+				? targetPathNode.composedOps.concat(ops)
 				: ops;
 
 			if (!elementPathNode.composeFn || elementPathNode.composeDelay !== composeDelay) {
 				elementPathNode.composeDelay = composeDelay;
-				targetPathNode.composedOps = ops;
 				elementPathNode.composeFn = coreUtils.throttleFn((targetPathNode) => {
 					if (targetPathNode.composedOps) {
-						coreEvents.triggerEvent('createdOps',
-							coreUtils.objectClone(targetPathNode.composedOps));
+						const batch = targetPathNode.composedOps;
 						targetPathNode.composedOps = null;
+						coreEvents.triggerEvent('createdOps', batch);
 					}
 				}, composeDelay);
 			}
@@ -427,28 +479,13 @@ coreOpCreator.addWidToElement = node => {
 			return;
 		}
 
-		// When inserting something into the DOM before the 'loaded' event has triggered, we will
-		// be calling this function on a node that doesn't exist in the ShareDB document, resulting in
-		// the submission of an op to add a wid to an element that doesn't exist, causing an error.
-		// This oughtn't happen as nobody should touch the DOM before the 'loaded' event has triggered,
-		// but some libraries (and users!) don't respect that. To mitigate this, we stop if the element
-		// doesn't exist.
-		// An alternative fix would be to create and submit and op that would create the element, but if
-		// some script adds something to the DOM on every page load, we probably don't want to keep it
-		// anyway, so it might actually be better to treat it as a wonky, broken transient element (
-		// as we do now).
-		const path = pathNode.toPath();
-		const element = coreDatabase.getDocument(path);
-		if (!Array.isArray(element)) {
-			console.warn('Element was inserted before \'loaded\' event was triggered. This may cause ' +
-				'undefined behaviour.', node);
-			return;
-		}
-
-		const wid = coreUtils.randomString();
-		coreUtils.setWidOnElement(node, wid);
-		const ops = [{ oi: wid, p: [...path, ATTRIBUTE_INDEX, '__wid' ]}];
-		coreEvents.triggerEvent('createdOps', ops);
+		// Eids are protocol-level: they live in the DOM (via the id
+		// registry), not in the committed document. The outgoing translation
+		// reads them from the registry, and the server's serialization puts
+		// __wid properties on the wire itself, so minting an eid is a purely
+		// local act — no op is created for it.
+		const eid = coreIds.mintId();
+		if (eid !== null) coreIds.registerElement(node, eid);
 	}
 };
 
@@ -461,10 +498,8 @@ coreEvents.addEventListener('DOMNodeInserted', (node, parentElement, local) => {
 	if (!local) coreOpCreator.addWidToElement(node);
 }, coreEvents.PRIORITY.IMMEDIATE);
 
-coreEvents.addEventListener('DOMNodeDeleted', node => {
-	if (node.__wid) {
-		coreUtils.removeWidFromElement(node.__wid);
-	}
-});
+// Removed: the DOMNodeDeleted → removeWidFromElement listener. Eids are
+// permanent integers carried by the node object itself; the deletion
+// translation reads them from detached nodes, so they must never be wiped.
 
 module.exports = coreOpCreator;

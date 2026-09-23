@@ -8,3 +8,7 @@ static/client.html
 static/webstrates.js
 static/webstrates.js.map
 .vscode
+static/webstrates.js.br
+static/brotli-dec.wasm
+tests/performance/results/
+config-interactive.json

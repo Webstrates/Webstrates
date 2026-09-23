@@ -61,12 +61,15 @@ process.on('uncaughtException', (err, origin) => {
 const configHelper = require(APP_PATH + '/helpers/ConfigHelper.js');
 const config = global.config = configHelper.getConfig();
 
+const documentStore = require(APP_PATH + '/helpers/DocumentStore.js');
+const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
 const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const sessionManager = require(APP_PATH + '/helpers/SessionManager.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const userValidation = require(APP_PATH + '/helpers/UserValidation.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
+const documentMiddleware = require(APP_PATH + '/middleware/documentMiddleware.js');
 
 const app = express();
 const wsInstance = expressWs(app);
@@ -79,7 +82,10 @@ middleware.push(require('./middleware/keepAliveMiddleware.js'));
 middleware.push(require('./middleware/userHistory.js'));
 middleware.push(require('./middleware/userInvites.js'));
 middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
-middleware.push(require('./middleware/shareDbMiddleware.js'));
+// The document protocol (commit/allocids/fetchStructure/…) runs as
+// 'wa' actions inside customActionHandlerMiddleware; documentMiddleware.js
+// exports the handlers. The subscribe itself needs no action — the
+// connection joins its own document when it is established (autoJoin).
 
 /**
  * Execute a type of middleware
@@ -269,6 +275,37 @@ if (config.auth) {
 	});
 }
 
+// Paint-adoption forensics: the exact digest rows of a document's head
+// revision (the same rows its data-d hashes), so a client-side digest
+// mismatch can be diffed to its first divergent row instead of remaining an
+// opaque hex comparison. Registered before the trailing-slash handler and
+// the document routes so neither swallows the path.
+app.get('/:webstrateId/paint-rows', async function(req, res) {
+	const webstrateId = req.params.webstrateId;
+	try {
+		if (!(await documentManager.documentExists(webstrateId))) {
+			return res.status(404).json({ error: 'no such webstrate' });
+		}
+		const handle = documentStore.getHandle(webstrateId);
+		try {
+			return res.json({ webstrateId, v: handle.revision,
+				rows: handle.paintRows() });
+		} finally {
+			documentStore.releaseHandle(webstrateId);
+		}
+	} catch (err) {
+		return res.status(500).json({ error: String(err) });
+	}
+});
+
+// Sink for client-side paint-divergence reports (see the client's mismatch
+// path): one line per report in the server log, payload kept small.
+app.post('/_paint-debug', express.json({ limit: '64kb' }), function(req, res) {
+	const report = JSON.stringify(req.body).slice(0, 4000);
+	console.log(`PaintDebug: ${report}`);
+	res.status(204).end();
+});
+
 // Ensure trailing slash after webstrateId and tag/label.
 app.get(/^\/([A-Z0-9._-]+)(\/([A-Z0-9_-]+))?$/i, httpRequestController.trailingSlashAppendHandler);
 
@@ -316,20 +353,25 @@ app.use('*any', function (req, res, next) {
 
 // The ws library completes the websocket upgrade (the 101 response) before Express runs
 // the middleware chain that ends in the app.ws() handler below, and that chain is partly
-// asynchronous (deserializing the user's session is a database query). A client that sends
-// its first frame immediately after the handshake can therefore have that frame emitted
-// into the socket before the handler has attached its 'message' listener, where the
-// EventEmitter silently drops it. Buffer such early frames on the socket and replay them
-// once the connection is fully set up (see the app.ws() handler below), instead of losing
-// them and waiting for the client's own retry or the socket timeout.
+// asynchronous (deserializing the user's session is a database query, and the auto-
+// subscribe join awaits a permission check). A client that sends its first frame
+// immediately after the handshake can therefore have that frame emitted into the socket
+// either before the handler has attached its 'message' listener (where the EventEmitter
+// silently drops it) or after the listener is attached but before the connection is
+// fully set up (connectionReady below, where the listener itself drops it). Buffer such
+// early frames on the socket and replay them once the connection is fully set up (see
+// the app.ws() handler below), instead of losing them and waiting for the client's own
+// retry or the socket timeout.
 const earlyFrames = new WeakMap();
 
 wsInstance.getWss().on('connection', (ws) => {
-	// When the middleware chain completes synchronously (connections without a login
-	// cookie), the app.ws() handler has already attached its 'message' listener by the
-	// time this listener runs, and there is no window to guard against.
-	if (ws.listenerCount('message') > 0) return;
-
+	// The guard attaches unconditionally: the onconnect middleware chain is
+	// asynchronous (the auto-subscribe join), so the app.ws() handler's own
+	// 'message' listener being attached no longer means the connection is
+	// ready — frames landing in that window would be dropped by the listener's
+	// connectionReady check. The guard listener captures every frame until
+	// replayEarlyFrames (the last middleware) removes it, so nothing is lost
+	// and the frames still arrive in order.
 	const guard = { listener: null, frames: [] };
 	guard.listener = (data) => {
 		guard.frames.push(data);
@@ -381,6 +423,20 @@ app.ws('/:webstrateId', (ws, req) => {
 		runMiddleware('onmessage', [ws, req, data], ...middleware);
 	});
 
+	// The webstrate is part of the websocket's URL: opening the socket IS the
+	// subscription. The client needs no subscribe message for its own
+	// document — it receives the hello (document id + head revision), the
+	// tag and asset lists, and every commit frame, from the moment the
+	// connection stands. (Read permission gates the join; without it the
+	// client gets no frames and no hello.)
+	const autoSubscribe = {
+		onconnect: (ws, req, next) => {
+			documentMiddleware.autoJoin(ws, req)
+				.catch((err) => console.error('autoJoin failed:', err))
+				.then(() => next());
+		}
+	};
+
 	// The last middleware in the 'onconnect' chain: the connection is now fully set
 	// up, so the listener above takes over and any frames the guard buffered while
 	// the middleware chain was still running are delivered in arrival order.
@@ -398,7 +454,7 @@ app.ws('/:webstrateId', (ws, req) => {
 			next();
 		}
 	};
-	runMiddleware('onconnect', [ws, req], ...middleware, replayEarlyFrames);
+	runMiddleware('onconnect', [ws, req], ...middleware, autoSubscribe, replayEarlyFrames);
 });
 
 app.get('/', httpRequestController.rootRequestHandler);

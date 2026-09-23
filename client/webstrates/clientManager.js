@@ -38,8 +38,10 @@ if (!coreUtils.getLocationObject().staticMode) {
 	});
 
 	websocket.onjsonmessage = (message) => {
-		// Ignore message intended for other webstrates sharing the same websocket.
-		if (message.d !== webstrateId) return;
+		// Ignore messages for other webstrates sharing the same websocket (a
+		// frame without a `d` is for this socket's own document, the one in
+		// its URL).
+		if (message.d !== undefined && message.d !== webstrateId) return;
 
 		switch (message.wa) {
 			case 'hello': {
@@ -106,7 +108,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 	// Note that if the server doesn't receive a ready event within 2 seconds, it sends it out anyway.
 	// That way, no clients can linger unnoticed in a document.
 	coreEvents.addEventListener('loadedTriggered', () => {
-		websocket.send({ wa: 'ready', d: webstrateId });
+		websocket.send({ wa: 'ready' });
 	});
 
 }

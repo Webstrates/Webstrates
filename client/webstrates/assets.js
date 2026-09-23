@@ -36,7 +36,8 @@ function waitForAssets() {
 }
 
 websocket.onjsonmessage = (message) => {
-	if (message.d !== webstrateId) return;
+	// A frame without a `d` is for this socket's own document.
+	if (message.d !== undefined && message.d !== webstrateId) return;
 	switch (message.wa) {
 		case 'assets':
 			assets = message.assets;
@@ -112,7 +113,7 @@ globalObject.publicObject.uploadAsset = (callback = () => {}, options = {}) => {
 };
 
 globalObject.publicObject.deleteAsset = (assetName, callback) => {
-	websocket.send({ wa: 'deleteAsset', d: webstrateId, assetName },
+	websocket.send({ wa: 'deleteAsset', assetName },
 		(err, result) => callback && callback(err, result));
 };
 
@@ -120,7 +121,7 @@ globalObject.publicObject.searchAsset = (assetIdentifier, query = {}, callback) 
 	if (typeof callback !== 'function') throw new Error('Must provide callback function');
 
 	const [assetName, assetVersion] = assetIdentifier.split('/');
-	websocket.send({ wa: 'assetSearch', d: webstrateId, assetName, assetVersion: +assetVersion,
+	websocket.send({ wa: 'assetSearch', assetName, assetVersion: +assetVersion,
 		query: query.query, sort: query.sort, limit: query.limit, skip: query.skip },
 	(err, result) => callback(err, result ? result.records : [], result ? result.count : 0));
 };

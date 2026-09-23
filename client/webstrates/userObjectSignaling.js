@@ -12,7 +12,6 @@ if (!coreUtils.getLocationObject().staticMode) {
 	userObject.createEvent('signal');
 
 	const websocket = coreWebsocket.copy(event => event.data.startsWith('{"wa":"signalUserObject"'));
-	const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 	websocket.onjsonmessage = payload => {
 		const message = payload.m;
@@ -30,7 +29,6 @@ if (!coreUtils.getLocationObject().staticMode) {
 			}
 			const msgObj = {
 				wa: 'signalUserObject',
-				d: webstrateId,
 				m: message
 			};
 			websocket.send(msgObj);

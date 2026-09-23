@@ -399,9 +399,32 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	// Check for duplicates and handle accordingly
 	const duplicate = await db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
 	if (duplicate) {
-		// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
-		// no reason to make the user wait for us to delete the file. The user doesn't care.
-		deleteAssetFromFileSystem(asset.filename);
+		// An asset record can outlive its file (the database and the file system can lose
+		// sync — e.g. files lost from the uploads directory, or records restored without
+		// them). Trusting such a record blindly would chain every future upload of the
+		// same content onto a dead name *and* delete each fresh copy it just extracted,
+		// a self-propagating dangling pointer: once one file is lost, all re-uploads of
+		// that content break while looking successful. So verify the duplicate's file
+		// exists; if it doesn't, resurrect the name with the freshly uploaded copy —
+		// the content is identical (same hash and size), so every record pointing at
+		// that fileName comes back to life.
+		const duplicatePath = `${module.exports.UPLOAD_DEST}${duplicate.fileName}`;
+		if (!fs.existsSync(duplicatePath)) {
+			try {
+				await fs.promises.rename(`${module.exports.UPLOAD_DEST}${asset.filename}`,
+					duplicatePath);
+			} catch (err) {
+				// If the resurrection failed (e.g. the fresh file vanished as well), the
+				// record keeps pointing at the missing name and the serving path reports
+				// the asset as missing. Don't delete the fresh file here.
+				console.error(err);
+			}
+		} else {
+			// deleteAssetFromFileSystem actually returns a promise that we could wait for, but
+			// there's no reason to make the user wait for us to delete the file. The user
+			// doesn't care.
+			deleteAssetFromFileSystem(asset.filename);
+		}
 		// Multer uses lower case properties, we save assets as camelCase in the database, so the
 		// properties are indeed asset.filename and duplicate.fileName (capital N). This is not a typo.
 		asset.filename = duplicate.fileName;

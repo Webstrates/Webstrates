@@ -132,7 +132,12 @@ if (!coreUtils.getLocationObject().staticMode) {
 		}
 	};
 
-	// API for logged-in users to add, list and delete invite keys
+	// API for logged-in users to add, list and delete invite keys. The
+	// webstrate is named only when inviting to another document than the one
+	// this websocket is connected to.
+	const inviteDoc = (webstrateId) => webstrateId !== globalObject.publicObject.webstrateId
+		? { d: webstrateId } : {};
+
 	publicObject.invites = {
 		create: (options = {}, webstrateId = globalObject.publicObject.webstrateId) =>
 			new Promise((accept, reject) => {
@@ -142,7 +147,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 				} = options;
 				websocket.send({
 					wa: 'createInvite',
-					d: webstrateId,
+					...inviteDoc(webstrateId),
 					options: { permissions: permissions, maxAge: maxAge }
 				}, (err, res) => {
 					if (err) reject(new Error(err));
@@ -153,7 +158,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 			new Promise((accept, reject) => {
 				websocket.send({
 					wa: 'getInvites',
-					d: webstrateId
+					...inviteDoc(webstrateId)
 				}, (err, res) => {
 					if (err) reject(new Error(err));
 					else accept(res);
@@ -163,7 +168,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 			new Promise((accept, reject) => {
 				websocket.send({
 					wa: 'removeInvite',
-					d: webstrateId,
+					...inviteDoc(webstrateId),
 					options: { key: key }
 				}, (err, res) => {
 					if (err) reject(new Error(err));
@@ -174,7 +179,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 			new Promise((accept, reject) => {
 				websocket.send({
 					wa: 'checkInvite',
-					d: webstrateId,
+					...inviteDoc(webstrateId),
 					options: { key: key }
 				}, (err, res) => {
 					if (err) reject(new Error(err));
@@ -185,7 +190,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 			new Promise((accept, reject) => {
 				websocket.send({
 					wa: 'acceptInvite',
-					d: webstrateId,
+					...inviteDoc(webstrateId),
 					options: { key: key }
 				}, (err, res) => {
 					if (err) reject(new Error(err));

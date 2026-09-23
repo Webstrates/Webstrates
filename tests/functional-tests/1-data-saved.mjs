@@ -48,9 +48,17 @@ describe('DOM Manipulation with dataSaved', function() {
 	});
 
 	after(async () => {
+		// The CDP network emulation above (200ms latency) is still active here, which widens
+		// the window of puppeteer's goto hang on a redirect (302) to a cached document. Use
+		// the slashed URL (no redirect) and disable the cache (no cached-200 leg) — either
+		// alone breaks the hang recipe.
 		await Promise.all([
-			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+			pageA.setCacheEnabled(false),
+			pageB.setCacheEnabled(false)
+		]);
+		await Promise.all([
+			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
+			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
 		]);
 
 		await browser.close();

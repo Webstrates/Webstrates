@@ -161,13 +161,16 @@ describe('Asset copying', function () {
 	});
 
 	after(async () => {
-		// Avoid puppeteer's goto hang on redirects to cached documents.
+		// Avoid puppeteer's goto hang on redirects to cached documents. The cache is off,
+		// and every delete URL is slashed (no 302): copyUrls already come from page.url()
+		// after the copy redirects (they keep the trailing slash), url and emptyUrl are
+		// bare constants and get the slash appended here.
 		await page.setCacheEnabled(false);
 		for (const copyUrl of copyUrls) {
 			await page.goto(copyUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		}
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-		await page.goto(emptyUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await page.goto(emptyUrl + '/?delete', { waitUntil: 'domcontentloaded' });
 
 		await browser.close();
 

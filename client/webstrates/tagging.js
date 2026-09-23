@@ -16,8 +16,10 @@ const websocket = coreWebsocket.copy(event => event.data.startsWith('{"wa":'));
 const webstrateId = coreUtils.getLocationObject().webstrateId;
 
 websocket.onjsonmessage = (message) => {
-	// Ignore message intended for other webstrates sharing the same websocket.
-	if (message.d !== webstrateId) return;
+	// Ignore messages for other webstrates sharing the same websocket (a
+	// frame without a `d` is for this socket's own document, the one in its
+	// URL).
+	if (message.d !== undefined && message.d !== webstrateId) return;
 
 	switch (message.wa) {
 
@@ -151,7 +153,6 @@ globalObject.publicObject.tag = (label, version, callback) => {
 	allTags[doc.version] = label;
 	websocket.send({
 		wa: 'tag',
-		d: doc.id,
 		v: version,
 		l: label
 	}, callback);
@@ -170,8 +171,7 @@ globalObject.publicObject.untag = (tagOrVersion) => {
 	}
 
 	const msgObj = {
-		wa: 'untag',
-		d: doc.id,
+		wa: 'untag'
 	};
 
 	let version;
