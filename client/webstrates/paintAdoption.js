@@ -78,6 +78,12 @@ const WIRE_ONLY_HINTS = new Set(['script', 'link']); // head artifact elements
 // once, as its final compiled self.
 const BOOTLOADER_RE = /^transient-.+-bootloader$/;
 const BOOTLOADER_TERMINAL = new Set(['loaded', 'failed', 'error', 'aborted']);
+// Set on <html> (transient, op-free — see config.isTransientAttribute) while
+// a boot loader's own loading skin takes over the spinner duty: the
+// transport's spinner rules are scoped :not([this]) in
+// SnapshotCacheManager.bootStyle, so setting it is the frame-switch — the
+// loader's spinner alone, no webstrates ghost overlapping it.
+const SPINNER_YIELD_ATTR = 'transient-webstrates-spinner-yield';
 // A broken loader (WPMv2's early returns leave "loading" behind) must not
 // leave the document hidden forever: hold at most this long.
 const REVEAL_DEADLINE_MS = 15000;
@@ -99,6 +105,10 @@ const adoption = {
 // that never finishes.
 let holdObserver = null;
 let revealTimer = null;
+// The spinner-yield watcher (see considerSpinnerYield): evaluates the
+// yield the moment a loader marker appears — during the loader's own
+// script, as a microtask — so no paint can ever show both spinners.
+let markerObserver = null;
 
 // Nodes whose adoption is complete (registered with their identity). The
 // parser sets an element's attributes when inserting it, EXCEPT the later
@@ -463,6 +473,10 @@ const reveal = () => {
 		holdObserver.disconnect();
 		holdObserver = null;
 	}
+	if (markerObserver) {
+		markerObserver.disconnect();
+		markerObserver = null;
+	}
 	if (revealTimer) {
 		clearTimeout(revealTimer);
 		revealTimer = null;
@@ -470,6 +484,66 @@ const reveal = () => {
 	for (const el of document.querySelectorAll('[data-webstrates-boot]')) {
 		el.remove();
 	}
+	// Cosmetic cleanliness: the scoped spinner rules just went with the
+	// style, and the attribute is transient — no ops either way.
+	document.documentElement.removeAttribute(SPINNER_YIELD_ATTR);
+};
+
+/**
+ * Whether the document carries a boot loader's own loading skin: CSS
+ * styling the loader marker's pseudo-element (WPMv2's loading-skin package
+ * paints its spinner on html[transient-…-bootloader]:before — mirrored
+ * document content, so it is live by 'populated'). When it does, the
+ * transport spinner yields (SPINNER_YIELD_ATTR): the loader's spinner
+ * takes over the frame its marker is set — which precedes 'populated' by
+ * microseconds — instead of the two overlapping. A loader without a skin
+ * keeps the transport spinner through its hidden compile, so a skinless
+ * loader never stares at a blank screen.
+ * @param {[string]} markerNames Boot loader marker attribute names.
+ * @return {bool} Whether a skin exists.
+ * @private
+ */
+const bootSkinExists = (markerNames) => {
+	for (const sheet of Array.from(document.styleSheets)) {
+		let rules;
+		try {
+			rules = sheet.cssRules;
+		} catch (err) {
+			continue; // cross-origin sheet: not ours to read
+		}
+		for (const rule of Array.from(rules || [])) {
+			const sel = rule.selectorText;
+			if (!sel) continue;
+			if (markerNames.some((name) => sel.includes(name))
+				&& /::?(before|after)/.test(sel)) {
+				return true;
+			}
+		}
+	}
+	return false;
+};
+
+/**
+ * Yield the transport spinner to a boot loader's own loading skin, if one
+ * exists (see bootSkinExists) — idempotent, cheap to call from every
+ * decision point. The marker observer (installed by finish, before the
+ * document's scripts run) fires the first evaluation the instant a loader
+ * sets its marker, as a microtask inside the loader's own script task: no
+ * paint can occur between the marker's set and the yield, so the handoff
+ * is a clean frame-switch. 'populated' re-evaluates (skins that only came
+ * with the last script tick), and the observer stays armed through the
+ * compile for skins injected late — a loader's marker ticks are frequent.
+ * @param {Element} htmlEl   The documentElement.
+ * @param {[string]} [markerNames] Marker names, if already collected.
+ * @private
+ */
+const considerSpinnerYield = (htmlEl, markerNames) => {
+	if (htmlEl.hasAttribute(SPINNER_YIELD_ATTR)) return;
+	const names = markerNames || Array.from(htmlEl.attributes)
+		.filter((a) => BOOTLOADER_RE.test(a.name))
+		.map((a) => a.name);
+	if (names.length === 0 || !bootSkinExists(names)) return;
+	htmlEl.setAttribute(SPINNER_YIELD_ATTR, '1');
 };
 
 /**
@@ -497,6 +571,13 @@ const revealWhenReady = () => {
 	});
 	if (holds.length === 0 || settled()) return reveal();
 
+	// Holding through a loader's compile: make sure the spinner has been
+	// handed over if the loader ships a skin (the marker observer fired
+	// during the loader's own script, mid-execution — this is the
+	// belt-and-braces re-evaluation for skins that arrived with the last
+	// script tick).
+	considerSpinnerYield(htmlEl, holds);
+
 	holdObserver = new MutationObserver(() => {
 		if (settled()) reveal();
 	});
@@ -507,6 +588,16 @@ const revealWhenReady = () => {
 		reveal();
 	}, REVEAL_DEADLINE_MS);
 };
+
+/**
+ * Reveal now, whatever the state: strip the boot style (the hide + spinner)
+ * and tear down every hold — the marker observer, the hold observer, the
+ * deadline timer. Used by the reveal paths internally and by the load dead
+ * ends (coreDatabase.showLoadError), which would otherwise leave the
+ * watchers armed on a stopped page.
+ * @public
+ */
+module.exports.reveal = reveal;
 
 /**
  * Whether the running page is a painted page (carrying a revision + digest).
@@ -610,6 +701,18 @@ module.exports.finish = async () => {
 		adoption.revealHooked = true;
 		coreEvents.addEventListener('populated', () => revealWhenReady(),
 			coreEvents.PRIORITY.IMMEDIATE);
+	}
+	// Arm the spinner-yield watcher before the document's scripts run: the
+	// moment a loader marks <html>, the yield evaluates (microtask — before
+	// any paint could show the marker with the transport spinner still
+	// ghosting above the loader's own). Kept alive through the reveal for
+	// skins that a loader injects mid-compile; torn down by reveal.
+	if (!markerObserver) {
+		markerObserver = new MutationObserver(() => {
+			const htmlEl = _document.documentElement;
+			if (htmlEl && !adoption.revealed) considerSpinnerYield(htmlEl);
+		});
+		markerObserver.observe(_document.documentElement, { attributes: true });
 	}
 	return ok && !adoption.failed;
 };

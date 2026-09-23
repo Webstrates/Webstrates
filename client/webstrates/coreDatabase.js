@@ -3312,10 +3312,11 @@ function showLoadError(reason) {
 	// body during parse+adoption; finish() removes it, but the paths that
 	// fail before/inside finish (a bundle tag an extension mangled, an
 	// unparsable identity) never get there. Strip it here — the one choke
-	// point of every dead end — so the banner lands on a revealed document.
-	for (const el of document.querySelectorAll('[data-webstrates-boot]')) {
-		el.remove();
-	}
+	// point of every dead end — so the banner lands on a revealed document;
+	// paintAdoption.reveal also tears down its hold machinery (marker
+	// observer, hold observer, deadline timer) so nothing stays armed on a
+	// stopped page.
+	paintAdoption.reveal();
 	const banner = document.createElement('div');
 	banner.style.cssText = 'position:fixed;left:0;right:0;bottom:0;z-index:2147483647;'
 		+ 'background:#a00;color:#fff;font:13px/1.4 monospace;padding:8px 12px;'
