@@ -77,12 +77,11 @@ const metaPath = (webstrateId) =>
 	path.join(cacheDir(), encodeURIComponent(webstrateId) + '.html.meta');
 
 // The paint format this build renders (v2: native nodes, temp head, <head_>,
-// identity prefixes; v3: spinner rules scoped with the yield attribute —
-// see bootStyle). Entries stamped with a different format are stale
-// however fresh their revision — their bytes were rendered by an older
-// serializer and would not adopt (or, pre-v3, would carry the unscoped
-// spinner ghost).
-const CACHE_FORMAT = 3;
+// identity prefixes; v3: scoped spinner rules; v4: loader takeover — the
+// boot style leaves wholesale at a loader marker, spinner unscoped). A
+// different format means stale however fresh the revision — the bytes
+// were rendered by an older serializer and would not adopt.
+const CACHE_FORMAT = 4;
 
 // ---------------------------------------------------------------------------
 // Page rendering (shared by the cache build and the inline miss path)
@@ -127,20 +126,13 @@ function clientBundleSrc() {
  * needed. The style is wire-only (data-webstrates-boot, a name validOp
  * rejects, so a mirror node can never collide with it): the client strips
  * it when the document is revealed — at 'populated' for a plain document,
- * or once a boot loader (paintAdoption's BOOTLOADER_RE) reports completion
- * on a codestrate; the paint digest never
- * sees it. Same !important caveat as any author sheet vs. document styles:
- * a document style that fights the boot hide wins only the reveal's
+ * or the moment a boot loader announces itself (its transient-*-bootloader
+ * marker on <html>, see paintAdoption's takeover watcher): the loader owns
+ * the loading experience from there, our presentation goes wholesale — no
+ * scanning for skins, no shared frames. The paint digest never sees it.
+ * Same !important caveat as any author sheet vs. document styles: a
+ * document style that fights the boot hide wins only the reveal's
  * exactness, never correctness.
- *
- * The spinner half is scoped with
- * html:not([transient-webstrates-spinner-yield]): a boot loader that ships
- * its own loading skin (document CSS styling the loader marker's
- * pseudo-element — paintAdoption checks at 'populated') gets a clean
- * frame-switch to its spinner the moment its marker exists; without such a
- * skin the webstrates spinner keeps covering the hidden compile, so a
- * skinless loader never stares at a blank screen. The yield attribute is
- * transient (op-free, mirror-free) — see paintAdoption.
  * @return {string} <style> markup for the temporary real head.
  * @private
  */
@@ -160,14 +152,12 @@ function bootStyle() {
 	return '<style transient data-webstrates-boot="1">'
 		+ 'body{visibility:hidden}'
 		+ 'body>*{display:none!important}'
-		+ 'html:not([transient-webstrates-spinner-yield])::before{content:"";'
-		+ 'position:fixed;top:calc(50% - 24px);left:calc(50% - 24px);'
-		+ 'width:48px;height:48px;'
+		+ 'html::before{content:"";position:fixed;top:calc(50% - 24px);'
+		+ 'left:calc(50% - 24px);width:48px;height:48px;'
 		+ 'background:url("/favicon.ico") no-repeat center / contain;'
 		+ 'z-index:2147483647}'
-		+ 'html:not([transient-webstrates-spinner-yield])::after{content:"";'
-		+ 'position:fixed;top:calc(50% - 48px);left:calc(50% - 48px);'
-		+ 'width:96px;height:96px;'
+		+ 'html::after{content:"";position:fixed;top:calc(50% - 48px);'
+		+ 'left:calc(50% - 48px);width:96px;height:96px;'
 		+ 'background:url("/favicon.ico") no-repeat center / contain;'
 		+ 'animation:wsp-emit 2.4s ease-out infinite;z-index:2147483646}'
 		+ '@keyframes wsp-emit{from{transform:scale(.5);opacity:.4}'

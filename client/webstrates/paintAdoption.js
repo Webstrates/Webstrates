@@ -46,11 +46,12 @@
  * The reveal of the document is deliberately NOT part of finish(): the boot
  * hide (wire-only, see SnapshotCacheManager.bootStyle) stays on through the
  * digest and the populator's script pass, and comes off at 'populated' —
- * or later, while a boot loader marker (BOOTLOADER_RE, WPMv2's) on <html>
- * has not reached its terminal state. A codestrate's scripts (package
- * install, SCSS->CSS) rework the document behind the hide, so the one
- * layout the reveal costs is of the final document, not of a shape that
- * is thrown away a moment later.
+ * unless a boot loader takes over first: the moment one announces itself on
+ * <html> (BOOTLOADER_RE), our whole boot presentation — hide and spinner —
+ * is removed and the loader owns the experience from there. Its loading
+ * skin (if it ships one) has been live since parse; a loader without one
+ * lets the raw document show while it compiles, exactly like any
+ * script-driven website.
  */
 
 const coreUtils = require('./coreUtils');
@@ -71,22 +72,14 @@ const WIRE_ONLY_HINTS = new Set(['script', 'link']); // head artifact elements
 // compilation) announces itself on <html> as transient-<name>-bootloader —
 // WPMv2 sets exactly this today (transient-wpm2-bootloader:
 // waiting -> loading -> initializing -> loaded). The transient- prefix
-// keeps the marker out of the mirror and the digest; the transport's boot
-// hide (see SnapshotCacheManager.bootStyle) is held until every such marker
-// reaches a terminal value (loaded — or an explicit failure word, or the
-// attribute goes away), so the never-laid-out document is revealed exactly
-// once, as its final compiled self.
+// keeps the marker out of the mirror and the digest. Its appearance is a
+// takeover: the transport's boot presentation (hide + spinner, see
+// SnapshotCacheManager.bootStyle) is removed on the spot — the loader owns
+// the loading experience from there. A loader that ships a skin takes the
+// frame over cleanly (its CSS has been live since parse); a loader without
+// one lets the raw document show through while it compiles, exactly like
+// any script-driven website.
 const BOOTLOADER_RE = /^transient-.+-bootloader$/;
-const BOOTLOADER_TERMINAL = new Set(['loaded', 'failed', 'error', 'aborted']);
-// Set on <html> (transient, op-free — see config.isTransientAttribute) while
-// a boot loader's own loading skin takes over the spinner duty: the
-// transport's spinner rules are scoped :not([this]) in
-// SnapshotCacheManager.bootStyle, so setting it is the frame-switch — the
-// loader's spinner alone, no webstrates ghost overlapping it.
-const SPINNER_YIELD_ATTR = 'transient-webstrates-spinner-yield';
-// A broken loader (WPMv2's early returns leave "loading" behind) must not
-// leave the document hidden forever: hold at most this long.
-const REVEAL_DEADLINE_MS = 15000;
 
 const adoption = {
 	painted: false,  // a painted page (bundle carries data-d)
@@ -100,14 +93,9 @@ const adoption = {
 	observer: null
 };
 
-// The reveal hold (see revealWhenReady): the observer watching <html>'s
-// bootloader markers and the deadline timer guarding against a loader
-// that never finishes.
-let holdObserver = null;
-let revealTimer = null;
-// The spinner-yield watcher (see considerSpinnerYield): evaluates the
-// yield the moment a loader marker appears — during the loader's own
-// script, as a microtask — so no paint can ever show both spinners.
+// The loader-takeover watcher (see reveal): fires the moment a boot loader
+// marks <html> — during the loader's own script, as a microtask, so no
+// paint can ever show our spinner above the loader's own loading UI.
 let markerObserver = null;
 
 // Nodes whose adoption is complete (registered with their identity). The
@@ -460,141 +448,33 @@ if (current && current.hasAttribute('data-d')) {
 
 /**
  * Reveal the document: remove the wire-only boot style (the hide + loading
- * UI, see SnapshotCacheManager.bootStyle). Idempotent, and it always runs
- * to completion — no observer or timer survives it. The body was kept
- * display:none through parse and adoption (and, while a boot loader is
- * running, through its whole transformation), so the reveal is the FIRST
- * and only layout the document ever gets: of its final, compiled shape.
+ * UI, see SnapshotCacheManager.bootStyle) and tear down the takeover
+ * watcher. Idempotent, and it always runs to completion — no observer
+ * survives it. For a plain document this is at 'populated': the body was
+ * kept display:none through parse and adoption, so the reveal is the
+ * first and only layout — of the final document. For a codestrate it is
+ * the moment its boot loader announces itself: the loader owns the
+ * experience from there, hide and all (its skin, or the raw compiling
+ * document — see BOOTLOADER_RE).
  * @private
  */
 const reveal = () => {
+	if (adoption.revealed) return;
 	adoption.revealed = true;
-	if (holdObserver) {
-		holdObserver.disconnect();
-		holdObserver = null;
-	}
 	if (markerObserver) {
 		markerObserver.disconnect();
 		markerObserver = null;
 	}
-	if (revealTimer) {
-		clearTimeout(revealTimer);
-		revealTimer = null;
-	}
 	for (const el of document.querySelectorAll('[data-webstrates-boot]')) {
 		el.remove();
 	}
-	// Cosmetic cleanliness: the scoped spinner rules just went with the
-	// style, and the attribute is transient — no ops either way.
-	document.documentElement.removeAttribute(SPINNER_YIELD_ATTR);
-};
-
-/**
- * Whether the document carries a boot loader's own loading skin: CSS
- * styling the loader marker's pseudo-element (WPMv2's loading-skin package
- * paints its spinner on html[transient-…-bootloader]:before — mirrored
- * document content, so it is live by 'populated'). When it does, the
- * transport spinner yields (SPINNER_YIELD_ATTR): the loader's spinner
- * takes over the frame its marker is set — which precedes 'populated' by
- * microseconds — instead of the two overlapping. A loader without a skin
- * keeps the transport spinner through its hidden compile, so a skinless
- * loader never stares at a blank screen.
- * @param {[string]} markerNames Boot loader marker attribute names.
- * @return {bool} Whether a skin exists.
- * @private
- */
-const bootSkinExists = (markerNames) => {
-	for (const sheet of Array.from(document.styleSheets)) {
-		let rules;
-		try {
-			rules = sheet.cssRules;
-		} catch (err) {
-			continue; // cross-origin sheet: not ours to read
-		}
-		for (const rule of Array.from(rules || [])) {
-			const sel = rule.selectorText;
-			if (!sel) continue;
-			if (markerNames.some((name) => sel.includes(name))
-				&& /::?(before|after)/.test(sel)) {
-				return true;
-			}
-		}
-	}
-	return false;
-};
-
-/**
- * Yield the transport spinner to a boot loader's own loading skin, if one
- * exists (see bootSkinExists) — idempotent, cheap to call from every
- * decision point. The marker observer (installed by finish, before the
- * document's scripts run) fires the first evaluation the instant a loader
- * sets its marker, as a microtask inside the loader's own script task: no
- * paint can occur between the marker's set and the yield, so the handoff
- * is a clean frame-switch. 'populated' re-evaluates (skins that only came
- * with the last script tick), and the observer stays armed through the
- * compile for skins injected late — a loader's marker ticks are frequent.
- * @param {Element} htmlEl   The documentElement.
- * @param {[string]} [markerNames] Marker names, if already collected.
- * @private
- */
-const considerSpinnerYield = (htmlEl, markerNames) => {
-	if (htmlEl.hasAttribute(SPINNER_YIELD_ATTR)) return;
-	const names = markerNames || Array.from(htmlEl.attributes)
-		.filter((a) => BOOTLOADER_RE.test(a.name))
-		.map((a) => a.name);
-	if (names.length === 0 || !bootSkinExists(names)) return;
-	htmlEl.setAttribute(SPINNER_YIELD_ATTR, '1');
-};
-
-/**
- * Decide the reveal at 'populated' time — after the document's own scripts
- * have executed, so every boot loader has synchronously announced itself
- * (WPMv2 writes its marker at the end of its inline script). No loader
- * marker on <html>: reveal now, exactly as a plain document does. Any
- * marker still working: hold until every one reaches its terminal state
- * (MutationObserver on <html>), with a deadline force-reveal so a broken
- * loader cannot leave the document hidden forever.
- * @private
- */
-const revealWhenReady = () => {
-	if (adoption.revealed) return;
-	const htmlEl = document.documentElement;
-	if (!htmlEl) return reveal();
-
-	const holds = [];
-	for (const attr of Array.from(htmlEl.attributes)) {
-		if (BOOTLOADER_RE.test(attr.name)) holds.push(attr.name);
-	}
-	const settled = () => holds.every((name) => {
-		const value = htmlEl.getAttribute(name);
-		return value === null || BOOTLOADER_TERMINAL.has(value);
-	});
-	if (holds.length === 0 || settled()) return reveal();
-
-	// Holding through a loader's compile: make sure the spinner has been
-	// handed over if the loader ships a skin (the marker observer fired
-	// during the loader's own script, mid-execution — this is the
-	// belt-and-braces re-evaluation for skins that arrived with the last
-	// script tick).
-	considerSpinnerYield(htmlEl, holds);
-
-	holdObserver = new MutationObserver(() => {
-		if (settled()) reveal();
-	});
-	holdObserver.observe(_document.documentElement, { attributes: true });
-	revealTimer = setTimeout(() => {
-		console.warn('webstrates: boot loader did not report '
-			+ 'completion; revealing the document');
-		reveal();
-	}, REVEAL_DEADLINE_MS);
 };
 
 /**
  * Reveal now, whatever the state: strip the boot style (the hide + spinner)
- * and tear down every hold — the marker observer, the hold observer, the
- * deadline timer. Used by the reveal paths internally and by the load dead
- * ends (coreDatabase.showLoadError), which would otherwise leave the
- * watchers armed on a stopped page.
+ * and tear down the takeover watcher. Used by the reveal paths internally
+ * and by the load dead ends (coreDatabase.showLoadError), which would
+ * otherwise leave the watcher armed on a stopped page.
  * @public
  */
 module.exports.reveal = reveal;
@@ -691,26 +571,30 @@ module.exports.finish = async () => {
 	// Adoption is complete — but the document is NOT revealed here. The
 	// boot style survives the digest (computeRows skips it: a wire-only
 	// node, never a mirror node) and comes off at 'populated' — after the
-	// document's own scripts have run — held further while a boot loader
-	// (see BOOTLOADER_RE) is still transforming the document. IMMEDIATE
-	// priority: the listener runs synchronously with the trigger, before
-	// the populate chain arms the op observer; the held path is covered by
-	// the style's `transient` attribute (op-free removal, see bootStyle).
-	// Dead ends (paths that never populate) strip it in showLoadError.
+	// document's own scripts have run — unless a boot loader takes over
+	// first (see BOOTLOADER_RE). IMMEDIATE priority: the listener runs
+	// synchronously with the trigger, before the populate chain arms the
+	// op observer; both removal paths are covered by the style's
+	// `transient` attribute (op-free removal, see bootStyle). Dead ends
+	// (paths that never populate) strip it in showLoadError.
 	if (!adoption.revealHooked) {
 		adoption.revealHooked = true;
-		coreEvents.addEventListener('populated', () => revealWhenReady(),
+		coreEvents.addEventListener('populated', () => reveal(),
 			coreEvents.PRIORITY.IMMEDIATE);
 	}
-	// Arm the spinner-yield watcher before the document's scripts run: the
-	// moment a loader marks <html>, the yield evaluates (microtask — before
-	// any paint could show the marker with the transport spinner still
-	// ghosting above the loader's own). Kept alive through the reveal for
-	// skins that a loader injects mid-compile; torn down by reveal.
+	// Arm the loader-takeover watcher before the document's scripts run:
+	// the moment a boot loader marks <html>, reveal() runs from the
+	// observer's microtask — before any paint could show our spinner
+	// above the loader's own loading UI — so the handoff is a clean
+	// frame-switch and the loader owns the experience from its first
+	// tick (its skin, or the raw compiling document).
 	if (!markerObserver) {
 		markerObserver = new MutationObserver(() => {
 			const htmlEl = _document.documentElement;
-			if (htmlEl && !adoption.revealed) considerSpinnerYield(htmlEl);
+			if (!htmlEl || adoption.revealed) return;
+			const marked = Array.from(htmlEl.attributes)
+				.some((a) => BOOTLOADER_RE.test(a.name));
+			if (marked) reveal();
 		});
 		markerObserver.observe(_document.documentElement, { attributes: true });
 	}
