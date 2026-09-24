@@ -1,40 +1,25 @@
-// ShareDB del ops carry no op
-// components (op.op is undefined), so the afterWrite hook's
-// changesPermissions(req.op.op) threw a TypeError ("Cannot read properties of
-// undefined (reading 'some')") after the delete had already been committed in
-// the database. The submitting client's del acknowledgement never arrived,
-// the permission cache entry and the access tokens of the deleted document
-// were never invalidated, and the TypeError surfaced only as an unhandled
-// rejection.
+// Deleting a webstrate must invalidate everything keyed to it.
 //
-// These tests fail on unfixed code: the del callback never fires (the first
-// test times out), and the websocket presenting the stale token is accepted
-// instead of being closed with 1002 "Invalid access token."
+// History: the ShareDB del op carried no op components, so the old
+// afterWrite hook's changesPermissions(op.op) threw a TypeError after the
+// delete had already been committed — the del acknowledgement never
+// arrived, and the permission-cache entry and access tokens of the deleted
+// document were never invalidated. That fix lived in the submit pipeline;
+// when deletion moved to the plain HTTP ?delete route (the custom 'wa'
+// protocol has no del action), the invalidation had to move with it —
+// deleteWebstrate now expires the cached permissions and every outstanding
+// access token of the document.
+//
+// These tests fail on unfixed code: the document is gone but the stale
+// token's websocket is accepted instead of being closed with 1002
+// "Invalid access token."
 
 import WebSocket from 'ws';
 import { assert } from 'chai';
-// Note: ESM can't import the lib/client directory subpath, hence the
-// explicit index.js (the package has no "exports" restrictions).
-import sharedb from 'sharedb/lib/client/index.js';
 import config from '../config.js';
 import util from '../util.js';
 
-// The ShareDB client can't consume the webstrates-specific 'wa' messages
-// (hello, tags, assets, ...) the server sends on subscribe, so silence the
-// expected "Ignoring unrecognized message" noise while keeping other warnings
-// visible.
-{
-	const warn = sharedb.logger.warn.bind(sharedb.logger);
-	sharedb.logger.setMethods({
-		info: () => {},
-		warn: (...args) => {
-			if (args[0] === 'Ignoring unrecognized message') return;
-			warn(...args);
-		}
-	});
-}
-
-describe('Del op invalidation', function() {
+describe('Deletion invalidation', function() {
 	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
@@ -42,17 +27,18 @@ describe('Del op invalidation', function() {
 	const docUrl = config.server_address + webstrateId + '/';
 	let token;
 
-	// Open a ShareDB connection on the webstrate's websocket endpoint.
-	const openConnection = () => new Promise((resolve, reject) => {
-		const ws = new WebSocket(wsAddress);
-		const connection = new sharedb.Connection(ws);
-		connection.on('connected', () => resolve({ ws, connection }));
+	// Send a message and resolve the next reply carrying that token.
+	const sendAndAwaitReply = (ws, message) => new Promise((resolve, reject) => {
+		const on = (data) => {
+			const parsed = JSON.parse(data.toString());
+			if (parsed.token === message.token) {
+				ws.off('message', on);
+				resolve(parsed);
+			}
+		};
+		ws.on('message', on);
 		ws.on('error', reject);
-	});
-
-	// Run a document action (subscribe, create, del) and await its callback.
-	const docAction = (connection, action) => new Promise((resolve, reject) => {
-		action(connection.get('webstrates', webstrateId), (err) => (err ? reject(err) : resolve()));
+		ws.send(JSON.stringify(message));
 	});
 
 	// Connect a websocket with the access token. Resolves null if the connection
@@ -71,11 +57,31 @@ describe('Del op invalidation', function() {
 	});
 
 	before(async function() {
-		// Create the webstrate through a ShareDB client, like the browser
-		// client would.
-		const { ws, connection } = await openConnection();
-		await docAction(connection, (doc, cb) => doc.subscribe(cb));
-		await docAction(connection, (doc, cb) => doc.create('json0', cb));
+		// Seed the webstrate through the legacy create shim — a document
+		// exists once its first commit lands (the same way old tooling and
+		// the fuzz suite seed documents).
+		const ws = new WebSocket(wsAddress);
+		await new Promise((resolve, reject) => {
+			ws.on('open', resolve);
+			ws.on('error', reject);
+		});
+		const create = { a: 'op', c: 'webstrates', d: webstrateId, v: 0, seq: 1,
+			create: { type: 'http://sharejs.org/types/JSONv0',
+				data: ['html', {}, ['head'], ['body', {}, 'seeded']] } };
+		ws.send(JSON.stringify(create));
+		await new Promise((resolve, reject) => {
+			const on = (data) => {
+				const parsed = JSON.parse(data.toString());
+				if (parsed.a === 'op' && parsed.d === webstrateId && !parsed.error) {
+					ws.off('message', on);
+					resolve(parsed);
+				} else if (parsed.a === 'op' && parsed.d === webstrateId && parsed.error) {
+					ws.off('message', on);
+					reject(new Error('legacy create failed: ' + parsed.error));
+				}
+			};
+			ws.on('message', on);
+		});
 		ws.close();
 
 		// Issue an access token (POST token=<seconds>) for the webstrate.
@@ -93,23 +99,32 @@ describe('Del op invalidation', function() {
 			'token should be accepted while the webstrate exists');
 	});
 
-	it('del op acknowledgement should arrive and the document should be gone', async function() {
-		const { ws, connection } = await openConnection();
-		await docAction(connection, (doc, cb) => doc.subscribe(cb));
-		// On unfixed code the del commits in the database but this callback
-		// never fires (the afterWrite hook throws on the op), so this test
-		// fails with a timeout.
-		await docAction(connection, (doc, cb) => doc.del(cb));
-		ws.close();
+	it('delete should be acknowledged and the document should be gone', async function() {
+		// The custom-protocol deletion route.
+		const response = await fetch(docUrl + '?delete', { redirect: 'manual' });
+		assert.oneOf(response.status, [200, 301, 302],
+			'deletion should succeed (a redirect to / follows)');
 
-		// Verify against the server with a fresh connection that the document
-		// is actually deleted.
-		const { ws: ws2, connection: connection2 } = await openConnection();
-		await docAction(connection2, (doc, cb) => doc.subscribe(cb));
-		const doc2 = connection2.get('webstrates', webstrateId);
-		assert.isNull(doc2.type, 'document type should be null after deletion');
-		assert.isAbove(doc2.version, 0, 'document version should have advanced');
-		ws2.close();
+		// Verify against the server: the version endpoint answers revision 0
+		// (the document no longer exists), and a fresh websocket sees the
+		// document at revision 0 with an empty structure again.
+		const versionResponse = await fetch(docUrl + '?v');
+		assert.equal(versionResponse.status, 200, '?v should still answer');
+		const versionBody = await versionResponse.json().catch(() => null);
+		assert.equal(versionBody && versionBody.version, 0,
+			'the deleted webstrate should report version 0: ' + JSON.stringify(versionBody));
+
+		const ws = new WebSocket(wsAddress);
+		await new Promise((resolve, reject) => {
+			ws.on('open', resolve);
+			ws.on('error', reject);
+		});
+		const header = await sendAndAwaitReply(ws, { wa: 'fetchdoc', token: 'del-check' });
+		assert.isNotOk(header.error, 'fetchdoc on the deleted id should not error: '
+			+ JSON.stringify(header.error));
+		assert.equal(header.reply.v, 0, 'the deleted webstrate should be back at revision 0');
+		assert.equal(header.reply.struct.length, 0, 'the structure should be empty');
+		ws.close();
 	});
 
 	it('access tokens should be invalidated when the document is deleted', async function() {

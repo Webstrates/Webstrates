@@ -1152,6 +1152,12 @@ async function deleteWebstrate(req, res) {
 	try {
 		await assetManager.deleteAssets(req.params.webstrateId);
 		await documentManager.deleteDocument(req.params.webstrateId, source);
+		// Deletion invalidates everything keyed to the document: permission
+		// cache entries and outstanding access tokens. The del-op path carried
+		// this invalidation through the old submit pipeline's afterWrite hook;
+		// when deletion moved to a plain HTTP route, it has to happen here.
+		permissionManager.invalidateCachedPermissions(req.params.webstrateId);
+		permissionManager.expireAllAccessTokens(req.params.webstrateId);
 		snapshotCacheManager.removeEntry(req.params.webstrateId);
 		res.redirect('/');
 	} catch (err){

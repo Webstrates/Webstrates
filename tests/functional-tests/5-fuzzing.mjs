@@ -9,37 +9,36 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-// Fuzzing Webstrates from every direction a client can reach it: the raw ShareDB websocket
-// protocol, the webstrates `wa` action layer, the JSONML document model (where ops can store
-// DOM structures no browser can represent, or even parse), and real browsers doing DOM
-// manipulation and events at the edge of what the DOM allows.
+// Fuzzing Webstrates from every direction a client can reach it: the `wa` websocket
+// envelope, the commit/ops wire protocol (the sa/sr/aa/ar/si/sd op grammar over the
+// SQLite mirror), the stored document model (where ops can store DOM structures no
+// browser can represent, or even parse), and real browsers doing DOM manipulation
+// and events at the edge of what the DOM allows.
 //
 // The suite runs its own server instance (custom port, own pid) so crash candidates can't take
 // out a base server shared with other suites, and keeps a "canary" document whose ?raw output
 // must stay clean of phantom attributes after the prototype-pollution attempts.
 //
 // Notable regressions locked in here (all process-killing or corrupting on unfixed code):
-//  - p-215: a document action without a collection passed validation and killed the process.
 //  - signals: subscribing with a nodeId that collides with an Object.prototype property
 //    (`__proto__`, `toString`, ...) throws inside a retry timer on disconnect — an
 //    unauthenticated, one-message process kill.
 //  - webstrateId: connecting to /__proto__/ (any Object.prototype property name as URL
 //    segment) and subscribing pollutes Object.prototype for the whole process, leaking
 //    phantom attributes into every document the server serves.
-//  - collection confusion: the ShareDB collection field was client-controlled and
-//    unvalidated (a normalization was left commented out), so any client could address
-//    any Mongo collection in the webstrates database while permission checks only
-//    consulted the webstrates collection.
 //
-// Notable contained/verified behaviors documented by this suite:
-//  - sharedb 6 silently applies json0 ops with out-of-bounds/negative lm, mixed
-//    li+od components, float/negative list indices, and even a non-array op object
-//    (no-op). An empty-path object op replaces the ENTIRE document with any value.
-//  - Browsers lowercase attribute names; webstrates' own client sanitizes attribute
-//    names when rebuilding elements, while the server stores and serves the raw names
-//    (control characters, digits, `<`, quotes) — clients and ?raw disagree on such
-//    documents, and the raw names are a stored-injection surface in HTML output.
-//  - seq-only ops are accepted and attributed to the agent session's own id.
+// Notable contained/verified behaviors documented by this suite (the wire-op contract):
+//  - Element names must match the serialization grammar (ASCII-letter start) —
+//    hostile tag names are rejected with a clean error, not stored.
+//  - Attribute VALUES are restricted to strings at the wire (the json0 era could
+//    store numbers/objects/arrays); text/comment CONTENT still carries any JSON value.
+//  - Attribute names carry no grammar — every ASCII/unicode name except the reserved
+//    transport names is stored; the serializer escapes the names it serves in ?raw,
+//    closing the old quote-injection surface.
+//  - Ops naming missing parents/nodes are warn-skipped inside an otherwise accepted
+//    commit; huge eids (up to float precision) and out-of-range indexes (clamped) are
+//    applied, not rejected; an empty or non-array ops list becomes a no-op commit
+//    that still bumps the revision.
 describe('Fuzzing', function() {
 	this.timeout(30000);
 
@@ -133,34 +132,63 @@ describe('Fuzzing', function() {
 	// Every incoming message the server broadcast about a webstrate, e.g. the ?raw output.
 	const sleep = ms => new Promise(resolve => setTimeout(resolve, ms));
 
-	// Submit a json0 op over a socket and return the server's reply ({error} or not).
-	let opSeq = 0; // src-local, monotonically increasing sequence number
-	const submitOp = (socket, docId, version, op) => {
-		opSeq++;
-		send(socket, { a: 'op', c: 'webstrates', d: docId, v: version, src: 'fuzz',
-			seq: opSeq, op });
-		return nextMessage(socket,
-			message => message.a === 'op' && message.d === docId && message.v === version);
+	// Wait for the `wa` reply carrying a token, i.e. one the server actually processed.
+	const waReply = (socket, token, timeout = 5) => nextMessage(socket,
+		message => message.wa === 'reply' && message.token === token, timeout);
+
+	// Submit a wire-op commit ({wa:'commit', d, base, ops, token}) and return the
+	// server's reply: {reply: {v, firstOpid, xformed}} on success, {error} otherwise.
+	let commitSeq = 0; // token counter, one fresh token per commit
+	const submitCommit = (socket, docId, base, ops, token = 'c' + (++commitSeq)) => {
+		send(socket, { wa: 'commit', d: docId, base, token, ops });
+		return waReply(socket, token);
 	};
 
-	// A json0 op against the client's own webstrate should be applied without error and
-	// leave the server alive. Returns whether the op was accepted.
-	const opShouldApply = async (socket, docId, version, op) => {
-		const reply = await submitOp(socket, docId, version, op);
-		assert.isNotOk(reply.error, 'op was rejected: ' + JSON.stringify(reply.error));
+	// A commit that should apply without error; returns the reply payload
+	// ({v, firstOpid, xformed}) and asserts the server is still alive.
+	const commitShouldApply = async (socket, docId, base, ops) => {
+		const reply = await submitCommit(socket, docId, base, ops);
+		assert.isNotOk(reply.error, 'commit was rejected: ' + JSON.stringify(reply.error));
 		await serverAlive();
-		return true;
+		return reply.reply;
 	};
 
+	// Bootstrap a document through the native wire protocol — the way the browser
+	// client itself creates documents: a base-0 commit growing the empty mirror.
+	// Returns the socket with `version` set to the created revision.
+	const createDocV2 = async (docId, extraOps = []) => {
+		const socket = await connect(docId);
+		const reply = await submitCommit(socket, docId, 0, [
+			{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+			{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+			{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+			...extraOps
+		], 'create');
+		assert.isNotOk(reply.error, `could not create ${docId}: ${JSON.stringify(reply.error)}`);
+		socket.version = reply.reply.v;
+		return socket;
+	};
 
-	// A document created and owned by this suite, with a body: ['body', {}, ...children].
+	// Fetch a document's structure over the native protocol ({v, struct, state}).
+	const fetchDoc = async (socket, docId) => {
+		const token = 'fetch' + (++commitSeq);
+		send(socket, { wa: 'fetchdoc', d: docId, token });
+		const reply = await waReply(socket, token);
+		assert.isNotOk(reply.error, `fetchdoc failed: ${JSON.stringify(reply.error)}`);
+		return reply.reply;
+	};
+
+	// Seed a document through the legacy JsonML create shim ({a:'op', create}) — the
+	// one surviving sharedb-era message, and still the only way to ingest arbitrary
+	// JsonML shapes from a socket (the weird-create corpora below). The reply echoes
+	// the seq and carries the created version (not 0).
 	const createDoc = async (docId, data) => {
 		const socket = await connect(docId);
 		send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 1,
 			create: { type: 'http://sharejs.org/types/JSONv0',
 				data: data || ['html', {}, ['head'], ['body']] } });
 		const reply = await nextMessage(socket, message =>
-			message.a === 'op' && message.d === docId && message.v === 0);
+			message.a === 'op' && message.d === docId && message.seq === 1);
 		assert.isNotOk(reply.error, `could not create document: ${JSON.stringify(reply.error)}`);
 		return socket;
 	};
@@ -169,40 +197,26 @@ describe('Fuzzing', function() {
 	const freshWebstrateId = () => 'test-fuzz-' + util.randomString().toLowerCase();
 
 	// -------------------------------------------------------------------------
-	// 1. ShareDB websocket protocol fuzzing
+	// 1. Websocket envelope fuzzing — the frame/action layer under the `wa`
+	//    protocol (opening a socket IS the subscribe now)
 	// -------------------------------------------------------------------------
 
-	describe('websocket protocol', function() {
+	describe('websocket protocol envelope', function() {
 		this.timeout(20000);
 
-		it('replies with an error to a document action that names no collection', async function() {
-			const socket = await connect();
-
-			// A subscribe without its collection field. Both a first and a repeated
-			// collectionless subscribe were process-killing, so send it twice.
-			send(socket, { a: 's', d: webstrateId });
-			const first = await nextMessage(socket, message =>
-				message.a === 's' && message.d === webstrateId);
-			assert.isOk(first.error,
-				'the collectionless subscribe should be rejected with an error');
-
-			send(socket, { a: 's', d: webstrateId });
-			const second = await nextMessage(socket, message =>
-				message.a === 's' && message.d === webstrateId);
-			assert.isOk(second.error,
-				'the repeated collectionless subscribe should be rejected, too');
-		});
-
-		it('keeps serving well-formed clients afterwards', async function() {
+		it('answers a well-formed client after garbage envelopes', async function() {
 			if (ownServer) {
 				assert.isNull(ownServer.child.exitCode, 'the server process should still be running');
 			}
 
+			// Junk first, then prove the same socket still round-trips: connecting
+			// joins the document, and a fetchdoc on it answers.
 			const socket = await connect();
-			send(socket, { a: 's', c: 'webstrates', d: webstrateId });
-			const reply = await nextMessage(socket, message =>
-				message.a === 's' && message.d === webstrateId);
-			assert.isNotOk(reply.error, 'a well-formed subscribe should still be served');
+			const hello = await nextMessage(socket,
+				message => message.wa === 'hello' && message.d === webstrateId);
+			assert.isOk(hello, 'opening a socket should join its document (the hello)');
+			const doc = await fetchDoc(socket, webstrateId);
+			assert.isOk(doc.v !== undefined, 'fetchdoc should still answer over the socket');
 		});
 
 		// Frames that are not JSON at all. The server must ignore them (log) without dying.
@@ -245,25 +259,9 @@ describe('Fuzzing', function() {
 			});
 		}
 
-		// The collection field decides which database collection an op touches.
-		for (const [label, collection] of [
-			['empty collection', ''],
-			['foreign collection', 'admin'],
-			['collection with NUL byte', 'webstrates\0'],
-			['collection with dot', 'web.strates'],
-			['collection as number', 42]
-		]) {
-			it(`rejects unusable collections: ${label}`, async function() {
-				const socket = await connect();
-				send(socket, { a: 's', c: collection, d: webstrateId });
-				const reply = await nextMessage(socket, message =>
-					message.a === 's' && message.d === webstrateId);
-				assert.isOk(reply.error, 'subscribe should be rejected with an error reply');
-				await serverAlive();
-			});
-		}
-
-		// The document id field: anything but a sane string should be refused, not crash.
+		// The d field addresses a document other than the socket's own (a secondary
+		// subscription or cross-document fetch). Hostile d values must be resolved
+		// (or refused) without crashing.
 		for (const [label, docId] of [
 			['missing d', undefined],
 			['empty d', ''],
@@ -274,190 +272,334 @@ describe('Fuzzing', function() {
 			['d with NUL', 'webstrates\0'],
 			['huge d', 'x'.repeat(100000)]
 		]) {
-			it(`rejects unusable document ids: ${label}`, async function() {
+			it(`survives unusable document ids: ${label}`, async function() {
 				const socket = await connect();
-				const message = { a: 's', c: 'webstrates', d: docId };
-				send(socket, JSON.parse(JSON.stringify(message)));
-				// The server must either reply with an error or ignore the message —
+				const token = 'd' + label.replace(/[^a-z]/gi, '');
+				send(socket, JSON.parse(JSON.stringify(
+					{ wa: 'fetchdoc', d: docId, token })));
+				// The server must either reply with an error or drop the message —
 				// both are acceptable as long as it survives.
+				await nextMessage(socket, message =>
+					message.wa === 'reply' && message.token === token).catch(() => null);
 				await sleep(400);
 				await serverAlive();
 			});
 		}
 
-		it('handles ops with partial src/seq (they must be set together)', async function() {
-			const docId = freshWebstrateId();
-			const socket = await createDoc(docId);
-			// Neither src nor seq: rejected with ERR_OT_OP_BADLY_FORMED.
-			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 1, op: [{ p: [3, 2], li: ['div'] }] });
-			const noSrcNoSeq = await nextMessage(socket,
-				message => message.a === 'op' && message.d === docId && message.v === 1);
-			assert.isOk(noSrcNoSeq.error, 'op without src/seq should be rejected');
-			// seq without src: sharedb 6 tolerates it, attributes the op to the session's own
-			// agent id and applies it. Documented behavior — the ack carries no error.
-			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 1, seq: 1,
-				op: [{ p: [3, 2], li: ['div'] }] });
-			const seqOnly = await nextMessage(socket,
-				message => message.a === 'op' && message.d === docId && message.v === 1);
-			assert.isNotOk(seqOnly.error, 'op with seq only is accepted (verified sharedb 6 behavior)');
-			// src without seq: rejected with ERR_OT_OP_BADLY_FORMED.
-			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 1, src: 'fuzz',
-				op: [{ p: [3, 2], li: ['div'] }] });
-			const srcOnly = await nextMessage(socket,
-				message => message.a === 'op' && message.d === docId && message.v === 1);
-			assert.isOk(srcOnly.error, 'op with src only should be rejected');
-			await serverAlive();
-		});
-
-		// Version field abuse. Each of these must produce an error reply (or a no-op reply),
-		// never a crash.
-		for (const [label, version] of [
-			['negative version', -1],
-			['fractional version', 0.5],
-			['beyond max safe integer version', 9007199254740900],
-			['version as string', '1'],
-			['null version', null]
+		// Commit base abuse: the base drives the OT-lite transform; anything but a
+		// non-negative integer within the revision range is refused with an error
+		// reply, never a crash.
+		for (const [label, base] of [
+			['negative base', -1],
+			['fractional base', 0.5],
+			['base as string', '0'],
+			['base as null', null],
+			['missing base', undefined],
+			['beyond head revision', 1e15]
 		]) {
-			it(`survives version field abuse: ${label}`, async function() {
+			it(`survives commit base abuse: ${label}`, async function() {
 				const docId = freshWebstrateId();
-				const socket = await createDoc(docId);
-				send(socket, { a: 'op', c: 'webstrates', d: docId, v: version,
-					src: 'fuzz', seq: 2, op: [{ p: [3, 2], li: ['div'] }] });
-				await nextMessage(socket, message =>
-					message.a === 'op' && message.d === docId).catch(() => null);
-				await sleep(300);
+				const socket = await createDocV2(docId);
+				const reply = await submitCommit(socket, docId, base,
+					[{ k: 'sa', p: 3, i: 0, e: 10, t: 1, n: 'div' }]);
+				assert.isOk(reply.error, `base ${JSON.stringify(base)} should be rejected`);
 				await serverAlive();
 			});
 		}
 
-		it('rejects json0 ops with prototype-polluting path segments', async function() {
-			const docId = freshWebstrateId();
-			const socket = await createDoc(docId);
-
-			// Attribute-path pollution attempts: an attribute named __proto__, a path walking
-			// through constructor.prototype, and the document root itself.
-			const attempts = [
-				[[{ p: [1, '__proto__'], oi: { polluted: true } }], 1],
-				[[{ p: [1, '__proto__', 'polluted'], oi: 'pwned' }], 2],
-				[[{ p: [1, 'constructor', 'prototype', 'polluted'], oi: 'pwned' }], 3],
-				[[{ p: ['__proto__'], oi: 'pwned' }], 4],
-				[[{ p: [1, 'toString'], od: null, oi: 'pwned' }], 5],
-				[[{ p: [1, 'hasOwnProperty'], od: null, oi: 'pwned' }], 6]
-			];
-			for (const [op, version] of attempts) {
-				const reply = await submitOp(socket, docId, version, op);
-				assert.isOk(reply.error,
-					`op ${JSON.stringify(op)} should be rejected as a dangerous path`);
-			}
-
-			// Most importantly: the server must not have polluted its own prototypes. A plain
-			// object must not suddenly have inherited properties, observable via ?raw of a
-			// fresh document: replaceInKeys iterates with for..in without hasOwnProperty.
-			await serverAlive();
-		});
-
-		// Malformed json0 op components with structurally invalid paths or type mismatches:
-		// every one of these is rejected with an error reply (verified sharedb 6 behavior).
-		for (const [label, op] of [
-			['na (number add) on a string', [{ p: [0], na: 'not-a-number' }]],
-			['na on an array', [{ p: [3, 'na'], na: 1 }]],
-			['li (list insert) into object path', [{ p: [1, 'li'], li: ['x'] }]],
-			['ld (list delete) on object path', [{ p: [1, 'ld'], ld: {} }]],
-			['oi (object insert) into list path', [{ p: [3, 'oi'], oi: 'x' }]],
-			['no instruction at all', [{ p: [3, 2] }]],
-			['path segments as objects', [{ p: [{ evil: true }], oi: 'x' }]],
-			['path segments as null', [{ p: [null], oi: 'x' }]],
-			['non-array path', [{ p: 'nope', oi: 'x' }]]
+		// The ops list: a non-array value is coerced to an empty commit — a no-op
+		// that still bumps the revision by exactly one (documented behavior) —
+		// while a hostile op ENTRY is rejected with an error.
+		for (const [label, ops, expectError] of [
+			['ops as number', 5, false],
+			['ops as string', 'div', false],
+			['ops as null', null, false],
+			['ops as object', { k: 'sa' }, false],
+			['missing ops', undefined, false],
+			['empty ops', [], false],
+			['op as string', ['sa'], true],
+			['op as number', [7], true],
+			['op as null', [null], true],
+			['op as array', [[{ k: 'sa' }]], true],
+			['op without a kind', [{ p: 3, i: 0, e: 10 }], true],
+			['op with unknown kind', [{ k: 'zz', p: 3, i: 0, e: 10, t: 1, n: 'div' }], true],
+			['op with numeric kind', [{ k: 7, p: 3, i: 0, e: 10, t: 1, n: 'div' }], true]
 		]) {
-			it(`rejects malformed json0 component: ${label}`, async function() {
+			it(`survives commit ops abuse: ${label}`, async function() {
 				const docId = freshWebstrateId();
-				const socket = await createDoc(docId);
-				const reply = await submitOp(socket, docId, 1, op);
-				assert.isOk(reply.error, 'malformed op should be rejected with an error');
+				const socket = await createDocV2(docId);
+				const before = socket.version;
+				const reply = await submitCommit(socket, docId, before, ops);
+				if (expectError) {
+					assert.isOk(reply.error, `ops ${JSON.stringify(ops)} should be rejected`);
+				} else {
+					assert.isNotOk(reply.error, 'a coerced-empty ops value should not error');
+					assert.equal(reply.reply.v, before + 1,
+						'a no-op commit bumps the revision by exactly one');
+				}
 				await serverAlive();
 			});
 		}
 
-		// The opposite kind: json0 ops that are malformed but whose paths pass validation.
-		// sharedb 6 silently applies these (success acks, no error) and stores the result.
-		// That is not a crash, but it lets ops store documents no browser can represent —
-		// and every serialization route (?raw, browser populate) must survive them.
-		for (const [label, op, rawMarker] of [
-			['lm (list move) out of bounds', [{ p: [3, 2], lm: 1e9 }], 'one'],
-			['li and od mixed (od silently ignored)', [{ p: [3, 2], li: ['div'], od: {} }],
-				'<div></div>one'],
-			['float list index (applied like floor)', [{ p: [3, 2.7], li: ['div'] }],
-				'<div></div>one'],
-			['negative list index (applied anyway)', [{ p: [3, -1], li: ['div'] }],
-				'<div></div>one'],
-			['lm negative (rewrites the element structure)', [{ p: [3, 2], lm: -1e9 }],
-				'<one>body</one>'],
-			['empty path object op (replaces the whole document)', [{ p: [], oi: 'root' }],
-				'root'],
-			['non-array op object (accepted as a no-op)', { p: [3, 2], li: ['div'] }, 'one']
+		// Op field types across the wire kinds: eids, parents, indexes and offsets
+		// must be non-negative integers; names, values and text must be strings.
+		// Hostile values are rejected; huge integers are accepted (the mirror
+		// keys rows by whatever integer arrives — up to float precision,
+		// documented), and so are node types no browser produces.
+		for (const [label, op, expectError] of [
+			['negative eid', { k: 'sa', p: 3, i: 0, e: -5, t: 1, n: 'div' }, true],
+			['fractional eid', { k: 'sa', p: 3, i: 0, e: 1.5, t: 1, n: 'div' }, true],
+			['zero eid', { k: 'sa', p: 3, i: 0, e: 0, t: 1, n: 'div' }, true],
+			['eid as string', { k: 'sa', p: 3, i: 0, e: '10', t: 1, n: 'div' }, true],
+			['eid as object', { k: 'sa', p: 3, i: 0, e: { evil: 1 }, t: 1, n: 'div' }, true],
+			['missing eid', { k: 'sa', p: 3, i: 0, t: 1, n: 'div' }, true],
+			['huge integer eid', { k: 'sa', p: 3, i: 0, e: 1e15, t: 1, n: 'div' }, false],
+			['max safe integer eid', { k: 'sa', p: 3, i: 0, e: 9007199254740991, t: 1, n: 'div' }, false],
+			['negative index', { k: 'sa', p: 3, i: -1, e: 10, t: 1, n: 'div' }, true],
+			['fractional index', { k: 'sa', p: 3, i: 0.5, e: 10, t: 1, n: 'div' }, true],
+			['index as string', { k: 'sa', p: 3, i: '0', e: 10, t: 1, n: 'div' }, true],
+			['missing parent', { k: 'sa', i: 0, e: 10, t: 1, n: 'div' }, true],
+			['parent as string', { k: 'sa', p: '3', i: 0, e: 10, t: 1, n: 'div' }, true],
+			['negative node type', { k: 'sa', p: 3, i: 0, e: 10, t: -1 }, true],
+			// A hostile node type with no name cannot be persisted (undefined
+			// does not bind as a SQL parameter) — rejected with a clean error.
+			['hostile node type 999', { k: 'sa', p: 3, i: 0, e: 10, t: 999 }, true],
+			// With a name it binds and stores (the schema does not constrain
+			// node types to text/comment/element).
+			['hostile node type 999 with a name', { k: 'sa', p: 3, i: 0, e: 11, t: 999, n: 'x' }, false],
+			['element name as number', { k: 'sa', p: 3, i: 0, e: 10, t: 1, n: 7 }, true],
+			['element name as object', { k: 'sa', p: 3, i: 0, e: 10, t: 1, n: { evil: 1 } }, true],
+			['attribute value as number', { k: 'aa', e: 3, i: 0, n: 'x', v: 42 }, true],
+			['attribute value as object', { k: 'aa', e: 3, i: 0, n: 'x', v: { evil: 1 } }, true],
+			['attribute value as null', { k: 'aa', e: 3, i: 0, n: 'x', v: null }, true],
+			['attribute value as false', { k: 'aa', e: 3, i: 0, n: 'x', v: false }, true],
+			['attribute name as number', { k: 'aa', e: 3, i: 0, n: 7, v: 'x' }, true],
+			['attribute name missing', { k: 'aa', e: 3, i: 0, v: 'x' }, true],
+			['reserved name underscore', { k: 'aa', e: 3, i: 0, n: '_', v: 'x' }, true],
+			['reserved name case-folded',
+				{ k: 'aa', e: 3, i: 0, n: 'DATA-WEBSTRATES-TYPE', v: 'x' }, true],
+			['text insert at negative offset', { k: 'si', e: 5, q: -1, v: 'x' }, true],
+			['text insert with numeric value', { k: 'si', e: 5, q: 0, v: 7 }, true],
+			['text insert with fractional offset', { k: 'si', e: 5, q: 0.5, v: 'x' }, true]
 		]) {
-			it(`contains silently-applied malformed json0 component: ${label}`, async function() {
+			it(`survives wire-op field abuse: ${label}`, async function() {
 				const docId = freshWebstrateId();
-				const socket = await createDoc(docId,
-					['html', {}, ['head'], ['body', {}, 'one']]);
-				const reply = await submitOp(socket, docId, 1, op);
+				const socket = await createDocV2(docId, [
+					{ k: 'sa', p: 3, i: 0, e: 5, t: 3, n: null },
+					{ k: 'aa', e: 5, n: null, v: 'seed' }
+				]);
+				const reply = await submitCommit(socket, docId, socket.version, [op]);
+				if (expectError) {
+					assert.isOk(reply.error, `op ${JSON.stringify(op)} should be rejected`);
+				} else {
+					// Accepted: the huge-eid and hostile-type cases are stored.
+					assert.isNotOk(reply.error, `op ${JSON.stringify(op)} should apply`);
+					const doc = await fetchDoc(socket, docId);
+					const row = doc.struct.find(([, , e]) => e === op.e);
+					assert.isOk(row, 'the op\'d eid should be present in the structure');
+					// Remove the hostile node again so the async snapshot rebuild
+					// never has to serialize it (this section fuzzes the commit
+					// grammar; the serialization routes are fuzzed below).
+					const cleanup = await submitCommit(socket, docId, doc.v,
+						[{ k: 'sr', p: 3, e: op.e }]);
+					assert.isNotOk(cleanup.error, 'the hostile node should be removable');
+				}
+				await serverAlive();
+			});
+		}
+
+		// The v2 "silently applied" corpus: wire ops that pass the grammar but are
+		// degenerate — they apply with outcomes no browser would produce, or are
+		// warn-skipped inside an otherwise accepted commit (the revision still
+		// bumps by one). Each is deterministic, documented behavior.
+		for (const [label, ops, expected] of [
+			['sa onto a missing parent (skipped)',
+				[{ k: 'sa', p: 999, i: 0, e: 10, t: 1, n: 'div' }], 'one'],
+			['aa onto a missing element (skipped)', [{ k: 'aa', e: 999, i: 0, n: 'x', v: 'y' }], 'one'],
+			['sr of a missing element (skipped)', [{ k: 'sr', p: 3, e: 999 }], 'one'],
+			['ar of a missing attribute name (skipped)', [{ k: 'ar', e: 3, n: 'missing' }], 'one'],
+			['content op on an element (skipped)', [{ k: 'aa', e: 3, n: null, v: 'nope' }], 'one'],
+			['sd of non-matching text (skipped)', [{ k: 'sd', e: 5, q: 0, v: 'WRONG' }], 'one'],
+			['si on an element without an index (skipped)', [{ k: 'si', e: 3, q: 0, v: 'x' }], 'one'],
+			['lone sa replay of an attached node (skipped)',
+				[{ k: 'sa', p: 3, i: 0, e: 5, t: 3, n: null }], 'one'],
+			['sa of an attached node at another slot (skipped)',
+				[{ k: 'sa', p: 3, i: 1, e: 5, t: 3, n: null }], 'one'],
+			['sa index clamped to the end',
+				[{ k: 'sa', p: 3, i: 1e9, e: 10, t: 1, n: 'div' }], 'one<div></div>'],
+			['aa insert position clamped', [{ k: 'aa', e: 3, i: 1e9, n: 'x', v: 'y' }], 'x="y"'],
+			['si offset clamped into the text', [{ k: 'si', e: 5, q: 1e9, v: '!' }], 'one!'],
+			['si duplicated (a legitimate double insert)',
+				[{ k: 'si', e: 5, q: 0, v: 'dupe' }, { k: 'si', e: 5, q: 0, v: 'dupe' }], 'dupedupe']
+		]) {
+			it(`applies degenerate wire ops deterministically: ${label}`, async function() {
+				const docId = freshWebstrateId();
+				const socket = await createDocV2(docId, [
+					{ k: 'sa', p: 3, i: 0, e: 5, t: 3, n: null },
+					{ k: 'aa', e: 5, n: null, v: 'one' }
+				]);
+				const reply = await submitCommit(socket, docId, socket.version, ops);
 				assert.isNotOk(reply.error,
-					'sharedb 6 accepts this malformed op (verified; documented here)');
+					'a degenerate op set should not error: ' + JSON.stringify(reply.error));
 				const response = await httpGet(docId + '/?raw');
 				assert.equal(response.status, 200, `?raw failed: ${response.status}`);
-				assert.include(response.body, rawMarker,
+				assert.include(response.body, expected,
 					'the applied op should be visible in ?raw (or have left the document intact)');
 				await serverAlive();
 			});
 		}
 
-		it('rejects ops exceeding the database nesting depth', async function() {
-			const docId = freshWebstrateId();
-			const socket = await createDoc(docId);
-			// 900 levels of nested arrays — beyond BSON's depth limit of ~100.
-			let nested = ['deep'];
-			for (let i = 0; i < 900; i++) nested = [nested];
-			const reply = await submitOp(socket, docId, 1, [{ p: [3, 2], li: nested }]);
-			assert.isOk(reply.error, 'deeply nested op should be rejected with an error');
-			await serverAlive();
-		});
+		// Element names must survive HTML serialization (ASCII-letter start, then
+		// letters/digits/:-_.): the grammar rejects everything a browser would
+		// never produce — including the injection carriers the json0 era stored.
+		for (const [label, name] of [
+			['injection carrier', 'img onerror=alert(1) src=x'],
+			['comment tag', '#comment'],
+			['cdata tag', '#cdata-section'],
+			['leading digit', '1abc'],
+			['leading dash', '-abc'],
+			['leading colon', ':ab'],
+			['nul byte', '\0null-tag'],
+			['tab in name', 'tab\ttag'],
+			['non-ASCII letters', 'ÅÄÖ'],
+			['CJK', '日本語']
+		]) {
+			it(`rejects element names outside the serialization grammar: ${label}`, async function() {
+				const docId = freshWebstrateId();
+				const socket = await createDocV2(docId);
+				const reply = await submitCommit(socket, docId, socket.version,
+					[{ k: 'sa', p: 3, i: 0, e: 10, t: 1, n: name }]);
+				assert.isOk(reply.error, `element name ${JSON.stringify(name)} should be rejected`);
+				await serverAlive();
+			});
+		}
 
-		it('rejects bulk actions with garbage payloads', async function() {
-			const socket = await connect(webstrateId);
-			for (const message of [
-				{ a: 'bf', c: 'webstrates', b: { x: 1 } },
-				{ a: 'bf', c: 'webstrates', b: [] },
-				{ a: 'bs', c: 'webstrates', b: 5 },
-				{ a: 'bu', c: 'webstrates' },
-				{ a: 'qf', c: 'webstrates', q: {}, id: 'q1' },
-				{ a: 'qf', c: 'webstrates', q: { $where: 'sleep(1000)' }, id: 'q2' },
-				{ a: 'qf', c: 'webstrates', q: 'not-an-object', id: 'q3' },
-				{ a: 'qs', c: 'webstrates', q: null, id: 'q4' }
-			]) {
-				send(socket, message);
+		it('applies and serializes element names the grammar accepts', async function() {
+			const docId = freshWebstrateId();
+			const socket = await createDocV2(docId);
+			const names = ['HTML', 'a:b:c', 'A-B.C_D', 'x'.repeat(500)];
+			const ops = names.map((name, index) =>
+				({ k: 'sa', p: 3, i: index, e: 20 + index, t: 1, n: name }));
+			await commitShouldApply(socket, docId, socket.version, ops);
+			// The mirror stores the names verbatim (the structure carries them
+			// un-lowercased); ?raw serializes them lowercased.
+			const doc = await fetchDoc(socket, docId);
+			for (const [index, name] of names.entries()) {
+				const row = doc.struct.find(([, , e]) => e === 20 + index);
+				assert.isOk(row, `eid ${20 + index} should be in the structure`);
+				assert.equal(row[4], name, `the name ${name.slice(0, 12)} should be stored verbatim`);
 			}
-			await sleep(1000);
+			const raw = await httpGet(docId + '/?raw');
+			assert.equal(raw.status, 200);
+			assert.include(raw.body, '<a:b:c', 'the accepted name should serialize');
+			assert.include(raw.body, '<a-b.c_d', 'the accepted name should serialize');
+			assert.include(raw.body, '<' + 'x'.repeat(500), 'long names should serialize');
 			await serverAlive();
 		});
 
-		it('survives delete ops on nonexistent documents and double creates', async function() {
+		it('stores an attribute literally named __proto__ (inert data, not a path)', async function() {
+			// The json0 era's prototype-pollution corpus was path-based — paths
+			// are gone from the wire, and an attribute named __proto__ is just
+			// a row in the mirror (the canary in the crash-candidates section
+			// still guards against any process-wide leak).
 			const docId = freshWebstrateId();
-			const socket = await connect(docId);
-			// Delete a document that doesn't exist.
-			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 4,
-				del: true });
-			await nextMessage(socket, message =>
-				message.a === 'op' && message.d === docId).catch(() => null);
-			// Create twice.
-			const create = { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 5,
-				create: { type: 'http://sharejs.org/types/JSONv0', data: ['html', {}, ['body']] } };
-			send(socket, create);
-			await nextMessage(socket, message => message.a === 'op' && message.d === docId);
-			send(socket, create);
-			await nextMessage(socket, message => message.a === 'op' && message.d === docId);
-			await sleep(300);
+			const socket = await createDocV2(docId);
+			const reply = await submitCommit(socket, docId, socket.version, [
+				{ k: 'aa', e: 3, i: 0, n: '__proto__', v: 'inert' }]);
+			assert.isNotOk(reply.error, 'a __proto__ attribute is plain data');
+			const doc = await fetchDoc(socket, docId);
+			const proto = doc.state.find((row) => row[2] === '__proto__');
+			assert.isOk(proto, 'the attribute should be stored');
+			assert.equal(proto[3], 'inert', 'the attribute value should round-trip');
+			const cleanup = await submitCommit(socket, docId, doc.v, [
+				{ k: 'ar', e: 3, n: '__proto__' }]);
+			assert.isNotOk(cleanup.error, 'the attribute should be removable');
 			await serverAlive();
-			assert.isOk(true);
+		});
+
+		it('stores a 900-level deep sa chain in one commit (no depth limit)', async function() {
+			const docId = freshWebstrateId();
+			const socket = await createDocV2(docId);
+			// The json0/BSON era rejected nesting beyond ~100 levels; the sqlite
+			// mirror is flat rows, so a long sa chain is just a long commit.
+			const ops = [];
+			let parent = 3;
+			for (let i = 0; i < 900; i++) {
+				const eid = 100 + i;
+				ops.push({ k: 'sa', p: parent, i: 0, e: eid, t: 1, n: 'div' });
+				parent = eid;
+			}
+			const reply = await commitShouldApply(socket, docId, socket.version, ops);
+			assert.equal(reply.v, socket.version + ops.length + 1,
+				'the deep chain should commit as one opid per op');
+			const response = await httpGet(docId + '/?raw');
+			assert.equal(response.status, 200, `?raw failed: ${response.status}`);
+			assert.isAbove(response.body.split('<div').length, 800,
+				'the deep chain should serialize');
+			await serverAlive();
+		});
+
+		it('transforms concurrent commits based on the same revision', async function() {
+			const docId = freshWebstrateId();
+			const socketA = await createDocV2(docId);
+			const socketB = await connect(docId);
+			const base = socketA.version;
+			// Both commits build on `base`; B lands after A.
+			const a = await submitCommit(socketA, docId, base, [
+				{ k: 'sa', p: 3, i: 0, e: 10, t: 1, n: 'div' }], 'conc-a');
+			assert.isNotOk(a.error, 'the first concurrent commit should apply');
+			const b = await submitCommit(socketB, docId, base, [
+				{ k: 'aa', e: 3, i: 0, n: 'data-b', v: 'yes' }], 'conc-b');
+			assert.isNotOk(b.error, 'the second concurrent commit should apply');
+			assert.equal(b.reply.xformed, true, 'the stale-based commit should be transformed');
+			const doc = await fetchDoc(socketA, docId);
+			assert.isOk(doc.struct.some(([, , e]) => e === 10), 'both changes should be present');
+			const raw = await httpGet(docId + '/?raw');
+			assert.include(raw.body, 'data-b="yes"', 'the transformed change should be visible');
+			await serverAlive();
+		});
+
+		it('refuses commits naming another document without an access token', async function() {
+			const docIdA = freshWebstrateId();
+			const socket = await createDocV2(docIdA);
+			const docIdB = freshWebstrateId();
+			// A commit naming another document over A's socket must resolve the
+			// user through an access token for THAT document; without one it is
+			// forbidden with a clean error, whatever the permissions on either
+			// document are.
+			const reply = await submitCommit(socket, docIdB, 0, [
+				{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' }]);
+			assert.equal(reply.error, 'Forbidden',
+				'a cross-document commit needs a token for that document');
+			await serverAlive();
+		});
+
+		it('survives double creates without corrupting the document', async function() {
+			const docId = freshWebstrateId();
+			const socket = await createDocV2(docId, [
+				{ k: 'sa', p: 3, i: 0, e: 5, t: 3, n: null },
+				{ k: 'aa', e: 5, n: null, v: 'first' }
+			]);
+			// A second bootstrap commit on the same eids: the sa replays are
+			// skipped (the nodes are already attached), so it lands as a
+			// one-revision no-op — not a corruption.
+			const second = await submitCommit(socket, docId, 0, [
+				{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+				{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+				{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' }
+			], 'recreate');
+			assert.isNotOk(second.error, 'the replayed bootstrap should not error');
+			// The legacy create shim refuses a second create outright.
+			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 2,
+				create: { type: 'http://sharejs.org/types/JSONv0', data: ['html', {}, ['body']] } });
+			const legacy = await nextMessage(socket, message =>
+				message.a === 'op' && message.d === docId && message.seq === 2);
+			assert.isOk(legacy.error, 'the legacy create should refuse an existing document');
+			assert.include(legacy.error, 'already exists');
+			const raw = await httpGet(docId + '/?raw');
+			assert.equal(raw.status, 200);
+			assert.include(raw.body, 'first', 'the original content should be intact');
+			await serverAlive();
 		});
 	});
 
@@ -468,13 +610,11 @@ describe('Fuzzing', function() {
 	describe('wa actions', function() {
 		this.timeout(20000);
 
-		const waReply = (socket, token, timeout = 5) => nextMessage(socket,
-			message => message.wa === 'reply' && message.token === token, timeout);
-
 		it('survives unknown and malformed wa actions', async function() {
+			// Opening the socket IS the subscribe now; the hello proves the
+			// join completed before the hostile traffic.
 			const socket = await connect();
-			send(socket, { a: 's', c: 'webstrates', d: webstrateId });
-			await nextMessage(socket, message => message.a === 's' && message.d === webstrateId);
+			await nextMessage(socket, message => message.wa === 'hello' && message.d === webstrateId);
 			for (const message of [
 				{ wa: 42, d: webstrateId },
 				{ wa: null, d: webstrateId },
@@ -491,8 +631,7 @@ describe('Fuzzing', function() {
 
 		it('replies with clean errors to fetchdoc/getOps version garbage', async function() {
 			const docId = freshWebstrateId();
-			await createDoc(docId);
-			const socket = await connect(docId);
+			const socket = await createDocV2(docId);
 			const cases = [
 				['negative version', { wa: 'fetchdoc', d: docId, token: 'f1', v: -1 }],
 				['huge version', { wa: 'fetchdoc', d: docId, token: 'f2', v: 1e15 }],
@@ -515,8 +654,7 @@ describe('Fuzzing', function() {
 
 		it('replies with clean errors to tag/untag/restore garbage', async function() {
 			const docId = freshWebstrateId();
-			await createDoc(docId);
-			const socket = await connect(docId);
+			const socket = await createDocV2(docId);
 			const messages = [
 				{ wa: 'tag', d: docId, v: '1', l: 42 },
 				{ wa: 'tag', d: docId, v: '1', l: { a: 1 } },
@@ -543,8 +681,7 @@ describe('Fuzzing', function() {
 
 		it('survives assetSearch with garbage query parameters', async function() {
 			const docId = freshWebstrateId();
-			await createDoc(docId);
-			const socket = await connect(docId);
+			const socket = await createDocV2(docId);
 			send(socket, { wa: 'assetSearch', d: docId, token: 'as1', assetName: 'no-such-asset',
 				query: {}, limit: -1e15, skip: 'x', sort: { $evil: 1 } });
 			const reply = await waReply(socket, 'as1');
@@ -554,8 +691,7 @@ describe('Fuzzing', function() {
 
 		it('refuses anonymous cookie updates and fetches', async function() {
 			const docId = freshWebstrateId();
-			await createDoc(docId);
-			const socket = await connect(docId);
+			const socket = await createDocV2(docId);
 			send(socket, { wa: 'cookieUpdate', d: docId, token: 'c1',
 				update: { key: { obj: true }, value: 'v' } });
 			send(socket, { wa: 'cookieUpdate', d: docId, token: 'c2',
@@ -582,10 +718,7 @@ describe('Fuzzing', function() {
 
 		it('survives publish/signalUserObject with garbage payloads', async function() {
 			const docId = freshWebstrateId();
-			await createDoc(docId);
-			const socket = await connect(docId);
-			send(socket, { a: 's', c: 'webstrates', d: docId });
-			await nextMessage(socket, message => message.a === 's' && message.d === docId);
+			const socket = await createDocV2(docId);
 			for (const message of [
 				{ wa: 'publish', d: docId, m: null, recipients: 5 },
 				{ wa: 'publish', d: docId, m: 'plain string' },
@@ -603,19 +736,24 @@ describe('Fuzzing', function() {
 	});
 
 	// -------------------------------------------------------------------------
-	// 3. JSONML structure fuzzing — ops that store DOM no browser can represent
+	// 3. Mirror structure fuzzing — ops that store DOM no browser can represent
 	// -------------------------------------------------------------------------
 
-	describe('JSONML structure fuzzing', function() {
+	describe('mirror structure fuzzing', function() {
 		this.timeout(30000);
 
 		// One shared document that gets progressively more bizarre.
-		let docId, socket, version = 1;
+		let docId, socket, version;
 
 		before(async function() {
 			docId = freshWebstrateId();
-			socket = await createDoc(docId,
-				['html', {}, ['head'], ['body', {}, ['div', { id: 'root' }, 'seed']]]);
+			socket = await createDocV2(docId, [
+				{ k: 'sa', p: 3, i: 0, e: 4, t: 1, n: 'div' },
+				{ k: 'aa', e: 4, i: 0, n: 'id', v: 'root' },
+				{ k: 'sa', p: 4, i: 0, e: 5, t: 3, n: null },
+				{ k: 'aa', e: 5, n: null, v: 'seed' }
+			]);
+			version = socket.version;
 		});
 
 		after(async function() {
@@ -629,21 +767,69 @@ describe('Fuzzing', function() {
 			await serverAlive();
 		});
 
-		const apply = async (label, op) => {
-			const reply = await submitOp(socket, docId, version, op);
+		const apply = async (label, ops) => {
+			const reply = await submitCommit(socket, docId, version, ops);
 			assert.isNotOk(reply.error, `op "${label}" should apply: ${JSON.stringify(reply.error)}`);
-			version++;
+			version = reply.reply.v;
 			await serverAlive();
+			return reply.reply;
 		};
 
-		it('stores attribute values of every JSON type (browsers only have strings)', async function() {
-			await apply('number', [{ p: [3, 1, 'number-value'], oi: 42 }]);
-			await apply('object', [{ p: [3, 1, 'object-value'], oi: { deep: ['er'] } }]);
-			await apply('array', [{ p: [3, 1, 'array-value'], oi: [1, 2, 3] }]);
-			await apply('null', [{ p: [3, 1, 'null-value'], oi: null }]);
-			await apply('false', [{ p: [3, 1, 'false-value'], oi: false }]);
-			await apply('true', [{ p: [3, 1, 'true-value'], oi: true }]);
-			await apply('NaN-ish string', [{ p: [3, 1, 'nan-value'], oi: 'NaN' }]);
+		it('rejects non-string attribute values (HTML-serializable documents only)', async function() {
+			// The json0 era let ops store numbers/objects/arrays/null as attribute
+			// values — DOM only has strings, and no browser could round-trip such
+			// documents. The wire-op grammar rejects them at the door.
+			for (const [label, value] of [
+				['number', 42],
+				['object', { deep: ['er'] }],
+				['array', [1, 2, 3]],
+				['null', null],
+				['false', false],
+				['true', true]
+			]) {
+				const reply = await submitCommit(socket, docId, version,
+					[{ k: 'aa', e: 4, i: 0, n: 'bad-' + label, v: value }]);
+				assert.isOk(reply.error, `a ${label} attribute value should be rejected`);
+			}
+			// String values — the only kind the grammar allows — apply, even ones
+			// browsers cannot produce through the parser.
+			await apply('NaN-ish string', [{ k: 'aa', e: 4, i: 0, n: 'nan-value', v: 'NaN' }]);
+		});
+
+		it('binds scalar text and comment content, rejects non-scalars', async function() {
+			// Text/comment payloads ride the sa name field into the mirror. The
+			// grammar accepts any JSON value there, but the SQL layer only binds
+			// scalars: strings, numbers, null and booleans bind (booleans
+			// coerce to SQLite integers at PERSISTENCE — the live mirror keeps
+			// the JS value until a reload; documented), and objects/arrays
+			// fail the parameter binding — a clean error reply with the commit
+			// rolled back, never a corruption.
+			const applied = [
+				['number content', 3, 7, 7],
+				['null content', 3, null, null],
+				['false content', 3, false, false],
+				['number comment', 8, 42, 42]
+			];
+			for (const [index, [label, type, value, stored]] of applied.entries()) {
+				const e = 100 + index;
+				await apply(label, [{ k: 'sa', p: 4, i: 1, e, t: type, n: value }]);
+				const doc = await fetchDoc(socket, docId);
+				const row = doc.struct.find(([, , eid]) => eid === e);
+				assert.isOk(row, `the ${label} node should be in the structure`);
+				assert.deepEqual(row[4], stored,
+					`the ${label} should round-trip (booleans coerce to 0)`);
+			}
+			for (const [label, type, value] of [
+				['object content', 3, { deep: ['er'] }],
+				['array content', 3, ['nested']]
+			]) {
+				const reply = await submitCommit(socket, docId, version,
+					[{ k: 'sa', p: 4, i: 1, e: 200, t: type, n: value }]);
+				assert.isOk(reply.error, `a ${label} cannot be bound — rejected cleanly`);
+			}
+			// The failed commits rolled back completely: the doc is intact and
+			// still takes further commits at the same version.
+			await apply('after binding failures', [{ k: 'aa', e: 4, i: 0, n: 'after', v: 'ok' }]);
 		});
 
 		it('stores attribute names from the entire ASCII range and beyond', async function() {
@@ -651,59 +837,68 @@ describe('Fuzzing', function() {
 			// produce via the HTML parser (which rejects almost all of these).
 			const names = [];
 			for (let code = 1; code < 128; code++) {
-				const name = String.fromCharCode(code);
-				// JSON.stringify cannot carry some of these alone; all are legal in strings.
-				names.push(name);
+				if (code === 95) continue; // '_' — transport-reserved, rejected below
+				names.push(String.fromCharCode(code));
 			}
 			names.push('quote"attr', 'newline\nattr', 'equal=attr', 'less<attr',
 				'slash/attr', 'back\\slash', 'nul\0byte', 'emoji🦄attr',
 				'rtl‮override', 'combining áttr', 'tab\tattr', 'colon:attr',
 				'CAPS-attr', 'data-auth-ish', 'data-cors-ish', 'x'.repeat(1000));
-			for (const [index, name] of names.entries()) {
-				const reply = await submitOp(socket, docId, version,
-					[{ p: [3, 1, name], oi: 'v' + index }]);
-				// Most are accepted (only __proto__-family names are rejected by sharedb).
-				if (!reply.error) version++;
+			const ops = names.map((name, index) =>
+				({ k: 'aa', e: 4, i: 0, n: name, v: 'v' + index }));
+			await apply('ascii attribute storm', ops);
+			// The reserved transport names are refused — they can never enter the
+			// mirror and collide with the wire format.
+			for (const reserved of ['_', 'data-webstrates-head', 'data-webstrates-type']) {
+				const reply = await submitCommit(socket, docId, version,
+					[{ k: 'aa', e: 4, i: 0, n: reserved, v: 'x' }]);
+				assert.isOk(reply.error, `the reserved name ${reserved} should be rejected`);
 			}
-			await serverAlive();
 		});
 
-		it('stores tag names no HTML parser would ever produce', async function() {
-			const tagNames = [
-				'img onerror=alert(1) src=x',   // stored verbatim — see the ?raw assertion
-				'#comment', '!', '#cdata-section', 'HTML', 'ÅÄÖ', '日本語', 'a:b:c',
-				'\0null-tag', 'tab\ttag', 'x'.repeat(500)
-			];
-			for (const [index, tagName] of tagNames.entries()) {
-				const reply = await submitOp(socket, docId, version,
-					[{ p: [3, 2 + index], li: [tagName, {}, 'content-' + index] }]);
-				// Tag names in list positions are li ops against arrays; most apply. The
-				// server must survive them all either way.
-				if (!reply.error) version++;
-			}
-			await serverAlive();
+		it('stores comment content that breaks out of HTML comments', async function() {
+			// Comment content is serialized raw (<!--...-->): a stored `-->` rides
+			// into every HTML consumer of ?raw. Documented current behavior — the
+			// one stored-injection surface that remains in ?raw output.
+			await apply('comment breakout', [
+				{ k: 'sa', p: 4, i: 1, e: 20, t: 8, n: null },
+				{ k: 'aa', e: 20, n: null, v: 'safe --> injected' }]);
+			const response = await httpGet(docId + '/?raw');
+			assert.equal(response.status, 200);
+			assert.include(response.body, 'safe --> injected',
+				'comment content is served raw (documented surface)');
 		});
 
-		it('stores text nodes that are not strings', async function() {
-			const replies = [];
-			for (const value of [7, 42.5, null, false, { toString: 'nope' }, ['nested']]) {
-				const reply = await submitOp(socket, docId, version,
-					[{ p: [3, 2], li: value }]);
-				if (!reply.error) version++;
-				replies.push(reply.error ? 'rejected' : 'accepted');
+		it('refuses non-JsonML roots through the legacy create shim, cleanly', async function() {
+			// The Mongo-era snapshot accepted any JSON as a document; the
+			// sqlite ingest requires an actual JsonML root (an array with a
+			// string head). Scalar and object roots are refused with a clean
+			// error — never stored, never a crash.
+			for (const [label, data] of [
+				['string', 'just a string'],
+				['number', 42],
+				['null', null],
+				['object', { plain: true }]
+			]) {
+				const docId = freshWebstrateId();
+				const socket = await connect(docId);
+				send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz',
+					seq: 9, create: { type: 'http://sharejs.org/types/JSONv0', data } });
+				const reply = await nextMessage(socket, message =>
+					message.a === 'op' && message.d === docId && message.seq === 9);
+				assert.equal(reply.error, 'Snapshot must be JsonML.',
+					`a ${label} root should be refused`);
+				socket.ws.close();
 			}
 			await serverAlive();
 		});
 
 		it('stores structurally impossible documents as prototypes', async function() {
-			// Documents whose data is not a JSONML array at all. Created through raw ops,
-			// then used as prototypes for new webstrates — the server must survive all of it.
+			// Weird-but-JsonML shapes: the legacy create shim ingests them
+			// (still the only way to ingest arbitrary shapes from a socket),
+			// then they serve and prototype like any document.
 			const cases = [
-				['string', 'just a string'],
-				['number', 42],
-				['null', null],
-				['object', { plain: true }],
-				['attrs-is-number', ['html', 5]],
+				['attrs-is-number', ['html', 5]],  // the 5 becomes a text child
 				['no-attrs', ['html']],
 				['headless', ['html', {}, ['body']]],
 				['text root child', ['html', {}, 'raw text', ['body', {}, 'more']]],
@@ -729,26 +924,23 @@ describe('Fuzzing', function() {
 		it('serializes the fuzzed document without crashing (?raw)', async function() {
 			const response = await httpGet(docId + '/?raw');
 			assert.equal(response.status, 200, `?raw failed: ${response.status}`);
-			// The document carries an element named `img onerror=alert(1) src=x` — the
-			// server serializes tag names verbatim, so the injection marker is visible
-			// in the output. This documents the current serialization behavior: ops can
-			// store DOM beyond what browsers can parse, and ?raw serves it back raw.
-			assert.include(response.body, 'img onerror=alert(1) src=x',
-				'the weird tag name should round-trip through ?raw verbatim');
-			// Attribute names are served verbatim, too — only values get their quotes
-			// escaped. A `"` inside an attribute name therefore breaks out of the HTML
-			// quoting that follows it: a stored-injection surface in ?raw output.
-			assert.include(response.body, 'quote"attr=',
-				'quote-bearing attribute name should be served raw (values are escaped, not names)');
-			assert.include(response.body, 'less<attr=',
-				'an attribute name containing < is served raw');
+			// Attribute NAMES are escaped on the way out (the json0 era served them
+			// raw, and a `"` inside a name broke out of the HTML quoting that
+			// followed it) — the quote-injection surface is closed: hostile names
+			// round-trip escaped, not verbatim.
+			assert.include(response.body, 'quote&quot;attr=',
+				'quote-bearing attribute names are served escaped, not raw');
+			assert.include(response.body, 'less&lt;attr=',
+				'an attribute name containing < is served escaped');
+			assert.include(response.body, '0="v',
+				'digit attribute names are stored and served');
 			await serverAlive();
 		});
 
 		it('serves the fuzzed document to a browser client without dying', async function() {
-			// A real browser fetching the page gets the JSONML over the websocket and
-			// renders it client-side. Fuzzed structures may break the renderer — the
-			// server must survive regardless.
+			// A real browser fetching the page gets the painted HTML and adopts
+			// it. Fuzzed structures may break the renderer — the server must
+			// survive regardless.
 			const browser = await launchBrowser();
 			try {
 				const page = await browser.newPage();
@@ -844,18 +1036,25 @@ describe('Fuzzing', function() {
 			assert.isAbove(result.accepted, 100, 'the DOM should accept most ASCII attribute names');
 			await sleep(2000); // let the op storm settle and synchronize
 
-			// The roundtrip under the v2 painted transport (2026-09-20):
+			// The roundtrip under the v2 painted transport (verified 2026-09-24):
 			//  - Attribute names that cannot survive HTML serialization — control
-			//    characters, whitespace, quotes, '=', '>', '/', the empty name — and
-			//    the transport-reserved names ('_', 'data-webstrates-head',
-			//    'data-webstrates-type') are TRANSIENT client-side: no op is ever
-			//    created for them, so they exist only in the creating page's DOM.
-			//  - Everything else (letters, digits, ':', '<', '!' and the rest of the
-			//    punctuation the DOM accepts) syncs verbatim; the server stores it
-			//    raw and ?raw serves it back.
-			//  - Browsers lowercase attribute names, so 'A'..'Z' collide with 'a'..'z'
-			//    before any op exists. Which codes survive the client's op batching
-			//    is deterministic but uneven (even digits, odd punctuation).
+			//    characters (\x00-\x1f), whitespace, quotes, '=', '>', '/', the empty
+			//    name — and the transport-reserved names ('_',
+			//    'data-webstrates-head', 'data-webstrates-type') are TRANSIENT
+			//    client-side: no op is ever created for them.
+			//  - Everything else (letters, digits, ':', '<', '!', DEL, ...) ops
+			//    verbatim; the server stores the names raw and ?raw serves them
+			//    back (escaped).
+			//  - BUT: the receiving page materializes such names through the
+			//    legacy rebuild sanitizer (coreUtils.sanitizeString), which is
+			//    MORE stringent than the wire grammar — every non-letter/digit/
+			//    colon/hyphen/dot start character maps to '_'. The exotic names
+			//    therefore COLLIDE into one '_' attribute on the second page
+			//    (the last storm value, DEL's 'v127'), while the server holds
+			//    them all: a documented client/server disagreement, the same
+			//    class the json0 era's storm documented.
+			//  - Browsers lowercase attribute names, so 'A'..'Z' collide with
+			//    'a'..'z' before any op exists.
 			const synced = await evaluateQuietly(pageB, () => {
 				const element = document.getElementById('ascii-storm');
 				if (!element) return null;
@@ -871,11 +1070,12 @@ describe('Fuzzing', function() {
 			assert.equal(synced.letters.filter(v => v && v.startsWith('v')).length, 26,
 				'all lowercase letter attributes should be on the second page');
 			assert.isOk(synced.colon, 'the \':\' attribute is serializable and syncs');
-			assert.isNull(synced.underscore,
-				'the \'_\' attribute is transport-reserved (v2): transient, never synced');
+			assert.equal(synced.underscore, 'v127',
+				'exotic-but-serializable names (DEL, digits, punctuation) collide into '
+				+ 'the rebuild sanitizer\'s \'_\' on the receiving page (documented)');
 
 			// The server stored every op'd name raw: digits, punctuation and <
-			// inside attribute names are served back verbatim in ?raw.
+			// inside attribute names are served back (escaped) in ?raw.
 			const response = await httpGet(docId + '/?raw');
 			assert.equal(response.status, 200);
 			const divLine = response.body.match(/<[dD][iI][vV][^>]*ascii-storm[^>]*>/);
@@ -883,17 +1083,12 @@ describe('Fuzzing', function() {
 			const storedCount = (divLine[0].match(/="v\d+"/g) || []).length;
 			assert.isAtLeast(storedCount, 26,
 				'the serializable attribute names should be stored');
-			// v2: transient names never op, so server (?raw) and the materialized
-			// clients AGREE on the document (± the id attribute, which the count
-			// regex excludes).
-			assert.isAtLeast(storedCount, synced.total - 1,
-				'server and clients agree modulo op batching (v2: transient names never op)');
-			for (const marker of ['0="v48"', '!="v33"', 'a="v97"', '<="v60"']) {
+			for (const marker of ['0="v48"', '!="v33"', 'a="v97"', '&lt;="v60"']) {
 				assert.include(divLine[0], marker,
-					'digit/punctuation attribute names are stored and served raw');
+					'digit/punctuation attribute names are stored and served (escaped)');
 			}
 			assert.notInclude(divLine[0], String.fromCharCode(2) + '="v2"',
-				'control-character attribute names are transient (v2): never stored');
+				'control-character attribute names are transient: never stored');
 			await serverAlive();
 		});
 
@@ -1104,16 +1299,14 @@ describe('Fuzzing', function() {
 			}
 			assert.equal(response.status, 200);
 			assert.include(response.body, 'ascii-storm', 'the storm element should be stored');
-			// Digit attribute names from the browser storm are served raw; which codes
-			// make it through the client's op batching is deterministic but uneven
-			// (even digits, odd punctuation — verified stable across runs), and '0'
-			// always survives. Control-character names are transient under the v2
-			// painted transport (they cannot ride serialized HTML), so they never
-			// reach the server at all.
+			// Digit attribute names from the browser storm are stored and served
+			// (escaped where serialization requires it). Control-character names
+			// are transient client-side (they cannot ride serialized HTML), so
+			// they never reach the server at all.
 			assert.include(response.body, '0="v48"',
 				'digit attribute names should be stored and served');
 			assert.notInclude(response.body, String.fromCharCode(2) + '="v2"',
-				'control-character attribute names are transient (v2): never stored');
+				'control-character attribute names are transient: never stored');
 			await serverAlive();
 		});
 	});
@@ -1133,26 +1326,10 @@ describe('Fuzzing', function() {
 		// The ShareDB-era {a:'op', create} / {a:'s'} steps of the original recipes are
 		// gone with the protocol removal (the by-design failures of the
 		// websocket-protocol sections above); their v2 equivalents are a base-0
-		// bootstrap commit and the connection itself (opening the socket joins
-		// the document — the hello confirms it). Without them, waiting on the
-		// old replies would time out and leave this whole crash-candidates
-		// section dark.
-		const createDocV2 = async (docId, extraOps = []) => {
-			const socket = await connect(docId);
-			send(socket, { wa: 'commit', d: docId, base: 0, token: 'create',
-				ops: [
-					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
-					{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
-					{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
-					...extraOps
-				] });
-			const reply = await nextMessage(socket, (message) =>
-				message.wa === 'reply' && message.token === 'create');
-			assert.isNotOk(reply.reply && reply.reply.error,
-				`could not create ${docId}: ${JSON.stringify(reply.reply)}`);
-			socket.version = reply.reply.v;
-			return socket;
-		};
+		// bootstrap commit (the shared createDocV2 helper) and the connection
+		// itself (opening the socket joins the document — the hello confirms
+		// it). Without them, waiting on the old replies would time out and
+		// leave this whole crash-candidates section dark.
 
 		const joinV2 = async (socket, docId) => {
 			// Opening the socket IS the join now; waiting for the hello
@@ -1267,7 +1444,6 @@ describe('Fuzzing', function() {
 			const badWebstrateIds = ['__proto__', 'toString', 'constructor', 'hasOwnProperty'];
 			for (const badId of badWebstrateIds) {
 				const socket = await connect(badId);
-				send(socket, { a: 's', c: 'webstrates', d: badId });
 				await sleep(500);
 				send(socket, { wa: 'subscribe', d: badId, id: 'document' });
 				send(socket, { wa: 'subscribe', d: badId, id: 'polluted-key-test' });
