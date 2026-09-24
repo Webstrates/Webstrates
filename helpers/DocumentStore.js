@@ -72,6 +72,7 @@ const { DatabaseSync } = require('node:sqlite');
 const crypto = require('crypto');
 const fs = require('fs');
 const path = require('path');
+const parse5 = require('parse5');
 
 const NODE_ELEMENT = 1;
 const NODE_TEXT = 3;
@@ -1524,25 +1525,29 @@ class Handle {
 		}
 	}
 
-	// -- JsonML ingest ---------------------------------------------------------------
+	// -- HTML ingest -----------------------------------------------------------------
 
 	/**
-	 * Bootstrap a document from a JsonML snapshot (create/copy/prototypeUrl/
-	 * migration) as one synthetic commit of sa+aa ops. Values/names are
-	 * UNescaped from the canonical JsonML form; __wid attributes are dropped
-	 * (ids are the new wid). Returns the new revision.
-	 * @param {JsonML} jsonml Snapshot.
+	 * Bootstrap a document from an HTML string (the REST ingest paths: zip
+	 * import, remote prototype) as one synthetic commit of sa+aa ops. The
+	 * HTML is parsed with parse5 — the same tree-construction algorithm
+	 * browsers run, so the ingested mirror is browser-canonical from the
+	 * start (fostering, synthesized tbody, template contents all land where
+	 * a browser would put them). __wid attributes are dropped (eids are the
+	 * identity now); doctypes are not persisted. Attribute values and text
+	 * arrive entity-decoded from the parser, so no unescaping applies.
+	 * Returns the new revision.
+	 * @param {string} html   HTML document.
 	 * @param {string} userId Committing user.
 	 * @param {string} source Source.
 	 * @return {number}       New revision.
 	 * @public
 	 */
-	fromJsonML(jsonml, userId, source) {
-		if (!Array.isArray(jsonml) || typeof jsonml[0] !== 'string') {
-			throw new Error('Snapshot must be JsonML.');
+	fromHtml(html, userId, source) {
+		if (typeof html !== 'string' || html.length === 0) {
+			throw new Error('Ingest requires HTML.');
 		}
-		const unescapeValue = (v) => v && v.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-		const unescapeName = (v) => v && v.replace(/&dot;/g, '.');
+		const document = parse5.parse(html);
 		let nextId = 1;
 		const mint = () => nextId++;
 		const ops = [];
@@ -1554,46 +1559,36 @@ class Handle {
 			return i;
 		};
 
-		const walk = (jml, parentEid) => {
-			if (typeof jml === 'string' || typeof jml === 'number') {
+		const walk = (node, parentEid) => {
+			// Template contents live in node.content (a DocumentFragment);
+			// every other node carries its children directly.
+			const children = node.content ? node.content.childNodes : node.childNodes;
+			for (const child of children) {
+				if (child.nodeName === '#documentType') continue; // never persisted
 				const e = mint();
-				ops.push({ k: 'sa', p: parentEid, i: nextIndex(parentEid), e,
-					t: NODE_TEXT, n: null });
-				ops.push({ k: 'aa', e, n: null, v: String(jml) });
-				return;
-			}
-			if (!Array.isArray(jml)) return;
-			if (jml[0] === '!') {
-				const content = typeof jml[1] === 'string' ? jml[1] : jml.slice(1).join(' ');
-				if (/^\s*DOCTYPE/i.test(content)) return; // doctypes were never persisted
-				const e = mint();
-				ops.push({ k: 'sa', p: parentEid, i: nextIndex(parentEid), e,
-					t: NODE_COMMENT, n: null });
-				ops.push({ k: 'aa', e, n: null, v: content });
-				return;
-			}
-			const e = mint();
-			const i = nextIndex(parentEid);
-			ops.push({ k: 'sa', p: parentEid, i, e, t: NODE_ELEMENT, n: String(jml[0]) });
-			const attrs = (jml.length > 1 && jml[1] && typeof jml[1] === 'object'
-				&& !Array.isArray(jml[1])) ? jml[1] : null;
-			const childrenStart = attrs ? 2 : 1;
-			if (attrs) {
-				// Attributes insert at successive local positions 0, 1, … in
-				// the snapshot's own order (the props object's key order).
-				let attrPos = 0;
-				for (const [attrName, attrValue] of Object.entries(attrs)) {
-					if (attrName === '__wid') continue;
-					ops.push({ k: 'aa', e, i: attrPos++, n: unescapeName(attrName),
-						v: unescapeValue(attrValue) });
+				const i = nextIndex(parentEid);
+				if (child.nodeName === '#text') {
+					ops.push({ k: 'sa', p: parentEid, i, e, t: NODE_TEXT, n: null });
+					ops.push({ k: 'aa', e, n: null, v: child.value });
+				} else if (child.nodeName === '#comment') {
+					ops.push({ k: 'sa', p: parentEid, i, e, t: NODE_COMMENT, n: null });
+					ops.push({ k: 'aa', e, n: null, v: child.data });
+				} else {
+					ops.push({ k: 'sa', p: parentEid, i, e, t: NODE_ELEMENT,
+						n: child.tagName });
+					// Attributes insert at successive local positions 0, 1, …
+					// in the document's own order.
+					let attrPos = 0;
+					for (const { name, value } of child.attrs || []) {
+						if (name === '__wid') continue; // eids are the identity now
+						ops.push({ k: 'aa', e, i: attrPos++, n: name, v: value });
+					}
+					walk(child, e);
 				}
-			}
-			for (let c = childrenStart; c < jml.length; c++) {
-				walk(jml[c], e);
 			}
 		};
 
-		walk(jsonml, 0);
+		walk(document, 0);
 		// No transform: the ops are minted against the current head.
 		const result = this.applyCommit({ base: this.revision, ops, userId, source });
 		this.stmt.bumpNextId.run('nextId', nextId);
@@ -1602,9 +1597,9 @@ class Handle {
 
 	/**
 	 * Bootstrap this (empty) document as a copy of another handle's mirror at
-	 * a revision — the prototype path. Same mechanism as fromJsonML (one
+	 * a revision — the prototype path. Same mechanism as fromHtml (one
 	 * synthetic commit of sa+aa ops, fresh eids minted for the new document),
-	 * but walking the source mirror directly: no JsonML round-trip, no
+	 * but walking the source mirror directly: no parse round-trip, no
 	 * escaping, attribute order preserved from the source's own lists.
 	 * Returns the new revision.
 	 * @param {Handle} sourceHandle Handle of the document to copy.

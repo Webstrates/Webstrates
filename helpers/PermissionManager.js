@@ -216,31 +216,9 @@ module.exports.webstrateHasAdmin = async (webstrateId) => {
 };
 
 /**
- * Get a user's permissions for a specific snapshot.
- * @param  {string} username Username.
- * @param  {string} provider Login provider (GitHub, Facebook, OAuth, ...).
- * @param  {JsonML} snapshot ShareDB document snapshot.
- * @return {string}          Document permissions (r, rw).
- * @public
- */
-module.exports.getUserPermissionsFromSnapshot = async (username, provider, snapshot) => {
-	const permissionsList = await module.exports.getPermissionsFromSnapshot(snapshot);
-
-	// If there's also no default permissions, we pretend every user has read-write permissions
-	// lest we lock everybody out. We append a question mark to let the system know that these are
-	// last-resort permissions.
-	if (!permissionsList) {
-		return 'rw?';
-	}
-
-	return getUserPermissionsFromPermissionsList(username, provider, permissionsList);
-};
-
-/**
  * Get a user's permissions for a document header (see
- * DocumentManager.getDocumentHeader) — the live-document path. Mirrors
- * getUserPermissionsFromSnapshot, but reads the html element's data-auth
- * straight off the mirror instead of walking a JsonML snapshot.
+ * DocumentManager.getDocumentHeader) — the live-document and ingest path:
+ * it reads the html element's data-auth straight off the mirror.
  * @param  {string} username Username.
  * @param  {string} provider Login provider (GitHub, Facebook, OAuth, ...).
  * @param  {Header} header   Document header.
@@ -330,85 +308,6 @@ async function getInheritedPermissionsFromHeaders(permissionsList, recursionCoun
 }
 
 const ALLOWED_RECURSIVE_INHERITANCES = 3;
-/**
- * Get all permissions from a specific snapshot.
- * @param  {JsonML} snapshot              ShareDB document snapshot.
- * @param  {bool}   useDefaultPermissions Whether to return default permissions or not if no
- *                                        permissions were found. true uses defaultPermissions.
- * @param {integer} recursionCount        If webstrate X inherits permissions from webstrate Y, and
- *                                        Y inherits from X, we'll end up in an infinite loop. So
- *                                        we set a limit of how many recursive inheritances we
- *                                        allow.
- * @return {array}                        Permissions list.
- * @public
- */
-module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultPermissions = true,
-	recursionCount = 0) {
-	var permissionsList;
-
-	// Attempt to read the permissions from the document + inherited documents
-	try {
-		if (snapshot && snapshot.data && snapshot.data[0] && snapshot.data[0] === 'html' &&
-			snapshot.data[1] && snapshot.data[1]['data-auth']) {
-			permissionsList = JSON.parse(snapshot.data[1]['data-auth'].replace(/'/g, '"')
-				.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
-
-			// We allow a certain number of recursive permission inheritances, i.e. webstrate X inheriting
-			// permissions from Y, inheriting from Z, and so forth. If this is exceeded, we ignore the
-			// "deeper" permissions (and also log a warning on the server).
-			if (recursionCount > ALLOWED_RECURSIVE_INHERITANCES) {
-				console.warn('Too many recursive inheritances in', snapshot.id);
-				return permissionsList;
-			}
-
-			// Add all permissions to permissionsList by side effect. This is faster than creating new
-			// arrays and copying stuff around.
-			await getInheritedPermissions(permissionsList, recursionCount + 1);
-
-			return permissionsList;
-		}
-	} catch (err) {
-		console.warn('Couldn\'t parse document permissions for', snapshot.id);
-	}
-
-	// If we found no permissions, return default permissions, unless specified otherwise.
-	if (useDefaultPermissions && (!Array.isArray(permissionsList) || Object.keys(permissionsList).length === 0)) {
-		return useDefaultPermissions ? defaultPermissionsList : undefined;
-	}
-
-	return undefined;
-};
-
-async function getInheritedPermissions(permissionsList, recursionCount) {
-	const inheritWebstrateIds = permissionsList.filter(o => o.webstrateId !== undefined);
-
-	// We do this "the slow way", i.e. not async/parallel, because somebody could otherwise easily
-	// DoS the server by forcing the server to fill up the memory with huge webstrate documents all
-	// at the same time.
-	// We expand the permissionsList in the loop, but we only iterate to the initial length, so we
-	// don't end up in a potential infinite loop if there are mutual recursions between webstrates.
-	for (let i = 0, l = permissionsList.length; i < l; ++i) {
-		const webstrateId = permissionsList[i].webstrateId;
-		if (webstrateId) {
-			// The inherited document is live in the store: read its header
-			// (eid-native) and hand getPermissionsFromSnapshot a snapshot-
-			// shaped stub — it reads only the html element's data-auth.
-			const header = await documentManager.getDocumentHeader({ webstrateId });
-			const snapshot = { id: header.id,
-				data: header.dataAuth ? ['html', { 'data-auth': header.dataAuth }] : null };
-			const otherPermissionList = await module.exports.getPermissionsFromSnapshot(snapshot,
-				false, recursionCount);
-
-			// We don't want admin permissions to be inherited, so we remove the 'a' flag.
-			otherPermissionList.forEach(o => o.permissions = o.permissions.replace(/a/i, ''));
-
-			// Add all inherited permissions to the passed-in permissions list.
-			permissionsList.push(...otherPermissionList);
-		}
-	}
-	// We update permisisonsList above by side effects, but we return it anyway for good measure.
-	return permissionsList;
-}
 
 /**
  * Get a user's default permission.
@@ -489,60 +388,6 @@ module.exports.removeAdminPermissions = async function(webstrateId, source) {
 			JSON.stringify(permissionsList), source);
 		module.exports.invalidateCachedPermissions(webstrateId);
 	}
-};
-
-module.exports.setUserPermissionsInSnapshot = async function(username, provider, permissions,
-	snapshot) {
-	const currentPermissions = await module.exports.getUserPermissionsFromSnapshot(username, provider,
-		snapshot);
-	if (currentPermissions === permissions) {
-		return snapshot;
-	}
-
-	const permissionsList = await module.exports.getPermissionsFromSnapshot(snapshot, false) || [];
-
-	// Find index of the user's current permissions
-	const userIdx = permissionsList.findIndex(user =>
-		user.username === username && user.provider === provider);
-
-	const user = { username, provider, permissions };
-
-	// If the user currently has no permissions, we add the new permissions, or otherwise modifies
-	// the existing permissions.
-	if (userIdx === -1) {
-		permissionsList.push(user);
-	} else {
-		permissionsList[userIdx] = user;
-	}
-
-	snapshot.data[1]['data-auth'] = JSON.stringify(permissionsList);
-	return snapshot;
-};
-
-/**
- * Remove all permissions from snapshot.
- * @param  {JsonML} snapshot ShareDB document snapshot.
- * @return {string}          ShareDB document snapshot without permissions.
- */
-module.exports.clearPermissionsFromSnapshot = function(snapshot) {
-	delete snapshot.data[1]['data-auth'];
-	return snapshot;
-};
-
-/**
- * Remove admin permissions from snapshot.
- * @param  {JsonML} snapshot ShareDB document snapshot.
- * @return {string}          ShareDB document snapshot without admin permissions.
- */
-module.exports.removeAdminPermissionsFromSnapshot = async function(snapshot) {
-	const permissionsList = await module.exports.getPermissionsFromSnapshot(snapshot, false);
-
-	if (permissionsList) {
-		permissionsList.forEach(user => user.permissions = user.permissions.replace(/a/gi, ''));
-		snapshot.data[1]['data-auth'] = JSON.stringify(permissionsList);
-	}
-
-	return snapshot;
 };
 
 /**

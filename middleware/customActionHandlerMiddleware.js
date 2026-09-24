@@ -38,13 +38,10 @@ function withinMessageRateLimit(senderId) {
 
 exports.onmessage = async (ws, req, data, next) => {
 	if (!data.wa || 'noop' in req.query) {
-		// Legacy ShareDB create (old tooling and the test suite seed documents
-		// this way): {a:'op', c:'webstrates', d, v:0, seq, create:{type, data}}.
-		// Handled by the document middleware; every other non-'wa' message
-		// still falls through.
-		if (data.a === 'op' && data.c === 'webstrates' && data.create) {
-			return documentMiddleware.legacyCreate(ws, req, req.user, data.d, data);
-		}
+		// No 'wa' action: nothing to do. (The legacy ShareDB create message
+		// went with the sharedb protocol removal — documents bootstrap over a
+		// base-0 wa commit, REST ingest parses HTML, and copies go through
+		// the mirror copy.)
 		return next();
 	}
 

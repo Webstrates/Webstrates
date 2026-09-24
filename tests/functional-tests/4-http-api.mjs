@@ -411,12 +411,13 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 		};
 	};
 
-	// Create a webstrate with arbitrary initial JsonML through a raw ShareDB websocket from
-	// the connected page (the pattern of the permissions tests) — the only way into the
-	// system for documents whose root element is not <html>, which the browser client never
-	// produces. Resolves null on success, or a description of the failure.
-	const createWebstrateOnRawSocket = (docId, data) =>
-		page.evaluate((id, data) => new Promise((resolve) => {
+	// Create a webstrate with arbitrary initial content through a raw websocket
+	// from the connected page (the pattern of the permissions tests): a base-0
+	// wire commit growing the empty mirror. This is the only way into the system
+	// for documents whose root element is not <html>, which the browser client
+	// never produces. Resolves null on success, or a description of the failure.
+	const createWebstrateOnRawSocket = (docId, ops) =>
+		page.evaluate((id, ops) => new Promise((resolve) => {
 			const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
 			const finish = (error) => {
 				try { socket.close(); } catch { /* ignore */ }
@@ -424,17 +425,17 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 			};
 			setTimeout(() => finish('timeout'), 5000);
 			socket.onopen = () => socket.send(JSON.stringify({
-				a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
-				create: { type: 'http://sharejs.org/types/JSONv0', data: data }
+				wa: 'commit', d: id, base: 0, token: 'create', ops
 			}));
 			socket.onerror = () => finish('websocket error');
 			socket.onmessage = (event) => {
 				const message = JSON.parse(event.data);
-				if (message.wa || message.a === 'init') return;
-				finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
-					JSON.stringify(message));
+				if (message.wa === 'reply' && message.token === 'create') {
+					finish(message.error ? 'Create failed: ' + JSON.stringify(message.error)
+						: null);
+				}
 			};
-		}), docId, data);
+		}), docId, ops);
 
 	it('sends Access-Control-Allow-* headers to an origin listed in data-cors', async () => {
 		await setDataCors(JSON.stringify([ALLOWED_ORIGIN]));
@@ -493,18 +494,25 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 	it('grants CORS only on documents whose root element is html', async () => {
 		// Both documents carry the same data-cors listing the requesting origin; only the
 		// root element differs. data-cors is an attribute of the root <html> element: on a
-		// document whose root element is not html (here a plain ShareDB-created div
-		// document), it must not grant CORS.
+		// document whose root element is not html (here a plain div-root document
+		// committed over the raw socket), it must not grant CORS.
 		const dataCors = JSON.stringify([ALLOWED_ORIGIN]);
 		const htmlId = 'test-' + util.randomString();
 		const divId = 'test-' + util.randomString();
 		createdWebstrateIds.push(htmlId, divId);
 
-		const htmlCreateError = await createWebstrateOnRawSocket(htmlId,
-			['html', { 'data-cors': dataCors }, ['head', {}], ['body', {}]]);
+		const htmlCreateError = await createWebstrateOnRawSocket(htmlId, [
+			{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+			{ k: 'aa', e: 1, i: 0, n: 'data-cors', v: dataCors },
+			{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+			{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' }]);
 		assert.isNull(htmlCreateError, 'creating the html-root document failed');
-		const divCreateError = await createWebstrateOnRawSocket(divId,
-			['div', { 'data-cors': dataCors }, ['span', {}, 'not an html document']]);
+		const divCreateError = await createWebstrateOnRawSocket(divId, [
+			{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'div' },
+			{ k: 'aa', e: 1, i: 0, n: 'data-cors', v: dataCors },
+			{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'span' },
+			{ k: 'sa', p: 2, i: 0, e: 3, t: 3, n: null },
+			{ k: 'aa', e: 3, n: null, v: 'not an html document' }]);
 		assert.isNull(divCreateError, 'creating the div-root document failed');
 
 		const htmlHeaders = await corsHeaders(config.server_address + htmlId + '/', ALLOWED_ORIGIN);

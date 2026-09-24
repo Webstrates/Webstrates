@@ -7,7 +7,6 @@ const dns = require('dns');
 const fs = require('graceful-fs');
 const http = require('http');
 const https = require('https');
-const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
 const multer = require('multer');
 const net = require('net');
@@ -1259,31 +1258,6 @@ function sendClientShell(res) {
 }
 
 /**
- * Replaces a string with another string in the attribute names of a JsonML structure.
- * Webstrate code usually handles this.
- * @param  {JsonML} snapshot    JsonML structure.
- * @param  {string} search      String to search for. Regex also works.
- * @param  {string} replacement String to replace search with.
- * @return {JsonML}             JsonML with replacements.
- * @private
- */
-function replaceInKeys(jsonml, search, replacement) {
-	if (Array.isArray(jsonml)) {
-		return jsonml.map(e => replaceInKeys(e, search, replacement));
-	}
-	if (typeof jsonml === 'object') {
-		for (const key in jsonml) {
-			const cleanKey = key.replace(search, replacement);
-			jsonml[cleanKey] = replaceInKeys(jsonml[key], search, replacement);
-			if (cleanKey !== key) {
-				delete jsonml[key];
-			}
-		}
-	}
-	return jsonml;
-}
-
-/**
  * Transform a readable straem into a string
  * @param  {ReadableStream} stream Stream to read from.
  * @param  {Function} callback     Callback to call when stream has been read.
@@ -1384,15 +1358,13 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
             if ((contentType && contentType.startsWith('text/html')) ||
                 (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.html?$/i))) {
                 const body = await response.text();
-                const jsonml = htmlToJsonML(body);
                 const webstrateId = req.query.id || await generateWebstrateId(req);
                 try {
+                    // Ingest the fetched HTML directly: parse → wire ops → one
+                    // synthetic commit (see DocumentStore.fromHtml).
                     await documentManager.createNewDocument({
                         webstrateId: webstrateId,
-                        snapshot: {
-                            type: 'http://sharejs.org/types/JSONv0',
-                            data: jsonml
-                        }
+                        html: body
                     });
                 } catch (err) {
                     console.error(err);
@@ -1621,34 +1593,33 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 							htmlDocumentFound = true;
 							countExtractedBytes(readStream);
 							streamToString(readStream, async htmlDoc => {
-								let jsonml = htmlToJsonML(htmlDoc);
-								// MongoDB doesn't accept periods in keys, so we replace them with
-								// `&dot;`s when storing them in the database.
-								jsonml = replaceInKeys(jsonml, '.', '&dot;');
-								let snapshot = {
-									type: 'http://sharejs.org/types/JSONv0',
-									data: jsonml
-								};
-								const userPermissions = await permissionManager
-									.getUserPermissionsFromSnapshot(req.user.username, req.user.provider,
-										snapshot);
-								// If user doesn't have write permissions to the document, add them if
-								// the user is logged in, otherwise just delete all permissions on the
-								// new document.
-								if (!userPermissions.includes('w')) {
-									if (req.user.username === 'anonymous' && req.user.provider === '') {
-										snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
-									} else {
-										snapshot = await permissionManager
-											.setUserPermissionsInSnapshot(req.user.username, req.user.provider,
-												'rw', snapshot);
-									}
-								}
 								try {
-									await documentManager.createNewDocument({webstrateId, snapshot});
+									// Ingest the HTML directly: parse → wire ops →
+									// one synthetic commit (DocumentStore.fromHtml).
+									await documentManager.createNewDocument({
+										webstrateId, html: htmlDoc });
 								} catch (err){
 									console.error(err);
 									return reject(err);
+								}
+								// Permission stamping on the created document — the
+								// header-based path. If the user doesn't have write
+								// permissions on the imported document, add them if
+								// the user is logged in, otherwise just delete all
+								// permissions on the new document.
+								const header = await documentManager.getDocumentHeader(
+									{ webstrateId });
+								const userPermissions = await permissionManager
+									.getUserPermissionsFromHeader(req.user.username, req.user.provider,
+										header);
+								if (!userPermissions.includes('w')) {
+									if (req.user.username === 'anonymous' && req.user.provider === '') {
+										await permissionManager.clearPermissions(webstrateId,
+											req.user.userId);
+									} else {
+										await permissionManager.setUserPermissions(req.user.username,
+											req.user.provider, 'rw', webstrateId, req.user.userId);
+									}
 								}
 								createdWebstrate = true;
 							});

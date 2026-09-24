@@ -6,57 +6,57 @@ import config from '../config.js';
 import util from '../util.js';
 
 // The webstrates client only connects to the webstrate it was loaded from, so to talk to
-// another webstrate id we open a raw ShareDB websocket to that id ourselves. Webstrates
-// notifications ("wa" property) and handshake messages ("a":"hs" or "a":"init") are ignored;
-// the first ShareDB protocol reply settles the promise. Resolves with null if the subscribe
-// succeeded, or a description of the failure otherwise.
+// another webstrate id we open a raw websocket to that id ourselves. In the native protocol
+// opening the socket IS the subscribe: the server sends the hello (document id + head
+// revision) as soon as the join passes the read check, and sends nothing at all when it
+// doesn't. Resolves with null when the hello arrived (subscribe succeeded), or a description
+// of the failure otherwise (no hello within 2s = subscribe denied).
 const subscribeOnRawSocket = (page, webstrateId) => page.evaluate((id) => new Promise((resolve) => {
 	const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
 	const finish = (error) => {
 		try { socket.close(); } catch (e) {}
 		resolve(error || null);
 	};
-	setTimeout(() => finish('timeout'), 5000);
-	socket.onopen = () => socket.send(JSON.stringify({ a: 's', c: 'webstrates', d: id }));
+	setTimeout(() => finish('no hello: subscribe denied'), 2000);
 	socket.onerror = () => finish('websocket error');
 	socket.onmessage = (event) => {
 		const message = JSON.parse(event.data);
-		if (message.wa || message.a === 'init') return;
-		finish(message.a === 's' && !message.error ? null : 'Subscribe failed: ' +
-			JSON.stringify(message));
+		if (message.wa === 'hello' && message.d === id) finish(null);
 	};
 }), webstrateId);
 
-// Create a webstrate that carries its permissions in the create operation itself, so that no
-// permission-changing op follows. The webstrate is restricted to the given user. When the
-// client is logged in, the server drops the first message on a websocket, so we open with a
-// handshake we don't rely on and let the connection settle before submitting the create op.
+// Create a webstrate that carries its permissions in the create commit itself, so that no
+// permission-changing op follows: a base-0 wire commit growing the empty mirror, with the
+// data-auth attribute applied to the html element in the same transaction. The webstrate is
+// restricted to the given user. (No handshake prelude is needed anymore — the server buffers
+// early frames until the connection is set up.)
 const createWebstrateOnRawSocket = (page, webstrateId, username, provider) =>
 page.evaluate((id, username, provider) => new Promise((resolve) => {
-	const data = ['html', { 'data-auth': JSON.stringify([{
-		username: username,
-		provider: provider,
-		permissions: 'rw'
-	}]) }, ['head', {}], ['body', {}]];
+	const ops = [
+		{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+		{ k: 'aa', e: 1, i: 0, n: 'data-auth', v: JSON.stringify([{
+			username: username,
+			provider: provider,
+			permissions: 'rw'
+		}]) },
+		{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+		{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' }
+	];
 	const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
 	const finish = (error) => {
 		try { socket.close(); } catch (e) {}
 		resolve(error || null);
 	};
 	setTimeout(() => finish('timeout'), 5000);
-	socket.onopen = () => {
-		socket.send(JSON.stringify({ a: 'hs', id: null, protocol: 1, protocolMinor: 2 }));
-		setTimeout(() => socket.send(JSON.stringify({
-			a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
-			create: { type: 'http://sharejs.org/types/JSONv0', data: data }
-		})), 200);
-	};
+	socket.onopen = () => socket.send(JSON.stringify({
+		wa: 'commit', d: id, base: 0, token: 'create', ops
+	}));
 	socket.onerror = () => finish('websocket error');
 	socket.onmessage = (event) => {
 		const message = JSON.parse(event.data);
-		if (message.wa || message.a === 'init' || message.a === 'hs') return;
-		finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
-			JSON.stringify(message));
+		if (message.wa === 'reply' && message.token === 'create') {
+			finish(message.error ? 'Create failed: ' + JSON.stringify(message.error) : null);
+		}
 	};
 }), webstrateId, username, provider);
 
@@ -286,7 +286,12 @@ describe('Permissions', function() {
 		if (!util.credentialsProvided) return this.skip();
 
 		const res = await pageC.goto(url, { waitUntil: 'networkidle2' });
-		assert.equal(res.status(), 200);
+		// The document page carries an ETag keyed to its revision with
+		// must-revalidate caching, so reloading an unchanged document is
+		// answered with a 304 and the browser serves its cached copy — a
+		// fully working load of the same fresh page, not a denial.
+		assert.oneOf(res.status(), [200, 304],
+			'the webstrate page should be served (200) or revalidated (304)');
 
 		const pageLoaded = await util.waitForFunction(pageC, () =>
 			window.webstrate && window.webstrate.loaded, 3);
@@ -295,6 +300,12 @@ describe('Permissions', function() {
 
 	it('should not be able to edit webstrate with only read permissions', async function() {
 		if (!util.credentialsProvided) return this.skip();
+		// The read-only client's edit needs an element id from the server
+		// before it can even be committed; the allocids call is denied, so
+		// the client must roll the optimistically applied edit back. That
+		// rollback is a round trip — poll for it, bounded, rather than
+		// asserting the text was never visible at all.
+		this.timeout(30000);
 
 		const randomString = util.randomString();
 		await pageC.evaluate((s) => document.body.innerText = s, randomString);
@@ -307,11 +318,18 @@ describe('Permissions', function() {
 			document.body.innerText === s, .2, randomString);
 		assert.isFalse(pageBChanged);
 
-		// We deliberately do pageC last, because we need to wait a little before reading the
-		// document.body.innerText that we just set, or it may not have been reverted yet.
-		const pageCChanged = await util.waitForFunction(pageC, (s) =>
-			document.body.innerText === s, .2, randomString);
-		assert.isFalse(pageCChanged);
+		let pageCReverted = false;
+		const revertDeadline = Date.now() + 20000;
+		while (Date.now() < revertDeadline) {
+			const currentText = await pageC.evaluate(() => document.body.innerText);
+			if (currentText !== randomString) {
+				pageCReverted = true;
+				break;
+			}
+			await util.sleep(0.25);
+		}
+		assert.isTrue(pageCReverted,
+			'the rejected edit should be reverted on the read-only client');
 	});
 
 	it('should be able to access webstrate ops with only read permissions', async function() {

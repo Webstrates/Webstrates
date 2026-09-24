@@ -178,21 +178,6 @@ describe('Fuzzing', function() {
 		return reply.reply;
 	};
 
-	// Seed a document through the legacy JsonML create shim ({a:'op', create}) — the
-	// one surviving sharedb-era message, and still the only way to ingest arbitrary
-	// JsonML shapes from a socket (the weird-create corpora below). The reply echoes
-	// the seq and carries the created version (not 0).
-	const createDoc = async (docId, data) => {
-		const socket = await connect(docId);
-		send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 1,
-			create: { type: 'http://sharejs.org/types/JSONv0',
-				data: data || ['html', {}, ['head'], ['body']] } });
-		const reply = await nextMessage(socket, message =>
-			message.a === 'op' && message.d === docId && message.seq === 1);
-		assert.isNotOk(reply.error, `could not create document: ${JSON.stringify(reply.error)}`);
-		return socket;
-	};
-
 	// A webstrate fetch-creating a document in the browser client, then a loaded page.
 	const freshWebstrateId = () => 'test-fuzz-' + util.randomString().toLowerCase();
 
@@ -589,13 +574,13 @@ describe('Fuzzing', function() {
 				{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' }
 			], 'recreate');
 			assert.isNotOk(second.error, 'the replayed bootstrap should not error');
-			// The legacy create shim refuses a second create outright.
+			// The legacy ShareDB-era create message has no handler anymore:
+			// it is dropped by the protocol gate (no 'wa' action), silently
+			// and without a reply — the document must stay exactly as the
+			// bootstrap commits left it.
 			send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz', seq: 2,
 				create: { type: 'http://sharejs.org/types/JSONv0', data: ['html', {}, ['body']] } });
-			const legacy = await nextMessage(socket, message =>
-				message.a === 'op' && message.d === docId && message.seq === 2);
-			assert.isOk(legacy.error, 'the legacy create should refuse an existing document');
-			assert.include(legacy.error, 'already exists');
+			await sleep(0.5); // no reply is the expected outcome — just don't crash
 			const raw = await httpGet(docId + '/?raw');
 			assert.equal(raw.status, 200);
 			assert.include(raw.body, 'first', 'the original content should be intact');
@@ -859,7 +844,11 @@ describe('Fuzzing', function() {
 		it('stores comment content that breaks out of HTML comments', async function() {
 			// Comment content is serialized raw (<!--...-->): a stored `-->` rides
 			// into every HTML consumer of ?raw. Documented current behavior — the
-			// one stored-injection surface that remains in ?raw output.
+			// one stored-injection surface that remains in ?raw output. The check
+			// reads ?raw immediately after the commit: the snapshot-cache rebuild
+			// renders the document ~5s of quiet time later and that render commits
+			// the parse-canonical normalization (PaintNormalizer), which would
+			// already have rewritten the comment into its parsed shape.
 			await apply('comment breakout', [
 				{ k: 'sa', p: 4, i: 1, e: 20, t: 8, n: null },
 				{ k: 'aa', e: 20, n: null, v: 'safe --> injected' }]);
@@ -869,45 +858,78 @@ describe('Fuzzing', function() {
 				'comment content is served raw (documented surface)');
 		});
 
-		it('refuses non-JsonML roots through the legacy create shim, cleanly', async function() {
-			// The Mongo-era snapshot accepted any JSON as a document; the
-			// sqlite ingest requires an actual JsonML root (an array with a
-			// string head). Scalar and object roots are refused with a clean
-			// error — never stored, never a crash.
+		it('drops legacy ShareDB-era create messages without a trace', async function() {
+			// The {a:'op', create} message of the sharedb era has no handler
+			// anymore (the legacy create shim went with JsonML): no 'wa'
+			// action means the message falls through the protocol gate — no
+			// reply, no document, no crash. Whatever JsonML (or non-JsonML)
+			// payload it carries is inert.
 			for (const [label, data] of [
 				['string', 'just a string'],
 				['number', 42],
 				['null', null],
-				['object', { plain: true }]
+				['object', { plain: true }],
+				['jsonml', ['html', {}, ['body']]]
 			]) {
 				const docId = freshWebstrateId();
 				const socket = await connect(docId);
 				send(socket, { a: 'op', c: 'webstrates', d: docId, v: 0, src: 'fuzz',
 					seq: 9, create: { type: 'http://sharejs.org/types/JSONv0', data } });
-				const reply = await nextMessage(socket, message =>
-					message.a === 'op' && message.d === docId && message.seq === 9);
-				assert.equal(reply.error, 'Snapshot must be JsonML.',
-					`a ${label} root should be refused`);
+				let answered = true;
+				try {
+					await nextMessage(socket, message =>
+						message.a === 'op' && message.d === docId, 2);
+				} catch {
+					answered = false; // timed out waiting — the expected outcome
+				}
+				assert.isFalse(answered,
+					`a legacy create (${label} payload) must go unanswered`);
+				// No document was created by the message.
+				const versionResponse = await httpGet(docId + '/?v');
+				const versionBody = JSON.parse(versionResponse.body);
+				assert.equal(versionBody.version, 0,
+					`the ${label} legacy create must not create a document`);
 				socket.ws.close();
 			}
 			await serverAlive();
 		});
 
 		it('stores structurally impossible documents as prototypes', async function() {
-			// Weird-but-JsonML shapes: the legacy create shim ingests them
-			// (still the only way to ingest arbitrary shapes from a socket),
-			// then they serve and prototype like any document.
+			// Weird-but-wireable shapes: base-0 commits build them (the
+			// mirror accepts what the browser client never produces), then
+			// they serve and prototype like any document.
 			const cases = [
-				['attrs-is-number', ['html', 5]],  // the 5 becomes a text child
-				['no-attrs', ['html']],
-				['headless', ['html', {}, ['body']]],
-				['text root child', ['html', {}, 'raw text', ['body', {}, 'more']]],
-				['comment tag', ['html', {}, ['head'], ['body', {}, ['!', 'never closed']]]]
+				['text under html', [ // the old JsonML ['html', 5] made the 5
+					// a text child of html
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+					{ k: 'sa', p: 1, i: 0, e: 2, t: 3, n: null },
+					{ k: 'aa', e: 2, n: null, v: '5' }]],
+				['no-attrs', [
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' }]],
+				['headless', [
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+					{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'body' }]],
+				['text root child', [
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+					{ k: 'sa', p: 1, i: 0, e: 2, t: 3, n: null },
+					{ k: 'aa', e: 2, n: null, v: 'raw text' },
+					{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+					{ k: 'sa', p: 3, i: 0, e: 4, t: 3, n: null },
+					{ k: 'aa', e: 4, n: null, v: 'more' }]],
+				['comment tag', [ // a comment node where an element could be
+					{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+					{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+					{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+					{ k: 'sa', p: 3, i: 0, e: 4, t: 8, n: null },
+					{ k: 'aa', e: 4, n: null, v: 'never closed' }]]
 			];
-			for (const [label, data] of cases) {
+			for (const [label, ops] of cases) {
 				const weirdId = 'test-fuzz-' + label.replace(/[^a-z0-9]/g, '') +
 					'-' + util.randomString(4).toLowerCase();
-				const weirdSocket = await createDoc(weirdId, data);
+				const weirdSocket = await connect(weirdId);
+				const reply = await submitCommit(weirdSocket, weirdId, 0, ops, 'create');
+				assert.isNotOk(reply.error, `the "${label}" shape should ingest: `
+					+ JSON.stringify(reply.error));
 				weirdSocket.ws.close();
 				for (const suffix of ['?raw']) {
 					const response = await httpGet(weirdId + '/' + suffix);
@@ -921,19 +943,52 @@ describe('Fuzzing', function() {
 			await serverAlive();
 		});
 
-		it('serializes the fuzzed document without crashing (?raw)', async function() {
-			const response = await httpGet(docId + '/?raw');
+		it('serves hostile attribute names escaped on a fresh document', async function() {
+			// ?raw must escape attribute names that would otherwise break out of
+			// the HTML quoting that follows them — the quote-injection surface of
+			// the json0 era is closed by escaping on the way out. This check
+			// commits a fresh document and reads ?raw immediately: the
+			// snapshot-cache rebuild renders every document ~5s of quiet time
+			// after its last commit, and that render commits the parse-canonical
+			// normalization (see PaintNormalizer.ensureStable) — on a shape like
+			// this the hostile names get rewritten to their parseable forms
+			// shortly after (designed painted-transport behavior).
+			const freshId = freshWebstrateId();
+			const freshSocket = await connect(freshId);
+			const reply = await submitCommit(freshSocket, freshId, 0, [
+				{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+				{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+				{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+				{ k: 'sa', p: 3, i: 0, e: 4, t: 1, n: 'div' },
+				{ k: 'aa', e: 4, i: 0, n: 'quote"attr', v: 'v0' },
+				{ k: 'aa', e: 4, i: 0, n: 'less<attr', v: 'v1' },
+				{ k: 'aa', e: 4, i: 0, n: '0', v: 'v2' }
+			], 'create');
+			assert.isNotOk(reply.error, 'the hostile-name document should ingest: '
+				+ JSON.stringify(reply.error));
+			freshSocket.ws.close();
+
+			const response = await httpGet(freshId + '/?raw');
 			assert.equal(response.status, 200, `?raw failed: ${response.status}`);
-			// Attribute NAMES are escaped on the way out (the json0 era served them
-			// raw, and a `"` inside a name broke out of the HTML quoting that
-			// followed it) — the quote-injection surface is closed: hostile names
-			// round-trip escaped, not verbatim.
 			assert.include(response.body, 'quote&quot;attr=',
 				'quote-bearing attribute names are served escaped, not raw');
 			assert.include(response.body, 'less&lt;attr=',
 				'an attribute name containing < is served escaped');
 			assert.include(response.body, '0="v',
 				'digit attribute names are stored and served');
+		});
+
+		it('serializes the fuzzed document without crashing (?raw)', async function() {
+			const response = await httpGet(docId + '/?raw');
+			assert.equal(response.status, 200, `?raw failed: ${response.status}`);
+			// The hostile attribute names this describe committed may well have
+			// been rewritten by the time this runs: the snapshot-cache rebuild
+			// renders the document ~5s of quiet time after its last commit, and
+			// that render commits the parse-canonical normalization
+			// (PaintNormalizer.ensureStable) — unparseable shapes converge to
+			// what a browser would have parsed. The escaping itself is asserted
+			// on a fresh document immediately after its commit (the test above);
+			// here only the crash surface matters.
 			await serverAlive();
 		});
 

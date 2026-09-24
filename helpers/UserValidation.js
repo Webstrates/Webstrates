@@ -5,7 +5,7 @@
 
 	Usernames are written into documents' data-auth attributes as part of JSON permission lists
 	(e.g. by setUserPermissions), and both the server (helpers/PermissionManager.js,
-	getPermissionsFromSnapshot) and the client (client/webstrates/permissions.js) parse that
+	getPermissionsFromHeader) and the client (client/webstrates/permissions.js) parse that
 	attribute leniently — the attribute may be written single-quoted and HTML-escaped, so the
 	parser rewrites every apostrophe in the attribute to a double quote (and &quot; to ", and
 	&amp; to &) before JSON.parsing it. A username cannot containing ', " or &.	

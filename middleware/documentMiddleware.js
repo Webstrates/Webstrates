@@ -334,65 +334,6 @@ module.exports.allocids = async function(ws, req, user, webstrateId, data) {
 };
 
 /**
- * legacyCreate: the old ShareDB create message
- * {a:'op', c:'webstrates', d, v:0, seq, create:{type, data}} — kept working
- * so old tooling and the test suite can seed documents directly over a raw
- * websocket. The create builds the document from the message's JsonML
- * through the same bootstrap path copy/prototype use (one synthetic commit)
- * and replies with the old op-ack shape. Creating is gated exactly like any
- * other creation (userIsAllowedToCreateWebstrate); an existing document is
- * refused and left untouched.
- * @param {ws}     ws          Websocket.
- * @param {req}    req         Express request (with socketId, user).
- * @param {object} user        Resolved user.
- * @param {string} webstrateId WebstrateId (data.d).
- * @param {object} data        Parsed client message.
- * @public
- */
-module.exports.legacyCreate = async function(ws, req, user, webstrateId, data) {
-	await logSession(ws, req);
-
-	// Like commit: a message naming a webstrate other than the socket's own
-	// resolves the user through an access token for that webstrate.
-	if (req.params.webstrateId !== webstrateId) {
-		const tokenUser = permissionManager.getUserFromAccessToken(webstrateId,
-			req.query.token);
-		if (!tokenUser) {
-			return ws.send(JSON.stringify({ a: 'op', c: 'webstrates', d: webstrateId,
-				seq: data.seq, error: 'Forbidden' }));
-		}
-		user = tokenUser;
-	}
-
-	const response = { a: 'op', c: 'webstrates', d: webstrateId, seq: data.seq };
-	try {
-		const handle = documentStore.getHandle(webstrateId);
-		try {
-			if (handle.revision > 0) throw new Error('Document already exists.');
-
-			if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
-				throw new Error('Must be logged in to create a webstrate.');
-			}
-
-			response.v = handle.fromJsonML(data.create.data, user.userId,
-				req.socketId);
-
-			// Post-create bookkeeping like commit. No broadcast: a legacy
-			// create replaces an empty document, so there is nobody
-			// subscribed to its op stream yet.
-			snapshotCacheManager.scheduleRebuild(webstrateId);
-		} finally {
-			documentStore.releaseHandle(webstrateId);
-		}
-	} catch (err) {
-		console.error(`documentMiddleware: legacyCreate on ${webstrateId} failed:`,
-			err.message);
-		response.error = err.message;
-	}
-	ws.send(JSON.stringify(response));
-};
-
-/**
  * fetchStructure: brotli-compressed {v, struct, state} of the document —
  * the clean-rebuild fallback for clients whose parsed DOM disagrees with the
  * server's structure, and the eid source for versioned/tagged live loads

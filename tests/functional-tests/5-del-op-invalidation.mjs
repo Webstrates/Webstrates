@@ -57,31 +57,24 @@ describe('Deletion invalidation', function() {
 	});
 
 	before(async function() {
-		// Seed the webstrate through the legacy create shim — a document
-		// exists once its first commit lands (the same way old tooling and
-		// the fuzz suite seed documents).
+		// Seed the webstrate through a base-0 wire commit — the native
+		// bootstrap (html, head and body carry eids 1-3, plus the seeded
+		// body text), the same way the browser client creates documents.
 		const ws = new WebSocket(wsAddress);
 		await new Promise((resolve, reject) => {
 			ws.on('open', resolve);
 			ws.on('error', reject);
 		});
-		const create = { a: 'op', c: 'webstrates', d: webstrateId, v: 0, seq: 1,
-			create: { type: 'http://sharejs.org/types/JSONv0',
-				data: ['html', {}, ['head'], ['body', {}, 'seeded']] } };
-		ws.send(JSON.stringify(create));
-		await new Promise((resolve, reject) => {
-			const on = (data) => {
-				const parsed = JSON.parse(data.toString());
-				if (parsed.a === 'op' && parsed.d === webstrateId && !parsed.error) {
-					ws.off('message', on);
-					resolve(parsed);
-				} else if (parsed.a === 'op' && parsed.d === webstrateId && parsed.error) {
-					ws.off('message', on);
-					reject(new Error('legacy create failed: ' + parsed.error));
-				}
-			};
-			ws.on('message', on);
-		});
+		const create = await sendAndAwaitReply(ws, {
+			wa: 'commit', d: webstrateId, base: 0, token: 'create',
+			ops: [
+				{ k: 'sa', p: 0, i: 0, e: 1, t: 1, n: 'html' },
+				{ k: 'sa', p: 1, i: 0, e: 2, t: 1, n: 'head' },
+				{ k: 'sa', p: 1, i: 1, e: 3, t: 1, n: 'body' },
+				{ k: 'sa', p: 3, i: 0, e: 4, t: 3, n: null },
+				{ k: 'aa', e: 4, n: null, v: 'seeded' }
+			] });
+		assert.isNotOk(create.error, 'create commit failed: ' + JSON.stringify(create.error));
 		ws.close();
 
 		// Issue an access token (POST token=<seconds>) for the webstrate.

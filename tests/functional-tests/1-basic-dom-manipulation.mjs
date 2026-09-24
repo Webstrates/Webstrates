@@ -6,8 +6,12 @@ import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
 
-const createWebstrateOnRawSocket = (page, webstrateId, data) =>
-	page.evaluate((id, data) => new Promise((resolve) => {
+// Create a webstrate through the native wire protocol: a base-0 commit
+// growing the empty mirror, exactly the way the browser client bootstraps a
+// fresh document (see createDocV2 in the fuzzing suite — html, head and body
+// carry eids 1-3, everything else mints its own).
+const createWebstrateOnRawSocket = (page, webstrateId, ops) =>
+	page.evaluate((id, ops) => new Promise((resolve) => {
 		const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
 		const finish = (error) => {
 			try { socket.close(); } catch (e) {}
@@ -15,16 +19,29 @@ const createWebstrateOnRawSocket = (page, webstrateId, data) =>
 		};
 		setTimeout(() => finish('timeout'), 5000);
 		socket.onopen = () => socket.send(JSON.stringify({
-			a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
-			create: { type: 'http://sharejs.org/types/JSONv0', data: data }
+			wa: 'commit', d: id, base: 0, token: 'create', ops
 		}));
 		socket.onerror = () => finish('websocket error');
 		socket.onmessage = (event) => {
 			const message = JSON.parse(event.data);
-			if (message.wa || message.a === 'init') return;
-			finish(message.error ? 'Create failed: ' + JSON.stringify(message.error) : null);
+			if (message.wa === 'reply' && message.token === 'create') {
+				finish(message.error ? 'Create failed: ' + JSON.stringify(message.error) : null);
+			}
 		};
-	}), webstrateId, data);
+	}), webstrateId, ops);
+
+// Wire-op shorthands for the shells below. sa grows the tree (p parent, i
+// index, e fresh eid, t 1=element / 3=text), aa writes attributes (n null =
+// the node's content).
+const shell = (htmlEid = 1, headEid = 2, bodyEid = 3) => [
+	{ k: 'sa', p: 0, i: 0, e: htmlEid, t: 1, n: 'html' },
+	{ k: 'sa', p: htmlEid, i: 0, e: headEid, t: 1, n: 'head' },
+	{ k: 'sa', p: htmlEid, i: 1, e: bodyEid, t: 1, n: 'body' }
+];
+const textUnder = (parentEid, index, eid, value) => [
+	{ k: 'sa', p: parentEid, i: index, e: eid, t: 3, n: null },
+	{ k: 'aa', e: eid, n: null, v: value }
+];
 
 describe('Basic DOM Manipulation', function() {
 	this.timeout(10000);
@@ -173,18 +190,22 @@ describe('Basic DOM Manipulation', function() {
 		assert.isTrue(titleSynced);
 	});
 
-	const copySourceData = ['html', {}, ['head', {}, ['title', {}, 'Copied title']],
-		['body', {}, 'Copy me']];
+	// html > head > title > 'Copied title', body > 'Copy me' — the copy source
+	// every test below reuses.
+	const copySourceOps = [
+		...shell(),
+		{ k: 'sa', p: 2, i: 0, e: 4, t: 1, n: 'title' },
+		...textUnder(4, 0, 5, 'Copied title'),
+		...textUnder(3, 0, 6, 'Copy me')
+	];
 
-	it('copying into an empty document whose body element has no attribute object should ' +
-		'replace it', async () => {
+	it('copying into an empty document should replace it', async () => {
 		const sourceId = 'test-' + util.randomString();
 		const destinationId = 'test-' + util.randomString();
 
-		let error = await createWebstrateOnRawSocket(pageA, sourceId, copySourceData);
+		let error = await createWebstrateOnRawSocket(pageA, sourceId, copySourceOps);
 		assert.isNull(error, `creating source failed: ${error}`);
-		error = await createWebstrateOnRawSocket(pageA, destinationId,
-			['html', {}, ['head', {}], ['body']]);
+		error = await createWebstrateOnRawSocket(pageA, destinationId, shell());
 		assert.isNull(error, `creating destination failed: ${error}`);
 
 		await pageA.goto(config.server_address + sourceId + '/?copy=' + destinationId,
@@ -202,18 +223,19 @@ describe('Basic DOM Manipulation', function() {
 			{ waitUntil: 'domcontentloaded' });
 	});
 
-	it('copying into a non-empty document whose body element has no attribute object ' +
-		'should fail', async () => {
-		// A body without an attribute object can also carry content, in which case the
-		// document isn't an empty shell: the copy must be refused instead of silently
-		// replacing the destination.
+	it('copying into a document whose body carries content should fail', async () => {
+		// In the JsonML days ['body', 42] could pose as a bare shell (the
+		// attribute slot holding a number instead of an object); on the wire
+		// every body child is plainly content, and content means the
+		// destination is not an empty shell: the copy must be refused instead
+		// of silently replacing the document.
 		const sourceId = 'test-' + util.randomString();
 		const destinationId = 'test-' + util.randomString();
 
-		let error = await createWebstrateOnRawSocket(pageA, sourceId, copySourceData);
+		let error = await createWebstrateOnRawSocket(pageA, sourceId, copySourceOps);
 		assert.isNull(error, `creating source failed: ${error}`);
 		error = await createWebstrateOnRawSocket(pageA, destinationId,
-			['html', {}, ['head', {}], ['body', 42]]);
+			[...shell(), ...textUnder(3, 0, 4, '42')]);
 		assert.isNull(error, `creating destination failed: ${error}`);
 
 		await pageA.goto(config.server_address + sourceId + '/?copy=' + destinationId,
@@ -232,37 +254,41 @@ describe('Basic DOM Manipulation', function() {
 
 	it('removing attributes and elements from an empty webstrate should keep it empty',
 		async function() {
-			// An empty webstrate is an html shell of head and body elements carrying
-			// nothing but their webstrate ids, with an optional title. Any combination of
-			// removed attributes and elements must leave it empty — copying into it still
-			// replaces it.
+			// An empty webstrate is an html shell of head and body elements with
+			// nothing but their element ids (eids) and an optional title. Any
+			// combination of removed elements must leave it empty — copying into it
+			// still replaces it. The eid dimension replaces the old __wid one: in the
+			// JsonML model identity lived in an attribute (a shell could carry
+			// __wids and still count as empty); here identity is the eid itself,
+			// invisible to the emptiness check — so a shell minted with arbitrary
+			// eids is as empty as the canonical 1-2-3 shell.
 			this.timeout(60000);
 
 			const sourceId = 'test-' + util.randomString();
-			const createError = await createWebstrateOnRawSocket(pageA, sourceId, copySourceData);
+			const createError = await createWebstrateOnRawSocket(pageA, sourceId, copySourceOps);
 			assert.isNull(createError, `creating source failed: ${createError}`);
 
-			const attrs = (wid) => wid ? { __wid: 'testWid' } : {};
 			const shells = [];
-			for (const headState of ['none', 'empty', 'title']) {
-				for (const headWid of headState === 'none' ? [false] : [false, true]) {
-					for (const titleWid of headState === 'title' ? [false, true] : [false]) {
-						for (const bodyState of ['none', 'empty']) {
-							for (const bodyWid of bodyState === 'none' ? [false] : [false, true]) {
-								for (const htmlWid of [false, true]) {
-									const doc = ['html', attrs(htmlWid)];
-									if (headState !== 'none') {
-										const head = ['head', attrs(headWid)];
-										if (headState === 'title')
-											head.push(['title', attrs(titleWid), 'New Codestrate']);
-										doc.push(head);
-									}
-									if (bodyState === 'empty')
-										doc.push(['body', attrs(bodyWid)]);
-									shells.push(doc);
-								}
+			for (const eidBase of [0, 100]) {
+				for (const headState of ['none', 'empty', 'title']) {
+					for (const bodyState of ['none', 'empty']) {
+						const htmlEid = eidBase + 1, headEid = eidBase + 2,
+							bodyEid = eidBase + 3;
+						const ops = [{ k: 'sa', p: 0, i: 0, e: htmlEid, t: 1, n: 'html' }];
+						if (headState !== 'none') {
+							ops.push({ k: 'sa', p: htmlEid, i: 0, e: headEid, t: 1, n: 'head' });
+							if (headState === 'title') {
+								ops.push({ k: 'sa', p: headEid, i: 0, e: eidBase + 4,
+									t: 1, n: 'title' },
+								...textUnder(eidBase + 4, 0, eidBase + 5, 'New Codestrate'));
 							}
 						}
+						if (bodyState === 'empty') {
+							ops.push({ k: 'sa', p: htmlEid,
+								i: headState === 'none' ? 0 : 1, e: bodyEid, t: 1,
+								n: 'body' });
+						}
+						shells.push(ops);
 					}
 				}
 			}
@@ -292,12 +318,17 @@ describe('Basic DOM Manipulation', function() {
 		// than a single title, mean the document isn't an empty shell: the copy must be
 		// refused instead of silently replacing the destination.
 		const sourceId = 'test-' + util.randomString();
-		const createError = await createWebstrateOnRawSocket(pageA, sourceId, copySourceData);
+		const createError = await createWebstrateOnRawSocket(pageA, sourceId, copySourceOps);
 		assert.isNull(createError, `creating source failed: ${createError}`);
 
+		// The wire counterparts of the old JsonML non-empty shells: an html
+		// carrying an attribute, and a head holding more than a single title.
 		const nonEmptyShells = [
-			['html', { lang: 'en' }, ['head', {}], ['body', {}]],
-			['html', {}, ['head', {}, ['title', {}, 'T'], ['meta', {}]], ['body', {}]]
+			[...shell(), { k: 'aa', e: 1, i: 0, n: 'lang', v: 'en' }],
+			[...shell(),
+				{ k: 'sa', p: 2, i: 0, e: 4, t: 1, n: 'title' },
+				...textUnder(4, 0, 5, 'T'),
+				{ k: 'sa', p: 2, i: 1, e: 7, t: 1, n: 'meta' }]
 		];
 
 		for (const doc of nonEmptyShells) {

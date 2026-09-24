@@ -37,28 +37,26 @@ function notifyCommit(webstrateId, handle, result) {
  * not to be prototyped off of another document, we don't actually create the
  * document — we just return a new id. The document is created when first
  * visited (client bootstrap) or by the first prototype commit.
- * @param {string}   webstrateId         WebstrateId (name of new document).
- * @param {string}   options.prototypeId Name of the webstrate to base the prototype on.
- * @param {string}   options.version     Version of the prototype.
- * @param {string}   options.tag         Tag of the prototype. Either tag or version.
- * @param {Snapshot} options.snapshot    JsonML snapshot to create from (the REST
- *                                       ingest paths: zip import, remote prototype).
- * @return {string}                      (async) Name of new webstrate.
+ * @param {string} webstrateId         WebstrateId (name of new document).
+ * @param {string} options.prototypeId Name of the webstrate to base the prototype on.
+ * @param {string} options.version     Version of the prototype.
+ * @param {string} options.tag         Tag of the prototype. Either tag or version.
+ * @param {string} options.html       HTML to create from (the REST ingest
+ *                                     paths: zip import, remote prototype).
+ * @return {string}                    (async) Name of new webstrate.
  * @public
  */
 module.exports.createNewDocument = async function({ webstrateId, prototypeId, version, tag,
-	snapshot }) {
-	// The REST ingest paths still hand a freshly parsed JsonML snapshot; it
-	// becomes the initial commit as before (see fromJsonML).
-	if (snapshot) {
-		if (!snapshot.type) throw new Error('Snapshot has no type.');
+	html, label }) {
+	// The REST ingest paths hand the raw HTML; it becomes the initial commit
+	// through the parse-and-ingest path (see fromHtml).
+	if (html !== undefined) {
 		const handle = documentStore.getHandle(webstrateId);
 		try {
 			if (handle.revision > 0) throw new Error('Webstrate already exists.');
-			const createdVersion = handle.fromJsonML(snapshot.data, 'server', 'prototype');
-			if (snapshot.label || snapshot.tag) {
-				await module.exports.tagDocument(webstrateId, createdVersion,
-					snapshot.label || snapshot.tag);
+			const createdVersion = handle.fromHtml(html, 'server', 'prototype');
+			if (label || tag) {
+				await module.exports.tagDocument(webstrateId, createdVersion, label || tag);
 			}
 			return webstrateId;
 		} finally {

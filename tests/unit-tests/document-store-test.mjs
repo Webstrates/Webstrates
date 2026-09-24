@@ -57,6 +57,52 @@ const mirrorToJsonML = (nodes) => {
 
 const wid = () => `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
+// A canonical empty shell — the shape the browser client bootstraps.
+const SHELL_HTML = '<html><head></head><body></body></html>';
+
+// Seed a mirror from a JsonML tree through wire ops (sa/aa) — the way the
+// unstable, parser-impossible documents of the normalizer corpus actually
+// arise in production: a client commits structure the HTML parser could
+// never produce. Canonical documents seed through fromHtml instead (which
+// always yields the browser-canonical mirror, because parse5 runs first).
+const jmlToOps = (jml) => {
+	let nextId = 1;
+	const ops = [];
+	const kidCount = new Map([[0, 0]]);
+	const nextIndex = (parent) => {
+		const i = kidCount.get(parent) || 0;
+		kidCount.set(parent, i + 1);
+		return i;
+	};
+	const walk = (node, parent) => {
+		if (typeof node === 'string') {
+			const e = nextId++;
+			ops.push({ k: 'sa', p: parent, i: nextIndex(parent), e, t: NODE_TEXT, n: null });
+			ops.push({ k: 'aa', e, n: null, v: node });
+			return;
+		}
+		if (node[0] === '!') {
+			const e = nextId++;
+			ops.push({ k: 'sa', p: parent, i: nextIndex(parent), e, t: NODE_COMMENT, n: null });
+			ops.push({ k: 'aa', e, n: null, v: node[1] });
+			return;
+		}
+		const e = nextId++;
+		ops.push({ k: 'sa', p: parent, i: nextIndex(parent), e, t: NODE_ELEMENT, n: node[0] });
+		const attrs = node[1] && !Array.isArray(node[1]) ? node[1] : null;
+		let attrPos = 0;
+		for (const [name, value] of Object.entries(attrs || {})) {
+			ops.push({ k: 'aa', e, i: attrPos++, n: name, v: value });
+		}
+		const kids = attrs ? node.slice(2) : node.slice(1);
+		for (const kid of kids) walk(kid, e);
+	};
+	walk(jml, 0);
+	return ops;
+};
+const seedJml = (handle, jml) => handle.applyCommit({ base: handle.revision,
+	ops: jmlToOps(jml), userId: 'test-user', source: 'test' });
+
 describe('DocumentStore (SQLite document engine)', function() {
 	this.timeout(20000);
 
@@ -72,16 +118,25 @@ describe('DocumentStore (SQLite document engine)', function() {
 			const id = wid();
 			assert.isFalse(store.exists(id));
 			const h = store.getHandle(id);
-			h.fromJsonML(['html', {}, ['head', {}], ['body', {}]], 'test-user', 'test');
+			h.fromHtml(SHELL_HTML, 'test-user', 'test');
 			assert.isTrue(store.exists(id));
 			store.releaseHandle(id);
 		});
 	});
 
-	describe('bootstrap from JsonML', function() {
-		// Canonical JsonML: every element carries an attrs object at index 1,
-		// attribute values escaped and names &dot;-encoded (as the old
-		// ShareDB/JsonML snapshots did).
+	describe('bootstrap from HTML (the ingest path)', function() {
+		// The REST ingest path: zip import and remote prototypes hand raw
+		// HTML to fromHtml, which parses it with parse5 and commits the
+		// browser-canonical mirror. This source round-trips to the same
+		// JsonML the old snapshots carried (entities decode on ingest;
+		// mirrorToJsonML re-escapes attributes on the way out).
+		const source = '<html lang="en" data-protected="all">'
+			+ '<head><title>Hello &amp; "world"</title></head>'
+			+ '<body class="wide">'
+			+ '<p id="p1">Some <b>bold</b> text</p>'
+			+ '<!-- a comment -->'
+			+ '<script type="text/javascript">console.log(1);</script>'
+			+ '</body></html>';
 		const jml = ['html', {lang: 'en', 'data-protected': 'all'},
 			['head', {}, ['title', {}, 'Hello & "world"']],
 			['body', {class: 'wide'},
@@ -93,13 +148,13 @@ describe('DocumentStore (SQLite document engine)', function() {
 		let h;
 		before(function() {
 			h = store.getHandle(wid());
-			h.fromJsonML(jml, 'test-user', 'test');
+			h.fromHtml(source, 'test-user', 'test');
 		});
 		after(function() {
 			store.releaseHandle(h.id);
 		});
 
-		it('round-trips JsonML in the escaped canonical form', function() {
+		it('ingests to the canonical JsonML mirror', function() {
 			assert.deepEqual(mirrorToJsonML(h.nodes), jml);
 		});
 
@@ -195,9 +250,8 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('a stable document produces no ops and sets the stable flag', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
-				['body', {}, ['p', {}, 'plain ', ['b', {}, 'text']]]],
-				'test-user', 'test');
+			seedJml(h, ['html', {}, ['head', {}],
+				['body', {}, ['p', {}, 'plain ', ['b', {}, 'text']]]]);
 			const before = h.revision;
 			const { ops } = paintNormalizer.diffOps(h);
 			assert.equal(ops.length, 0, JSON.stringify(ops));
@@ -209,10 +263,9 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('table>tr normalizes to tbody, preserving eids and minting the tbody', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
+			seedJml(h, ['html', {}, ['head', {}],
 				['body', {}, ['table', {id: 't'},
-					['tr', {}, ['td', {}, 'cell']]]]],
-				'test-user', 'test');
+					['tr', {}, ['td', {}, 'cell']]]]]);
 			// The td's eid must survive the move into the synthesized tbody.
 			const tdSa = h.allCommits()[0].ops.find((op) => op.k === 'sa'
 				&& op.n === 'td');
@@ -240,9 +293,8 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('adjacent text nodes merge into one (one commit, converges)', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
-				['body', {}, ['p', {}, 'a', 'b']]], // two adjacent texts
-				'test-user', 'test');
+			seedJml(h, ['html', {}, ['head', {}],
+				['body', {}, ['p', {}, 'a', 'b']]]); // two adjacent texts
 			assert.isAbove(paintNormalizer.diffOps(h).ops.length, 0);
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
 			assert.equal(paintNormalizer.diffOps(h).ops.length, 0);
@@ -253,9 +305,8 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('template-with-text is natively stable (no v1 fetchStructure case)', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
-				['body', {}, ['template', {id: 'tpl'}, 'tpl ', ['i', {}, 'inner'], ' text']]],
-				'test-user', 'test');
+			seedJml(h, ['html', {}, ['head', {}],
+				['body', {}, ['template', {id: 'tpl'}, 'tpl ', ['i', {}, 'inner'], ' text']]]);
 			const { ops } = paintNormalizer.diffOps(h);
 			assert.equal(ops.length, 0, JSON.stringify(ops));
 			store.releaseHandle(h.id);
@@ -263,9 +314,8 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('a comment carrying --> normalizes (content truncates like the browser)', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
-				['body', {}, ['p', {}, 'x'], ['!', 'a-->b'], ['p', {}, 'y']]],
-				'test-user', 'test');
+			seedJml(h, ['html', {}, ['head', {}],
+				['body', {}, ['p', {}, 'x'], ['!', 'a-->b'], ['p', {}, 'y']]]);
 			// The wire carries the comment verbatim; the parser terminates
 			// it at --> — exactly what a browser would do.
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
@@ -279,10 +329,9 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('text inside a table is fostered before it (browser-canonical move)', function() {
 			const h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}],
+			seedJml(h, ['html', {}, ['head', {}],
 				['body', {}, ['table', {}, 'fostered',
-					['tbody', {}, ['tr', {}, ['td', {}, 'c']]]]]],
-				'test-user', 'test');
+					['tbody', {}, ['tr', {}, ['td', {}, 'c']]]]]]);
 			const { ops } = paintNormalizer.diffOps(h);
 			assert.isAbove(ops.length, 0); // the text must move out
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
@@ -298,8 +347,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		let h;
 		before(function() {
 			h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}], ['body', {}, ['p', {}, 'hi']]],
-				'u1', 's1');
+			h.fromHtml('<html><head></head><body><p>hi</p></body></html>', 'u1', 's1');
 		});
 		after(function() {
 			store.releaseHandle(h.id);
@@ -446,7 +494,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		it('shifts a position-form sr under a concurrent insert, voids on the same slot', function() {
 			const hh = store.getHandle(wid());
-			hh.fromJsonML(['html', {}, ['head', {}], ['body', {}]], 'u', 's');
+			hh.fromHtml(SHELL_HTML, 'u', 's');
 			const bodyEid = hh.allCommits()[0].ops
 				.find((op) => op.k === 'sa' && op.n === 'body').e;
 			hh.applyCommit({base: hh.revision, ops: [
@@ -529,7 +577,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// Self-contained document: body > p(span>"text", data-x) + div.
 			const id = wid();
 			const hh = store.getHandle(id);
-			hh.fromJsonML(['html', {}, ['head', {}], ['body', {}]], 'u', 's');
+			hh.fromHtml(SHELL_HTML, 'u', 's');
 			const bodyEid = hh.allCommits()[0].ops
 				.find((op) => op.k === 'sa' && op.n === 'body').e;
 			hh.applyCommit({base: hh.revision, ops: [
@@ -613,7 +661,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			this.timeout(30000);
 			const id = wid();
 			const hh = store.getHandle(id);
-			hh.fromJsonML(['html', {}, ['head', {}], ['body', {}]], 'u', 's');
+			hh.fromHtml(SHELL_HTML, 'u', 's');
 			const bodyEid = hh.allCommits()[0].ops
 				.find((op) => op.k === 'sa' && op.n === 'body').e;
 			const ops = [];
@@ -644,7 +692,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		let h;
 		before(function() {
 			h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}], ['body', {}, ['p', {}, 'one']]],
+			h.fromHtml('<html><head></head><body><p>one</p></body></html>',
 				'u1', 's1');
 		});
 		after(function() {
@@ -805,8 +853,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		let h;
 		before(function() {
 			h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}], ['body', {}, ['p', {}, 'hi']]],
-				'u1', 's1');
+			h.fromHtml('<html><head></head><body><p>hi</p></body></html>', 'u1', 's1');
 		});
 		after(function() {
 			store.releaseHandle(h.id);
@@ -898,7 +945,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		let h;
 		before(function() {
 			h = store.getHandle(wid());
-			h.fromJsonML(['html', {}, ['head', {}], ['body', {}]], 'u1', 's1');
+			h.fromHtml(SHELL_HTML, 'u1', 's1');
 		});
 		after(function() {
 			store.releaseHandle(h.id);

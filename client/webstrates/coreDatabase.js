@@ -2769,12 +2769,63 @@ function handleAck(entry, error, reply) {
 const rediffTimers = new WeakMap();
 
 /**
+ * Whether an id-allocation failure means the server refuses our writes
+ * rather than being transiently unavailable. The allocids handler rejects
+ * read-only clients with this message (see documentMiddleware); such a
+ * denial holds for as long as the document's permissions do, so held edits
+ * can never commit and must be reverted instead of retried.
+ * @param {Error} err Refill rejection.
+ * @return {bool}     True when the client lacks write permission.
+ * @private
+ */
+const isWriteDenial = (err) => err && typeof err.message === 'string'
+	&& err.message.includes('Insufficient write permissions');
+
+/**
+ * Revert a text/comment node to the model's string for it (the last known
+ * server state). Used for edits that were held back and can never be
+ * committed: the held edit never entered the model, so the DOM is the only
+ * place it lives — resetting the data to the model value makes the next
+ * model-vs-live diff on the node a no-op. The .data assignment fires a
+ * characterData mutation whose diff produces no ops (model and DOM agree
+ * again), so this converges after one cycle.
+ * @param {DOMNode} node Text or comment node.
+ * @return {bool}     Whether the node is back at model state.
+ * @private
+ */
+function revertNodeToModel(node) {
+	if (!node || node.nodeType === document.ELEMENT_NODE
+		|| !nodeAttached(node)) return false;
+	// A pending op-compose diff would resurrect the reverted edit on the
+	// next characterData mutation — drop it so the diff starts from the
+	// model truth.
+	delete node.futureContents;
+	const pathNode = corePathTree.getPathNode(node);
+	if (!pathNode) return false;
+	let modelValue;
+	try {
+		modelValue = exports.elementAtPath(pathNode.toPath());
+	} catch { return false; }
+	// Comments live in the JsonML as ['!', data] arrays; the node's path
+	// resolves to the array, so unwrap to the data string.
+	if (Array.isArray(modelValue) && modelValue[0] === '!') {
+		modelValue = modelValue[1];
+	}
+	if (typeof modelValue !== 'string') return false;
+	node.data = modelValue;
+	return true;
+}
+
+/**
  * Re-run the string diff for nodes whose edits were held back for lack of
  * element ids, once the id pool has refilled. The synthetic characterData
  * mutation goes through the ordinary creator pipeline (which diffs the
  * model against the live DOM), so the re-emitted ops carry current offsets
  * and land in the string log as pendings. On a failed refill (the server
- * may be unreachable) retry on a timer instead.
+ * may be unreachable) retry on a timer instead — unless the server denied
+ * the allocation for lack of write permission: then the edit can never be
+ * committed, so revert it on the DOM (it never entered the model) and
+ * surface the rejection rather than retrying forever.
  * @param {Set<DOMNode>} nodes Starved text/comment nodes.
  * @private
  */
@@ -2786,7 +2837,21 @@ function scheduleStarvedRediff(nodes) {
 				{ type: 'characterData', target: node });
 		}
 	};
-	Promise.resolve(coreIds.refill(2, 32)).then(reemit, () => {
+	Promise.resolve(coreIds.refill(2, 32)).then(reemit, (err) => {
+		if (isWriteDenial(err)) {
+			for (const node of nodes) {
+				if (!revertNodeToModel(node)) {
+					console.warn('coreDatabase: a held edit could not be'
+						+ ' reverted (its node is no longer modeled).');
+				}
+			}
+			const dbError = { data: { a: 'op' },
+				message: 'Edit rejected: no write permission to allocate'
+					+ ' element ids.' };
+			coreEvents.triggerEvent('databaseError', dbError);
+			docListeners.error.forEach((listener) => listener(dbError));
+			return;
+		}
 		for (const node of nodes) {
 			if (rediffTimers.has(node)) continue;
 			rediffTimers.set(node, setTimeout(() => {
@@ -3124,13 +3189,37 @@ async function pump() {
 		const entry = pendingCommits[0];
 		const budget = estimateIdBudget(entry.ops);
 		if (!coreIds.ensureIds(budget)) {
+			let allocError = null;
 			try {
 				await coreIds.refill(budget, budget);
-			} catch (err) { /* fail the commit below */ }
+			} catch (err) { allocError = err; }
 			if (!coreIds.ensureIds(budget)) {
+				// The ids could not be allocated (the server refused, or is
+				// unreachable): the entry dies — but its ops were already
+				// applied to the model and the DOM at submit time, and
+				// dropping them silently would leave both permanently
+				// diverged from the server (every later diff would trust
+				// the lie). Roll the entry back to the last server state,
+				// exactly like a rejected commit.
 				pendingCommits.shift();
+				const inverse = invertOps(entry.ops);
+				try {
+					applyToModel(stripAnnotations(inverse));
+				} catch (err) { /* model diverged; a later resync rebuilds */ }
+				applyOpsSilently(inverse);
+				for (const [key, log] of stringLogs) {
+					log.pending = log.pending.filter((edit) =>
+						edit.entryId !== entry.id);
+					let hasLive = false;
+					for (const edit of log.pending) {
+						if (!edit.baked) { hasLive = true; break; }
+					}
+					if (!hasLive && !log.keep) stringLogs.delete(key);
+				}
 				const dbError = { data: { a: 'op', op: entry.ops },
-					message: 'Could not allocate element ids.' };
+					message: allocError
+						? `Could not allocate element ids: ${allocError.message}`
+						: 'Could not allocate element ids.' };
 				coreEvents.triggerEvent('databaseError', dbError);
 				docListeners.error.forEach((listener) => listener(dbError));
 				signalQueueDrained();

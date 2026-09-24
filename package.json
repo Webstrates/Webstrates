@@ -51,11 +51,9 @@
     "express": "5.2.1",
     "express-ws": "5.0.2",
     "graceful-fs": "4.2.11",
-    "html-to-jsonml": "0.0.6",
     "http-auth": "4.2.1",
     "human-readable-ids": "1.0.4",
     "json0-ot-diff": "1.1.2",
-    "jsonml-tools": "git+http://github.com/Webstrates/jsonml-tools.git#master",
     "md5-file": "^5.0.0",
     "mime-types": "3.0.2",
     "minimist": "1.2.8",
@@ -83,7 +81,6 @@
     "mocha": "^12.0.1",
     "passport-local": "1.0.0",
     "puppeteer": "^25.11.0",
-    "sharedb": "6.0.3",
     "webpack-cli": "^7.2.3"
   }
 }

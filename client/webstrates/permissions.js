@@ -24,7 +24,7 @@ if (!coreUtils.getLocationObject().staticMode) {
 	loadedEvent.delayUntil('globalPermissions', 'userPermissions');
 
 	const websocket = coreWebsocket.copy((event) => event.data.startsWith('{"wa":'));
-	let doc, username, provider, userPermissions, defaultPermissionsList, permissionsList;
+	let username, provider, userPermissions, defaultPermissionsList, permissionsList;
 
 	Object.defineProperty(userObject.publicObject, 'permissions', {
 		get: () => userPermissions,
@@ -64,11 +64,22 @@ if (!coreUtils.getLocationObject().staticMode) {
 		return anonymous ? anonymous.permissions : '';
 	};
 
-	permissionsModule.getPermissionsFromDocument = doc => {
-		if (doc && doc.data && doc.data[0] && doc.data[0] === 'html' &&
-		doc.data[1] && doc.data[1]['data-auth']) {
+	permissionsModule.getPermissionsFromDocument = () => {
+		// The data-auth attribute is the source of truth — the server's own
+		// permission checks read it off the html element, and the DOM carries
+		// it on every population path. (This module once parsed the JsonML
+		// model instead, which broke on adopted pages: their model is
+		// derived from the DOM, where the html element's tagName is
+		// uppercase 'HTML', so the model's root never matched a
+		// data[0] === 'html' check.)
+		const dataAuth = document.documentElement.getAttribute('data-auth');
+		if (dataAuth) {
 			try {
-				const permissions = JSON.parse(doc.data[1]['data-auth'].replace(/'/g, '"')
+				// The same leniency the server applies (see
+				// PermissionManager.getPermissionsFromHeader): values may be
+				// authored in single-quoted JSON form with HTML-escaped
+				// quotes.
+				const permissions = JSON.parse(dataAuth.replace(/'/g, '"')
 					.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
 
 				if (!Array.isArray(permissions)) {
@@ -85,13 +96,12 @@ if (!coreUtils.getLocationObject().staticMode) {
 	};
 
 	/*
- * We need both doc, username, provider, permissionsList and defaultPermissionsList to be set before
+ * We need both username, provider, permissionsList and defaultPermissionsList to be set before
  * we can emit permission events, so we create two promises, and wait until both have been resolved.
  */
 	let receivedDocumentPromise = new Promise((accept) => {
-		coreEvents.addEventListener('receivedDocument', _doc => {
-			doc = _doc;
-			permissionsList = permissionsModule.getPermissionsFromDocument(doc);
+		coreEvents.addEventListener('receivedDocument', () => {
+			permissionsList = permissionsModule.getPermissionsFromDocument();
 			coreEvents.triggerEvent('globalPermissions', permissionsList);
 			userPermissions = permissionsModule.getUserPermissions(username, provider);
 			coreEvents.triggerEvent('userPermissions', userPermissions);
@@ -125,15 +135,16 @@ if (!coreUtils.getLocationObject().staticMode) {
 		
 
 	/**
-	 * Recalculates permissions and trigger permission events if permissions have changed.
-	 * @param  {[ops]} ops List of operations.
+	 * Recalculates permissions from the document's data-auth attribute and
+	 * triggers permission events if they have changed.
 	 * @private
 	 */
-	const handleOps = (ops) => {
-		if (!permissionsChanged(ops)) return;
+	const refreshPermissions = () => {
+		const newPermissionsList = permissionsModule.getPermissionsFromDocument();
+		if (coreUtils.objectEquals(permissionsList, newPermissionsList)) return;
 
 		let oldPermissionsList = permissionsList;
-		permissionsList = permissionsModule.getPermissionsFromDocument(doc);
+		permissionsList = newPermissionsList;
 		coreEvents.triggerEvent('globalPermissions', permissionsList);
 		globalObject.triggerEvent('permissionsChanged', permissionsList, oldPermissionsList);
 		const newUserPermissions = permissionsModule.getUserPermissions(username, provider);
@@ -143,9 +154,28 @@ if (!coreUtils.getLocationObject().staticMode) {
 		}
 	};
 
+	/**
+	 * Recalculates permissions and trigger permission events if operations
+	 * have changed them.
+	 * @param  {[ops]} ops List of operations.
+	 * @private
+	 */
+	const handleOps = (ops) => {
+		if (!permissionsChanged(ops)) return;
+
+		refreshPermissions();
+	};
+
 	Promise.all([receivedDocumentPromise, helloMessageReceivedPromise]).then(() => {
 		coreEvents.addEventListener('receivedOps', handleOps);
 		coreEvents.addEventListener('createdOps', handleOps);
+		// A clean rebuild replaces the whole DOM after receivedDocument
+		// fired (its listener runs with the old document still mounted, so
+		// the data-auth read above is stale): populated fires once the new
+		// DOM stands — re-read there. On every other population path the
+		// DOM was already final at receivedDocument and the re-read is a
+		// no-op.
+		coreEvents.addEventListener('populated', refreshPermissions);
 	});
 
 }
