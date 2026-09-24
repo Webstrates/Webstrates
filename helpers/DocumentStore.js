@@ -1524,47 +1524,7 @@ class Handle {
 		}
 	}
 
-	// -- JsonML ---------------------------------------------------------------------
-
-	/**
-	 * JsonML array for a mirror — in the ESCAPED canonical form the old
-	 * ShareDB/JsonML layers used (attribute values escaped, names &dot;-
-	 * encoded), so PermissionManager, ?json readers and the static-mode client
-	 * behave exactly as before.
-	 * @param  {Map}    nodes Mirror (default: current).
-	 * @return {JsonML}       JsonML tree ([] for the empty document).
-	 * @public
-	 */
-	toJsonML(nodes = this.nodes) {
-		const escapeValue = (v) => v && v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-		const escapeName = (v) => v && v.replace(/\./g, '&dot;');
-		const convert = (eid) => {
-			const node = nodes.get(eid);
-			if (!node) return null;
-			if (node.t === NODE_TEXT) {
-				const content = node.attrs[0];
-				return content ? content.v : '';
-			}
-			if (node.t === NODE_COMMENT) {
-				const content = node.attrs[0];
-				return ['!', content ? content.v : ''];
-			}
-			const attrs = {};
-			for (const attr of node.attrs) {
-				if (attr.n === null) continue;
-				attrs[escapeName(attr.n)] = escapeValue(attr.v);
-			}
-			const jml = [node.n, attrs];
-			for (const child of node.kids) {
-				const converted = convert(child);
-				if (converted !== null) jml.push(converted);
-			}
-			return jml;
-		};
-		const root = nodes.get(0);
-		if (!root || root.kids.length === 0) return [];
-		return convert(root.kids[0]) || [];
-	}
+	// -- JsonML ingest ---------------------------------------------------------------
 
 	/**
 	 * Bootstrap a document from a JsonML snapshot (create/copy/prototypeUrl/
@@ -1636,6 +1596,63 @@ class Handle {
 		walk(jsonml, 0);
 		// No transform: the ops are minted against the current head.
 		const result = this.applyCommit({ base: this.revision, ops, userId, source });
+		this.stmt.bumpNextId.run('nextId', nextId);
+		return result.v;
+	}
+
+	/**
+	 * Bootstrap this (empty) document as a copy of another handle's mirror at
+	 * a revision — the prototype path. Same mechanism as fromJsonML (one
+	 * synthetic commit of sa+aa ops, fresh eids minted for the new document),
+	 * but walking the source mirror directly: no JsonML round-trip, no
+	 * escaping, attribute order preserved from the source's own lists.
+	 * Returns the new revision.
+	 * @param {Handle} sourceHandle Handle of the document to copy.
+	 * @param {number} v            Revision to copy (default: its head).
+	 * @param {string} userId       Committing user.
+	 * @param {string} source       Source.
+	 * @return {number}             New revision of this handle.
+	 * @public
+	 */
+	copyFrom(sourceHandle, v = sourceHandle.revision, userId = 'server',
+		source = 'prototype') {
+		const nodes = v === sourceHandle.revision
+			? sourceHandle.nodes : sourceHandle.snapshotAt(v);
+		if (this.revision > 0) throw new Error('Webstrate already exists.');
+		if (nodes.get(0)?.kids.length === 0) {
+			throw new Error('Prototype webstrate doesn\'t exist.');
+		}
+		let nextId = 1;
+		const mint = () => nextId++;
+		const ops = [];
+		const kidCount = new Map([[0, 0]]);
+		const nextIndex = (parentEid) => {
+			const i = kidCount.get(parentEid) || 0;
+			kidCount.set(parentEid, i + 1);
+			return i;
+		};
+		const walk = (eid, parentEid) => {
+			const node = nodes.get(eid);
+			if (!node) return;
+			const e = mint();
+			ops.push({ k: 'sa', p: parentEid, i: nextIndex(parentEid), e, t: node.t,
+				n: node.t === NODE_ELEMENT ? String(node.n) : null });
+			let attrPos = 0;
+			for (const attr of node.attrs) {
+				if (attr.n === null) {
+					// Content rows carry no index: a text/comment node's single
+					// "attribute" is its content, at implicit position 0.
+					ops.push({ k: 'aa', e, n: null, v: attr.v });
+				} else {
+					// Attributes insert at successive local positions, in the
+					// source's own order.
+					ops.push({ k: 'aa', e, i: attrPos++, n: attr.n, v: attr.v });
+				}
+			}
+			for (const child of node.kids) walk(child, e);
+		};
+		walk(nodes.get(0).kids[0], 0);
+		const result = this.applyCommit({ base: 0, ops, userId, source });
 		this.stmt.bumpNextId.run('nextId', nextId);
 		return result.v;
 	}
@@ -1898,6 +1915,101 @@ class Handle {
 		} else {
 			tail.forEach((k) => serializeNode(k));
 		}
+		out.push('</html>');
+		return out.join('');
+	}
+
+	/**
+	 * Serialize a mirror as a plain, standalone HTML document — the ?raw and
+	 * ?dl (archive index.html) view: what the document looks like to a plain
+	 * browser with no webstrates client. No transport annotations at all: no
+	 * _ identities, no content prefixes, no neutered scripts, no temporary
+	 * head — scripts serialize their real type, text their own content, and
+	 * the document's html children (head, html-level nodes, body, tail) ride
+	 * in mirror order. Escaping follows the same context rules as the wire
+	 * serializer (RCDATA entity-escaped, raw text </name-safe, script
+	 * backslash-rewritten) so the served bytes re-parse to the same tree.
+	 * @param  {Map}    nodes Mirror (default: current).
+	 * @return {string}       HTML document ('' for the empty mirror).
+	 * @public
+	 */
+	toPlainHTML(nodes = this.nodes) {
+		const escapeAttr = (v) => String(v).replace(/&/g, '&amp;')
+			.replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+		const escapeRc = (v) => String(v).replace(/&/g, '&amp;').replace(/</g, '&lt;');
+		const escScript = (v) => String(v)
+			.replace(/<!--/g, '<\\!--')
+			.replace(/<script/gi, (m) => '<\\' + m.slice(1))
+			.replace(/<\/script/gi, (m) => '<\\/' + m.slice(2));
+		const escRaw = (name, v) => {
+			if (name === 'plaintext') return String(v);
+			if (name === 'script') return escScript(v);
+			return String(v).replace(new RegExp(`</${name}`, 'gi'),
+				(m) => '<\\/' + m.slice(2));
+		};
+
+		const root = nodes.get(0);
+		const htmlEid = root ? root.kids[0] : undefined;
+		if (htmlEid === undefined) return '';
+		const elementName = (eid) => {
+			const n = nodes.get(eid);
+			return n && n.t === NODE_ELEMENT ? String(n.n).toLowerCase() : null;
+		};
+
+		const openTag = (eid) => {
+			const node = nodes.get(eid);
+			const name = elementName(eid);
+			const attrStrs = [];
+			for (const attr of node.attrs) {
+				if (attr.n === null) continue;
+				attrStrs.push(`${escapeAttr(attr.n)}="${escapeAttr(attr.v)}"`);
+			}
+			return `<${name}${attrStrs.length ? ' ' + attrStrs.join(' ') : ''}>`;
+		};
+
+		const serializeNode = (eid) => {
+			const node = nodes.get(eid);
+			if (!node) return;
+			if (node.t === NODE_TEXT) {
+				const entry = node.attrs[0];
+				out.push(escapeRc(entry ? entry.v : ''));
+				return;
+			}
+			if (node.t === NODE_COMMENT) {
+				const entry = node.attrs[0];
+				out.push(`<!--${entry ? entry.v : ''}-->`);
+				return;
+			}
+			const name = elementName(eid);
+			if (VOID_ELEMENTS.has(name)) {
+				out.push(openTag(eid));
+				return;
+			}
+			out.push(openTag(eid));
+			if (RAW_TEXT_ELEMENTS.has(name) || RCDATA_ELEMENTS.has(name)) {
+				const esc = RCDATA_ELEMENTS.has(name) ? escapeRc
+					: (v) => escRaw(name, v);
+				for (const child of node.kids) {
+					const c = nodes.get(child);
+					if (!c) continue;
+					if (c.t === NODE_TEXT) {
+						const entry = c.attrs[0];
+						out.push(esc(entry ? entry.v : ''));
+					} else if (c.t === NODE_COMMENT) {
+						const entry = c.attrs[0];
+						out.push(`<!--${esc(entry ? entry.v : '')}-->`);
+					} else {
+						serializeNode(child); // element children ride as markup
+					}
+				}
+			} else {
+				for (const child of node.kids) serializeNode(child);
+			}
+			out.push(`</${name}>`);
+		};
+
+		const out = ['<!doctype html>\n', openTag(htmlEid)];
+		for (const child of nodes.get(htmlEid).kids) serializeNode(child);
 		out.push('</html>');
 		return out.join('');
 	}

@@ -372,11 +372,11 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 	});
 
 	// Set (or remove, when value is null) the root element's data-cors attribute through the
-	// real client, then wait for the change to reach the server's committed snapshot: ?json
-	// serves exactly the snapshot the CORS logic evaluates, and fetching right after the
-	// DOM change would race the op sync. The client HTML-escapes attribute values on their
-	// way into the snapshot (double quotes arrive as &quot;), so compare after the same
-	// un-escaping the server performs on data-cors.
+	// real client, then wait for the change to reach the server's committed mirror: ?raw
+	// serializes exactly the mirror the CORS logic evaluates, and fetching right after the
+	// DOM change would race the op sync. The serializer HTML-escapes attribute values
+	// (double quotes arrive as &quot;), so compare after the same un-escaping the server
+	// performs on data-cors.
 	const setDataCors = async (value) => {
 		await page.evaluate((attributeValue) => {
 			if (attributeValue === null) {
@@ -388,13 +388,14 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 		const unescape = (stored) => stored.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
 		const deadline = Date.now() + 5000;
 		while (Date.now() < deadline) {
-			const snapshot = await (await fetch(url + '?json')).json();
-			const stored = snapshot[1]['data-cors'];
+			const raw = await (await fetch(url + '?raw')).text();
+			const match = raw.match(/<html[^>]*\sdata-cors="([^"]*)"/);
+			const stored = match ? match[1] : undefined;
 			const unescaped = stored === undefined ? null : unescape(stored);
 			if (unescaped === value) return;
 			await util.sleep(0.25);
 		}
-		assert.fail(`data-cors change to ${JSON.stringify(value)} never reached the server snapshot`);
+		assert.fail(`data-cors change to ${JSON.stringify(value)} never reached the server mirror`);
 	};
 
 	// GET a document the way a cross-origin request would, and return the response status

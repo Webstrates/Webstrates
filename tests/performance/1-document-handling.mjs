@@ -36,8 +36,8 @@ const LARGE_LOADS = 7;    // large load ≈ 738 ms/doc → 7 × 738 ≈ 5.2 s
 const RELOADS = 40;        // reload ≈ 118 ms/doc → 40 × 118 ≈ 4.7 s
 // Snapshot fetches / getOps batches (sequential fetches per repetition).
 const FETCHES = {
-	small: { v: 600, json: 600 },          // ≈ 8.3 / 8.5 ms per fetch
-	large: { v: 300, json: 240, raw: 160 } // ≈ 17.3 / 21.2 / 31.5 ms per fetch
+	small: { v: 600, raw: 600 },   // ?json was removed with the JsonML wire; ?raw replaces it
+	large: { v: 300, raw: 160 }
 };
 const GETOPS = { small: 640, large: 160 }; // ≈ 7.8 / 32 ms per fetch
 
@@ -231,7 +231,7 @@ describe('Performance: document handling', function() {
 							// A benchmark must never time an error response (a 404 is
 							// faster than a real fetch, i.e. garbage data), and a
 							// dropped-and-recreated document answers ?v with version 0
-							// and ?json/?raw with an empty snapshot — fail loudly on
+							// and ?raw with an empty snapshot — fail loudly on
 							// both. (Caught a real incident 2026-09-17: a concurrent
 							// harness run dropped this run's shared test DB mid-batch,
 							// and 1600 fetches silently measured 404 latency.)

@@ -383,6 +383,26 @@ function jsonmlFromStructure(structure) {
 	return { jml, textMeta, node };
 }
 
+/**
+ * Build the fetched-document stand-in (the old snapshot shape {id, v, type,
+ * data}) from a fetchdoc structure reply. The reply is the eid-native
+ * {v, struct, state} rows; the JsonML keeps the user-facing fetch contract
+ * (static population, receivedDocument listeners) unchanged.
+ * @param {string} webstrateId The requested webstrateId.
+ * @param {object}  structure  {v, struct, state} fetchdoc reply.
+ * @return {object}            {id, v, type, data}.
+ * @private
+ */
+function fetchedDocFromStructure(webstrateId, structure) {
+	const { jml } = jsonmlFromStructure(structure);
+	return {
+		id: webstrateId,
+		v: structure.v,
+		type: structure.v > 0 ? TYPE_JSONv0 : null,
+		data: jml.length > 0 ? jml[0] : []
+	};
+}
+
 // ---------------------------------------------------------------------------
 // Outgoing translation: json0 ops (DOM-annotated) → wire ops
 // ---------------------------------------------------------------------------
@@ -4514,8 +4534,9 @@ exports.fetch = (webstrateId, tagOrVersion) => {
 
 		setVersionOrTag(msgObj, tagOrVersion);
 
-		coreWebsocket.send(msgObj, (err, doc) => {
+		coreWebsocket.send(msgObj, (err, structure) => {
 			if (err) return reject(err);
+			const doc = fetchedDocFromStructure(webstrateId, structure);
 			coreEvents.triggerEvent('receivedDocument', doc, { static: true });
 			resolve(doc);
 		}, { waitForOpen: true });

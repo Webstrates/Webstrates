@@ -7,7 +7,6 @@ const dns = require('dns');
 const fs = require('graceful-fs');
 const http = require('http');
 const https = require('https');
-const jsonmlTools = require('jsonml-tools');
 const htmlToJsonML = require('html-to-jsonml');
 const mime = require('mime-types');
 const multer = require('multer');
@@ -19,10 +18,9 @@ const tmp = require('tmp');
 const url = require('url');
 const yauzl = require('yauzl');
 const zlib = require('zlib');
-const SELFCLOSING_TAGS = ['area', 'base', 'br', 'col', 'embed', 'hr', 'img', 'input', 'keygen',
-	'link', 'menuitem', 'meta', 'param', 'source', 'track', 'wbr'];
 
 const documentManager = require(APP_PATH + '/helpers/DocumentManager.js');
+const documentStore = require(APP_PATH + '/helpers/DocumentStore.js');
 const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const niceWebstrateIds = require(APP_PATH + '/helpers/niceWebstrateIds.js');
@@ -518,25 +516,24 @@ function getHostFromUrl(urlString) {
 
 /**
  * Set CORS header on a response, assuming the requesting host is allowed it.
- * @param {obj} req         Request object.
- * @param {obj} res         Response object.
- * @param {JsonML} snapshot ShareDB document snapshot.
+ * @param {obj}    req    Request object.
+ * @param {obj}    res    Response object.
+ * @param {Header} header Document header.
  * @private
  */
-function setCorsHeaders(req, res, snapshot) {
+function setCorsHeaders(req, res, header) {
 	const originHost = getHostFromUrl(req.headers.origin);
 
-	if (!originHost || !snapshot || !snapshot.data || !snapshot.data[0] ||
-		snapshot.data[0] !== 'html' || !snapshot.data[1] || !snapshot.data[1]['data-cors']) {
+	if (!originHost || !header || !header.dataCors) {
 		return false;
 	}
 
 	let allowedDomains;
 	try {
-		allowedDomains = JSON.parse(snapshot.data[1]['data-cors'].replace(/'/g, '"')
+		allowedDomains = JSON.parse(header.dataCors.replace(/'/g, '"')
 			.replace(/&quot;/g, '"').replace(/&amp;/g, '&'));
 	} catch (err) {
-		console.warn('Couldn\'t parse cors settings for', snapshot.id);
+		console.warn('Couldn\'t parse cors settings for', header.id);
 		return false;
 	}
 
@@ -648,17 +645,17 @@ module.exports.requestHandler = async function(req, res) {
 			await invites.invitee.acceptInvite(req.params.webstrateId, req.query.acceptInvite, req.user);
 		}
 
-		const snapshot = await documentManager.getDocument({
+		const header = await documentManager.getDocumentHeader({
 			webstrateId: req.params.webstrateId,
 			version: req.params.version,
 			tag: req.params.tag
 		});
 
-		req.user.permissions = await permissionManager.getUserPermissionsFromSnapshot(req.user.username,
-			req.user.provider, snapshot);
+		req.user.permissions = await permissionManager.getUserPermissionsFromHeader(req.user.username,
+			req.user.provider, header);
 
 		// If the webstrate doesn't exist, write permissions are required to create it.
-		if (!snapshot.type && !req.user.permissions.includes('w')) {
+		if (!header.exists && !req.user.permissions.includes('w')) {
 			return res.status(403).send('Insufficient permissions. Write is required to create a new webstrate.');
 		}
 
@@ -669,7 +666,7 @@ module.exports.requestHandler = async function(req, res) {
 		}
 
 		// Set CORS header on a response, assuming the requesting host is allowed it.
-		setCorsHeaders(req, res, snapshot);
+		setCorsHeaders(req, res, header);
 
 		// Requesting an asset.
 		if (req.params.assetName) {
@@ -677,7 +674,7 @@ module.exports.requestHandler = async function(req, res) {
 				const asset = await assetManager.getAsset({
 					webstrateId: req.params.webstrateId,
 					assetName: req.params.assetName,
-					version: snapshot.v
+					version: header.v
 				});
 
 				if (!asset) {
@@ -758,7 +755,7 @@ module.exports.requestHandler = async function(req, res) {
 
 		// Requesting current document version number by calling `/<id>?v` or `/<id>?version`.
 		if ('v' in req.query || 'version' in req.query) {
-			return serveVersion(req, res, snapshot);
+			return serveVersion(req, res, header);
 		}
 
 		// Requesting a list of operations by calling `/<id>?ops`.
@@ -776,31 +773,22 @@ module.exports.requestHandler = async function(req, res) {
 			return serveAssets(req, res);
 		}
 
-		// Requesting a JsonML version of the webstrate by calling `/<id>?json`.
-		if ('json' in req.query) {
-			if (!snapshot.type) {
-				return res.status(404).send('Document doesn\'t exist.');
-			}
-
-			return serveJsonMLWebstrate(req, res, snapshot);
-		}
-
 		// Requesting a raw version of the webstrate (i.e. a server-generated HTML file) by calling
 		// `/<id>?raw`.
 		if ('raw' in req.query) {
-			if (!snapshot.type) {
+			if (!header.exists) {
 				return res.status(404).send('Document doesn\'t exist.');
 			}
 
-			return serveRawWebstrate(req, res, snapshot);
+			return serveRawWebstrate(req, res, header);
 		}
 
 		if ('dl' in req.query) {
-			if (!snapshot.type) {
+			if (!header.exists) {
 				return res.status(404).send('Document doesn\'t exist.');
 			}
 
-			return serveCompressedWebstrate(req, res, snapshot);
+			return serveCompressedWebstrate(req, res, header);
 		}
 
 		if ('tokens' in req.query) {
@@ -827,7 +815,7 @@ module.exports.requestHandler = async function(req, res) {
 			if (!defaultPermissions.includes('w')) {
 				return res.status(403).send('Write permissions are required to create a new document.');
 			}
-			return copyWebstrate(req, res, snapshot);
+			return copyWebstrate(req, res, header);
 		}
 
 		// Requesting to restore document to a previous version or tag by calling:
@@ -844,7 +832,7 @@ module.exports.requestHandler = async function(req, res) {
 				return res.status(403).send('Admin permissions are required to restore this document.');
 			}
 
-			return await restoreWebstrate(req, res, snapshot);
+			return await restoreWebstrate(req, res);
 		}
 
 		if ('delete' in req.query) {
@@ -875,7 +863,7 @@ module.exports.requestHandler = async function(req, res) {
 
 		// We don't need to check for "static" in req.query, because this happens on the client side.
 
-		return serveWebstrate(req, res, snapshot);
+		return serveWebstrate(req, res, header);
 	} catch (err){
 		console.error(err);
 		return res.status(409).send(String(err));
@@ -884,13 +872,13 @@ module.exports.requestHandler = async function(req, res) {
 
 /**
  * Requesting current document version number by calling `/<id>?v`.
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * @param {obj}    req    Express request object.
+ * @param {obj}    res    Express response object.
+ * @param {Header} header Document header.
  * @private
  */
-function serveVersion(req, res, snapshot) {
-	res.json({ version: snapshot.v });
+function serveVersion(req, res, header) {
+	res.json({ version: header.v });
 }
 
 /**
@@ -944,47 +932,54 @@ async function serveAssets(req, res) {
 	}
 }
 
-function serveJsonMLWebstrate(req, res, snapshot) {
-	res.send(snapshot.data);
-}
-
 /**
  * Requesting a raw webstrate by calling `/<id>?raw`.
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * @param {obj}    req    Express request object.
+ * @param {obj}    res    Express response object.
+ * @param {Header} header Document header.
  * @private
  */
-function serveRawWebstrate(req, res, snapshot) {
+function serveRawWebstrate(req, res, header) {
 	// A specific version of webstrate is immutable, so we can cache a request to a specific version
 	// indefinitely. Tags can be moved, so we can't do the same there.
 	if (req.params.version) {
 		// In reality, we just cache for a year.
 		res.setHeader('Cache-Control', 'public, max-age=31557600');
 	}
-	// MongoDB doesn't support periods in keys, so we substitute them with the string `&dot;` to
-	// store them. This function reverts that. We only do this when sending raw documents, as the
-	// client side Webstrate code already handles this otherwise.
-	res.send('<!doctype html>\n' + jsonmlTools.toXML(replaceInKeys(snapshot.data, '&dot;', '.'),
-		SELFCLOSING_TAGS));
+	const handle = documentStore.getHandle(req.params.webstrateId);
+	try {
+		const nodes = header.v === handle.revision
+			? handle.nodes : handle.snapshotAt(header.v);
+		res.send(handle.toPlainHTML(nodes));
+	} finally {
+		documentStore.releaseHandle(req.params.webstrateId);
+	}
 }
 
 /**
- * Requesting to download a webstraet by calling `/<id>?dl`.
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * Requesting to download a webstrate by calling `/<id>?dl`.
+ * @param {obj}    req    Express request object.
+ * @param {obj}    res    Express response object.
+ * @param {Header} header Document header.
  * @private
  */
-async function serveCompressedWebstrate(req, res, snapshot) {
+async function serveCompressedWebstrate(req, res, header) {
 	try {
 		// We pass along the version being served, so downloading an old version or a tag archives the
 		// assets that were alive back then, rather than the ones that exist right now.
-		let assets = await assetManager.getCurrentAssets(req.params.webstrateId, snapshot.v);
+		let assets = await assetManager.getCurrentAssets(req.params.webstrateId, header.v);
 		const format = req.query.dl === 'tar' ? 'tar' : 'zip';
 		const archive = new ARCHIVE_FORMATS[format]({ store: true });
-		archive.append('<!doctype html>\n' + jsonmlTools.toXML(snapshot.data, SELFCLOSING_TAGS),
-			{ name: `${req.params.webstrateId}/index.html` });
+		const handle = documentStore.getHandle(req.params.webstrateId);
+		let html;
+		try {
+			const nodes = header.v === handle.revision
+				? handle.nodes : handle.snapshotAt(header.v);
+			html = handle.toPlainHTML(nodes);
+		} finally {
+			documentStore.releaseHandle(req.params.webstrateId);
+		}
+		archive.append(html, { name: `${req.params.webstrateId}/index.html` });
 
 		assets.forEach(function(asset) {
 			const filePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
@@ -1007,7 +1002,7 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 		});
 		archive.finalize();
 		const potentialTag = req.params.tag ? ('-' + req.params.tag) : '';
-		const filename = req.query.filename || `${req.params.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
+		const filename = req.query.filename || `${req.params.webstrateId}-${header.v}${potentialTag}.${format}`;
 		res.attachment(filename);
 		archive.pipe(res);
 	} catch (err){
@@ -1046,37 +1041,42 @@ function serveTokenList(req, res) {
 
 /**
  * Copy a webstrate by calling `/<id>?copy[=newWebstrateId]`.
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * @param {obj}    req    Express request object.
+ * @param {obj}    res    Express response object.
+ * @param {Header} header Document header (source, revision already resolved).
  * @private
  */
-async function copyWebstrate(req, res, snapshot) {
+async function copyWebstrate(req, res, header) {
 	try {
 		let webstrateId = req.query.copy || await generateWebstrateId(req);
 
-		// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
-		// otherwise just delete all permissions on the new document.
+		// Create the copy from the source mirror at the resolved revision
+		// (header.v covers explicit versions and tags alike).
+		await documentManager.createNewDocument({ webstrateId,
+			prototypeId: req.params.webstrateId, version: header.v });
+
+		// If user doesn't have write permissions to the document, add them if the user is logged in,
+		// otherwise just delete all permissions on the new document. These land as their own
+		// server-side commits on the copy (previously they were baked into the initial snapshot).
 		if (!req.user.permissions.includes('w')) {
 			if (req.user.username === 'anonymous' && req.user.provider === '') {
-				snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
+				await permissionManager.clearPermissions(webstrateId, req.user.userId);
 			} else {
-				snapshot = await permissionManager.setUserPermissionsInSnapshot(req.user.username,
-					req.user.provider, 'rw', snapshot);
+				await permissionManager.setUserPermissions(req.user.username, req.user.provider,
+					'rw', webstrateId, req.user.userId);
 			}
 		}
 
-		// Remove all admin permissions from the new snapshot.
-		snapshot = await permissionManager.removeAdminPermissionsFromSnapshot(snapshot);
-		await documentManager.createNewDocument({ webstrateId, snapshot });
-		
-		// Also copy over all the assets. Note that we pass through snapshot.v, because we know this
+		// Remove all admin permissions from the new document.
+		await permissionManager.removeAdminPermissions(webstrateId, req.user.userId);
+
+		// Also copy over all the assets. Note that we pass through header.v, because we know this
 		// will always be set, even if no version is specified, or the user is accessing the webstrate
 		// through a tag.
 		await assetManager.copyAssets({
 			fromWebstrateId: req.params.webstrateId,
 			toWebstrateId: webstrateId,
-			version: snapshot.v
+			version: header.v
 		});
 
 		// Clone the query into a writeable object to remove ?copy to avoid infinite loops
@@ -1094,12 +1094,11 @@ async function copyWebstrate(req, res, snapshot) {
 
 /**
  * Restore a webstrate to a previous version or tag and redirect the user to the document.
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * @param {obj} req Express request object.
+ * @param {obj} res Express response object.
  * @private
  */
-async function restoreWebstrate(req, res, snapshot) {
+async function restoreWebstrate(req, res) {
 	// There shouldn't be a version or tag in the first part of the URL, i.e.
 	// `/<id>/<version|tag>/?restore` is not allowed. (Version 0 is a valid version, so
 	// presence must be tested against undefined, not with truthiness.)
@@ -1177,19 +1176,19 @@ async function deleteWebstrate(req, res) {
  * the pre-rendered page only exists for the head revision, and an empty
  * document has nothing to render (the client bootstraps html/head/body
  * through a commit).
- * @param {obj}      req      Express request object.
- * @param {obj}      res      Express response object.
- * @param {snapshot} snapshot Document snapshot.
+ * @param {obj}    req    Express request object.
+ * @param {obj}    res    Express response object.
+ * @param {Header} header Document header.
  * @private
  */
-function serveWebstrate(req, res, snapshot) {
+function serveWebstrate(req, res, header) {
 	// Old versions and tags: serve the shell, the client fetches the snapshot.
 	if (req.params.version !== undefined || req.params.tag !== undefined) {
 		return sendClientShell(res);
 	}
 
 	// Empty document: the client creates the basic DOM structure through a commit.
-	if (!snapshot || !snapshot.type) {
+	if (!header || !header.exists) {
 		return sendClientShell(res);
 	}
 

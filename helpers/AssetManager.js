@@ -496,11 +496,13 @@ module.exports.addAssets = async function(webstrateId, assets, searchables, sour
  */
 function fileFilter(req, file, next) {
 	util.callbackify(async () => {
-		const snapshot = await documentManager.getDocument({ webstrateId: req.params.webstrateId });
-		if (!snapshot.type) throw new Error('Document doesn\'t exist.');
+		const header = await documentManager.getDocumentHeader({
+			webstrateId: req.params.webstrateId
+		});
+		if (!header.exists) throw new Error('Document doesn\'t exist.');
 
 		const permissions = await permissionManager
-			.getUserPermissionsFromSnapshot(req.user.username, req.user.provider, snapshot);
+			.getUserPermissionsFromHeader(req.user.username, req.user.provider, header);
 		if (!permissions.includes('w')) throw new Error('Insufficient permissions.');
 
 		if (/^\d+$/.test(file.originalname)) throw new Error('File name cannot be only numbers.');

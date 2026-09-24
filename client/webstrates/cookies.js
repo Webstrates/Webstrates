@@ -54,7 +54,9 @@ websocket.onjsonmessage = (message) => {
 			if (message.d !== webstrateId) return;
 
 			// Only allow cookies if the user object exists, i.e. is logged in with OAuth.
-			if (userObject.publicObject.userId && userObject.publicObject.userId !== 'anonymous:') {
+			// (In static mode the user object is never populated — see userObject.js.)
+			if (userObject.publicObject && userObject.publicObject.userId
+				&& userObject.publicObject.userId !== 'anonymous:') {
 				userObject.publicObject.cookies = {
 					anywhere: {
 						get: async function(key) {

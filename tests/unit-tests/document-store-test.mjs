@@ -19,6 +19,42 @@ const store = (await import('../../helpers/DocumentStore.js')).default;
 const paintNormalizer = (await import('../../helpers/PaintNormalizer.js')).default;
 const NODE_ELEMENT = 1, NODE_TEXT = 3;
 
+// JsonML view of a mirror — the observation language these tests were
+// written in. The store itself no longer serializes JsonML (the painted
+// wire and the struct/state rows replaced it): this local walker performs
+// the same escaped-canonical conversion the old handle.toJsonML did.
+const NODE_COMMENT = 8;
+const mirrorToJsonML = (nodes) => {
+	const escapeValue = (v) => v && v.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+	const escapeName = (v) => v && v.replace(/\./g, '&dot;');
+	const convert = (eid) => {
+		const node = nodes.get(eid);
+		if (!node) return null;
+		if (node.t === NODE_TEXT) {
+			const content = node.attrs[0];
+			return content ? content.v : '';
+		}
+		if (node.t === NODE_COMMENT) {
+			const content = node.attrs[0];
+			return ['!', content ? content.v : ''];
+		}
+		const attrs = {};
+		for (const attr of node.attrs) {
+			if (attr.n === null) continue;
+			attrs[escapeName(attr.n)] = escapeValue(attr.v);
+		}
+		const jml = [node.n, attrs];
+		for (const child of node.kids) {
+			const converted = convert(child);
+			if (converted !== null) jml.push(converted);
+		}
+		return jml;
+	};
+	const root = nodes.get(0);
+	if (!root || root.kids.length === 0) return [];
+	return convert(root.kids[0]) || [];
+};
+
 const wid = () => `doc-${Date.now()}-${Math.floor(Math.random() * 1e6)}`;
 
 describe('DocumentStore (SQLite document engine)', function() {
@@ -28,7 +64,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		it('revision 0 for a fresh webstrate', function() {
 			const h = store.getHandle(wid());
 			assert.equal(h.revision, 0);
-			assert.deepEqual(h.toJsonML(), []);
+			assert.deepEqual(mirrorToJsonML(h.nodes), []);
 			store.releaseHandle(h.id);
 		});
 
@@ -64,7 +100,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		});
 
 		it('round-trips JsonML in the escaped canonical form', function() {
-			assert.deepEqual(h.toJsonML(), jml);
+			assert.deepEqual(mirrorToJsonML(h.nodes), jml);
 		});
 
 		it('stores sa/aa ops in the log', function() {
@@ -185,7 +221,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
 			// Converged: a second check finds nothing.
 			assert.equal(paintNormalizer.diffOps(h).ops.length, 0);
-			const jml = JSON.stringify(h.toJsonML());
+			const jml = JSON.stringify(mirrorToJsonML(h.nodes));
 			assert.include(jml, '"tbody"');
 			assert.include(jml, '"td"');
 			assert.include(jml, 'cell');
@@ -210,7 +246,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			assert.isAbove(paintNormalizer.diffOps(h).ops.length, 0);
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
 			assert.equal(paintNormalizer.diffOps(h).ops.length, 0);
-			const jml = JSON.stringify(h.toJsonML());
+			const jml = JSON.stringify(mirrorToJsonML(h.nodes));
 			assert.include(jml, '"ab"'); // merged into one text node
 			store.releaseHandle(h.id);
 		});
@@ -234,7 +270,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// it at --> — exactly what a browser would do.
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
 			assert.equal(paintNormalizer.diffOps(h).ops.length, 0);
-			const jml = JSON.stringify(h.toJsonML());
+			const jml = JSON.stringify(mirrorToJsonML(h.nodes));
 			assert.notInclude(jml, 'a-->b'); // the breakout is gone
 			assert.include(jml, '"x"');    // the surrounding structure holds
 			assert.include(jml, '"y"');
@@ -251,7 +287,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			assert.isAbove(ops.length, 0); // the text must move out
 			paintNormalizer.ensureStable(h, { commit: stubCommit });
 			assert.equal(paintNormalizer.diffOps(h).ops.length, 0);
-			const jml = JSON.stringify(h.toJsonML());
+			const jml = JSON.stringify(mirrorToJsonML(h.nodes));
 			// The fostered text ends up a body child BEFORE the table.
 			assert.isBelow(jml.indexOf('"fostered"'), jml.indexOf('"table"'));
 			store.releaseHandle(h.id);
@@ -271,7 +307,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 
 		const eidOf = (name) => h.allCommits()[0].ops
 			.find((op) => op.k === 'sa' && op.n === name).e;
-		const pAttrs = () => h.toJsonML()[3][2][1]; // body → p → attrs
+		const pAttrs = () => mirrorToJsonML(h.nodes)[3][2][1]; // body → p → attrs
 
 		it('applies a commit and bumps the revision by ops+1', function() {
 			const v0 = h.revision;
@@ -349,7 +385,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			const sd = second.ops.filter((op) => op.k === 'sd');
 			assert.lengthOf(sd, 1);
 			assert.equal(sd[0].v, 'ef');
-			const text = h.toJsonML()[3].slice(2).find((x) => typeof x === 'string');
+			const text = mirrorToJsonML(h.nodes)[3].slice(2).find((x) => typeof x === 'string');
 			assert.equal(text, 'abgh');
 		});
 
@@ -461,7 +497,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 				{k: 'sa', p: bodyEid, i: h.nodes.get(bodyEid).kids.length, e: 5007,
 					t: NODE_ELEMENT, n: 'div'}
 			], userId: 'u', source: 's'});
-			const before = h.toJsonML();
+			const before = mirrorToJsonML(h.nodes);
 
 			// Move the whole p under the div: sr + sa, nothing else.
 			const res = h.applyCommit({base: h.revision, ops: [
@@ -469,7 +505,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 				{k: 'sa', p: 5007, i: 0, e: 5001, t: NODE_ELEMENT, n: 'p'}
 			], userId: 'u', source: 's'});
 			assert.deepEqual(res.ops.map((op) => op.k), ['sr', 'sa']);
-			const moved = h.toJsonML();
+			const moved = mirrorToJsonML(h.nodes);
 			// Descendants (attr, span, text) all survived untouched: the moved
 			// p sits under the div with its span and text intact.
 			const container = moved[3].slice(2).find((x) => Array.isArray(x)
@@ -482,11 +518,11 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// subtree rows must have been rewritten correctly.
 			h.nodes = store.emptyMirror();
 			h._load();
-			assert.deepEqual(h.toJsonML(), moved);
+			assert.deepEqual(mirrorToJsonML(h.nodes), moved);
 
 			// And the move undoes to a move: reconstruct the version before it.
 			h.tag('before-move', res.v - 3); // res.v-3 = the build commit's opid
-			assert.deepEqual(h.toJsonML(h.snapshotAt(res.v - 3)), before);
+			assert.deepEqual(mirrorToJsonML(h.snapshotAt(res.v - 3)), before);
 		});
 
 		it('emits synthetic re-attach ops for cross-commit moves only', function() {
@@ -509,7 +545,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			const vDetach = hh.applyCommit({base: hh.revision, ops: [
 				{k: 'sr', p: bodyEid, e: 5001}
 			], userId: 'u', source: 's'}).v;
-			assert.isUndefined(hh.toJsonML()[3].slice(2).find((x) =>
+			assert.isUndefined(mirrorToJsonML(hh.nodes)[3].slice(2).find((x) =>
 				Array.isArray(x) && x[0] === 'p'));
 
 			// ...re-attach in a LATER commit: the broadcast must carry the
@@ -531,7 +567,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			const aaSyn = synthetics.filter((op) => op.k === 'aa');
 			assert.sameDeepMembers(aaSyn.map((op) => [op.e, op.n, op.v]),
 				[[5001, 'data-x', '1'], [5005, null, 'text']]);
-			const moved = hh.toJsonML();
+			const moved = mirrorToJsonML(hh.nodes);
 			const container = moved[3].slice(2).find((x) => Array.isArray(x)
 				&& x[0] === 'div' && Array.isArray(x[2]) && x[2][0] === 'p');
 			assert.equal(container[2][2][2], 'text');
@@ -541,7 +577,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// the re-attach commit is exactly detach + 1 + 1 (root sa +
 			// commit row — the synthetics consumed no opids).
 			assert.equal(res.v, vDetach + 2);
-			assert.isUndefined(hh.toJsonML(hh.snapshotAt(vDetach))[3].slice(2)
+			assert.isUndefined(mirrorToJsonML(hh.snapshotAt(vDetach))[3].slice(2)
 				.find((x) => Array.isArray(x) && x[0] === 'div'
 					&& Array.isArray(x[2]) && x[2][0] === 'p'));
 
@@ -559,7 +595,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 					store.applyOpToMirror(replay, op, ctx);
 				}
 			}
-			assert.deepEqual(hh.toJsonML(replay), moved);
+			assert.deepEqual(mirrorToJsonML(replay), moved);
 
 			// A cold start must rebuild the same log — the synthetic ops are
 			// re-derived from the history simulation, not persisted. Drop the
@@ -595,7 +631,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			hh.nodes = store.emptyMirror();
 			hh._load();
 			assert.equal(hh.nodes.get(bodyEid).kids.length, 1000);
-			const jml = hh.toJsonML();
+			const jml = mirrorToJsonML(hh.nodes);
 			assert.equal(jml[3].length, 1002);
 			// Loose upper bound: catches O(n²) regressions (this run should be
 			// well under a second; a quadratic path takes tens of seconds).
@@ -635,15 +671,15 @@ describe('DocumentStore (SQLite document engine)', function() {
 			], userId: 'u', source: 's'});
 
 			h.tag('v2-tag', v2);
-			const atV2 = h.toJsonML(h.snapshotAt(v2));
+			const atV2 = mirrorToJsonML(h.snapshotAt(v2));
 			assert.deepEqual(atV2[3][2], ['p', {}, 'one']);
 			assert.deepEqual(atV2[3][3], ['p', {}, 'two']);
-			const atV1 = h.toJsonML(h.snapshotAt(v1));
+			const atV1 = mirrorToJsonML(h.snapshotAt(v1));
 			assert.deepEqual(atV1[3][2], ['p', {}, 'one']);
 			assert.isUndefined(atV1[3][3]);
 			// Head still has the edits.
-			assert.equal(h.toJsonML()[3][2][2], '');
-			assert.deepEqual(h.toJsonML()[3][3], ['p', {}, 'two']);
+			assert.equal(mirrorToJsonML(h.nodes)[3][2][2], '');
+			assert.deepEqual(mirrorToJsonML(h.nodes)[3][3], ['p', {}, 'two']);
 		});
 
 		it('resurrects a removed subtree from its payload on the walk back', function() {
@@ -666,10 +702,10 @@ describe('DocumentStore (SQLite document engine)', function() {
 			], userId: 'u', source: 's'});
 
 			// At head the subtree is gone...
-			const headJml = h.toJsonML();
+			const headJml = mirrorToJsonML(h.nodes);
 			assert.equal(JSON.stringify(headJml).includes('deep'), false);
 			// ...but walking back to v4 resurrects ALL of it, attrs included.
-			const atV4 = h.toJsonML(h.snapshotAt(v4));
+			const atV4 = mirrorToJsonML(h.snapshotAt(v4));
 			const div = JSON.stringify(atV4);
 			assert.include(div, 'box');
 			assert.include(div, 'deep');
@@ -679,7 +715,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 		});
 
 		it('reconstructs all the way back to the empty document', function() {
-			assert.deepEqual(h.toJsonML(h.snapshotAt(0)), []);
+			assert.deepEqual(mirrorToJsonML(h.snapshotAt(0)), []);
 		});
 
 		it('resurrects a single-node removal with its content attr', function() {
@@ -700,7 +736,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// The walk back must resurrect the node WITH its content: the sr
 			// writes no state-inverse rows of its own, so the payload row is
 			// the only place the nameless text attr survives.
-			const atVText = h.toJsonML(h.snapshotAt(vText));
+			const atVText = mirrorToJsonML(h.snapshotAt(vText));
 			assert.include(JSON.stringify(atVText), 'Row 0 text');
 		});
 
@@ -748,7 +784,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 			// fragments in the walk stash. The removal's sa row must then use
 			// the PAYLOAD (the full capture), not the gutted stash entry —
 			// otherwise the div resurrects without descendants.
-			const atVFull = h.toJsonML(h.snapshotAt(vFull));
+			const atVFull = mirrorToJsonML(h.snapshotAt(vFull));
 			const div = atVFull[3].slice(2).find((el) => Array.isArray(el) && el[0] === 'div');
 			assert.deepEqual(div,
 				['div', {class: 'row'}, ['span', {}, 'Row 0 text']]);
@@ -851,7 +887,7 @@ describe('DocumentStore (SQLite document engine)', function() {
 				[['q', 'QQ'], ['r', 'RR'], ['c', 'X3']]);
 			// Walk back to before the update: old values, SAME ORDER (a
 			// remove+re-add decomposition would have moved them to the end).
-			const atV = h.toJsonML(h.snapshotAt(before));
+			const atV = mirrorToJsonML(h.snapshotAt(before));
 			const p = atV[3][2];
 			assert.deepEqual(p[1], {q: 'Q', r: 'R', c: 'X3'});
 			assert.deepEqual(Object.keys(p[1]), ['q', 'r', 'c']);

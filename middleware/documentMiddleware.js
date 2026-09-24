@@ -272,7 +272,6 @@ module.exports.commit = async function(ws, req, user, webstrateId, data) {
 			source: req.socketId });
 
 		// Post-commit bookkeeping (the old afterWrite/receive middlewares).
-		documentManager.invalidateCache(webstrateId);
 		if (changesPermissions(handle, result.ops)) {
 			permissionManager.invalidateCachedPermissions(webstrateId);
 			permissionManager.expireAllAccessTokens(webstrateId);
@@ -381,7 +380,6 @@ module.exports.legacyCreate = async function(ws, req, user, webstrateId, data) {
 			// Post-create bookkeeping like commit. No broadcast: a legacy
 			// create replaces an empty document, so there is nobody
 			// subscribed to its op stream yet.
-			documentManager.invalidateCache(webstrateId);
 			snapshotCacheManager.scheduleRebuild(webstrateId);
 		} finally {
 			documentStore.releaseHandle(webstrateId);
@@ -419,61 +417,15 @@ module.exports.fetchStructure = function(ws, webstrateId, data) {
 		ws.send(Buffer.concat([header, token, payload]));
 	};
 
-	const handle = documentStore.getHandle(webstrateId);
-	try {
-		let nodes = handle.nodes;
-		let v = handle.revision;
-		// A requested revision (numeric version or tag label): walk the
-		// structure as of that revision.
-		if (data.v !== undefined || data.l !== undefined) {
-			if (data.l !== undefined) {
-				const tagRow = handle.getTag(data.l);
-				if (!tagRow) {
-					return ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-						error: `Requested tag ${data.l} does not exist.` }));
-				}
-				v = tagRow.v;
-			} else {
-				const requested = Number(data.v);
-				if (!Number.isInteger(requested) || requested < 0) {
-					return ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-						error: 'Invalid version.' }));
-				}
-				v = requested;
-			}
-			if (v > handle.revision) {
-				return ws.send(JSON.stringify({ wa: 'reply', token: data.token,
-					error: `Version ${v} does not exist (newest is ${handle.revision}).` }));
-			}
-			nodes = v === handle.revision ? handle.nodes : handle.snapshotAt(v);
-		}
-
-		const struct = [];
-		const state = [];
-		const walk = (p) => {
-			const node = nodes.get(p);
-			if (!node) return;
-			node.kids.forEach((e, i) => {
-				const child = nodes.get(e);
-				struct.push([p, i, e, child.t, child.n]);
-				// attrIndex is the attribute's LOCAL position — the rows come
-				// out in the mirror's attribute order, so a rebuilt DOM's
-				// attribute list (the jml props order) matches the positions.
-				child.attrs.forEach((attr, ai) => {
-					state.push([e, ai, attr.n, attr.v]);
-				});
-				walk(e);
-			});
-		};
-		walk(0);
-		const payload = Buffer.from(JSON.stringify({ v, struct,
-			state }), 'utf8');
-		send(zlib.brotliCompressSync(payload));
-	} catch (err) {
+	// Version/tag resolution and the mirror walk live in
+	// DocumentManager.getStructure — shared with the fetchdoc JSON reply.
+	(async () => {
+		const structure = await documentManager.getStructure({ webstrateId,
+			version: data.v, tag: data.l });
+		send(zlib.brotliCompressSync(Buffer.from(JSON.stringify(structure), 'utf8')));
+	})().catch((err) => {
 		console.error(`documentMiddleware: fetchStructure for ${webstrateId}:`, err.message);
 		ws.send(JSON.stringify({ wa: 'reply', token: data.token, error: err.message }));
-	} finally {
-		documentStore.releaseHandle(webstrateId);
-	}
+	});
 };
 

@@ -188,14 +188,16 @@ exports.onmessage = async (ws, req, data, next) => {
 		case 'fetchStructure': {
 			return documentMiddleware.fetchStructure(ws, webstrateId, data);
 		}
-		// Request a snapshot.
+		// Request a snapshot — the eid-native structure rows {v, struct,
+		// state} (the client rebuilds its JsonML model from them; see
+		// jsonmlFromStructure in coreDatabase).
 		case 'fetchdoc': {
 			if (!data.token) break;
 			const version = data.v;
 			const tag = data.l;
 			const responseObj = { wa: 'reply', token: data.token };
 			try {
-				responseObj.reply = await documentManager.getDocument({ webstrateId, tag, version });
+				responseObj.reply = await documentManager.getStructure({ webstrateId, tag, version });
 			} catch (err){
 				responseObj.error = err.message;
 			}

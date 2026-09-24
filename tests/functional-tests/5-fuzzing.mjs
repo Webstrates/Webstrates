@@ -381,7 +381,7 @@ describe('Fuzzing', function() {
 		// The opposite kind: json0 ops that are malformed but whose paths pass validation.
 		// sharedb 6 silently applies these (success acks, no error) and stores the result.
 		// That is not a crash, but it lets ops store documents no browser can represent —
-		// and every serialization route (?raw, ?json, browser populate) must survive them.
+		// and every serialization route (?raw, browser populate) must survive them.
 		for (const [label, op, rawMarker] of [
 			['lm (list move) out of bounds', [{ p: [3, 2], lm: 1e9 }], 'one'],
 			['li and od mixed (od silently ignored)', [{ p: [3, 2], li: ['div'], od: {} }],
@@ -621,7 +621,7 @@ describe('Fuzzing', function() {
 		after(async function() {
 			// Every serialization route must still work over the fuzzed document.
 			if (!socket) return;
-			for (const suffix of ['?raw', '?json', '?dl', '?v', '?ops', '?tags', '?assets']) {
+			for (const suffix of ['?raw', '?dl', '?v', '?ops', '?tags', '?assets']) {
 				const response = await httpGet(docId + '/' + suffix);
 				assert.equal(response.status, 200,
 					`GET ${suffix} over the fuzzed document failed: ${response.status}`);
@@ -714,7 +714,7 @@ describe('Fuzzing', function() {
 					'-' + util.randomString(4).toLowerCase();
 				const weirdSocket = await createDoc(weirdId, data);
 				weirdSocket.ws.close();
-				for (const suffix of ['?raw', '?json']) {
+				for (const suffix of ['?raw']) {
 					const response = await httpGet(weirdId + '/' + suffix);
 					assert.equal(response.status, 200,
 						`GET ${suffix} on the "${label}" document failed: ${response.status}`);

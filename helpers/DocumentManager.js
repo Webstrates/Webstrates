@@ -6,28 +6,10 @@ const clientManager = require(APP_PATH + '/helpers/ClientManager.js');
 const documentStore = require(APP_PATH + '/helpers/DocumentStore.js');
 const diffMirrors = require(APP_PATH + '/helpers/mirrorDiff.js');
 
-const TYPE_JSONv0 = 'http://sharejs.org/types/JSONv0';
-
 // Commit listeners (see onCommit): documentMiddleware registers a broadcaster
 // so server-side commits (no-ops, permission updates, restores) reach the
 // subscribers exactly like client commits do.
 const commitListeners = [];
-
-// Head-snapshot cache: getDocument(head) is called on every HTTP request and
-// by PermissionManager, so the JsonML walk is cached per revision. The cached
-// object is NEVER handed out (PermissionManager mutates snapshot.data), only
-// cloned.
-const headCache = new Map(); // webstrateId → {v, jsonml}
-
-/**
- * Drop the cached head snapshot of a webstrate (call after any commit applied
- * outside this module, i.e. client commits in documentMiddleware).
- * @param {string} webstrateId WebstrateId.
- * @public
- */
-module.exports.invalidateCache = function(webstrateId) {
-	headCache.delete(webstrateId);
-};
 
 /**
  * Register a listener invoked as fn(webstrateId, handle, commitResult) after
@@ -51,23 +33,6 @@ function notifyCommit(webstrateId, handle, result) {
 }
 
 /**
- * Build a snapshot object from a mirror, in the shape every consumer of
- * getDocument expects (ShareDB-compatible: type null = empty/missing).
- * @param  {Handle}  handle   DocumentStore handle.
- * @param  {Map}     nodes    Mirror at the wanted revision.
- * @param  {number}  v        Revision.
- * @param  {string?} tagLabel Tag label, if resolved from a tag.
- * @return {Snapshot}         {id, v, type, data, tag?}
- * @private
- */
-function snapshotFrom(handle, nodes, v, tagLabel) {
-	const snapshot = { id: handle.id, v, type: v > 0 ? TYPE_JSONv0 : null };
-	if (v > 0) snapshot.data = handle.toJsonML(nodes);
-	if (tagLabel !== undefined) snapshot.tag = tagLabel;
-	return snapshot;
-}
-
-/**
  * Creates a new document and returns the id. If the document to be created is
  * not to be prototyped off of another document, we don't actually create the
  * document — we just return a new id. The document is created when first
@@ -76,163 +41,183 @@ function snapshotFrom(handle, nodes, v, tagLabel) {
  * @param {string}   options.prototypeId Name of the webstrate to base the prototype on.
  * @param {string}   options.version     Version of the prototype.
  * @param {string}   options.tag         Tag of the prototype. Either tag or version.
- * @param {Snapshot} options.snapshot    Snapshot to base the prototype off.
+ * @param {Snapshot} options.snapshot    JsonML snapshot to create from (the REST
+ *                                       ingest paths: zip import, remote prototype).
  * @return {string}                      (async) Name of new webstrate.
  * @public
  */
 module.exports.createNewDocument = async function({ webstrateId, prototypeId, version, tag,
 	snapshot }) {
-	if (!prototypeId && !snapshot) return webstrateId;
-
-	if (!snapshot) {
-		snapshot = await module.exports.getDocument({ webstrateId: prototypeId, version, tag });
-		return await module.exports.createNewDocument({ webstrateId, prototypeId, version,
-			tag, snapshot });
+	// The REST ingest paths still hand a freshly parsed JsonML snapshot; it
+	// becomes the initial commit as before (see fromJsonML).
+	if (snapshot) {
+		if (!snapshot.type) throw new Error('Snapshot has no type.');
+		const handle = documentStore.getHandle(webstrateId);
+		try {
+			if (handle.revision > 0) throw new Error('Webstrate already exists.');
+			const createdVersion = handle.fromJsonML(snapshot.data, 'server', 'prototype');
+			if (snapshot.label || snapshot.tag) {
+				await module.exports.tagDocument(webstrateId, createdVersion,
+					snapshot.label || snapshot.tag);
+			}
+			return webstrateId;
+		} finally {
+			documentStore.releaseHandle(webstrateId);
+		}
 	}
 
-	// A prototype without a type is an empty (or nonexistent) webstrate.
-	if (!snapshot.type) throw new Error('Prototype webstrate doesn\'t exist.');
+	if (!prototypeId) return webstrateId;
 
 	// If the document already exists and is empty, we just delete it, so
 	// unused documents won't take up webstrate names.
-	const existingSnapshot = await module.exports.getDocument({ webstrateId });
-	if (isSnapshotEmpty(existingSnapshot.data) && existingSnapshot.v > 0) {
-		await module.exports.deleteDocument(webstrateId);
-	}
-
-	const handle = documentStore.getHandle(webstrateId);
+	const existing = documentStore.getHandle(webstrateId);
+	let empty = false;
 	try {
-		if (handle.revision > 0) throw new Error('Webstrate already exists.');
-		const createdVersion = handle.fromJsonML(snapshot.data, 'server', 'prototype');
-		// Preserve the prototype's tag label, if it had one (the old system
-		// tagged the new document's version 1).
-		if (snapshot.label || snapshot.tag) {
-			await module.exports.tagDocument(webstrateId, createdVersion,
-				snapshot.label || snapshot.tag);
-		}
-		return webstrateId;
+		empty = existing.revision > 0 && isMirrorEmpty(existing);
 	} finally {
 		documentStore.releaseHandle(webstrateId);
 	}
+	if (empty) await module.exports.deleteDocument(webstrateId);
+
+	// Copy the prototype's mirror at the resolved revision — eid model to
+	// eid model, no JsonML in between.
+	const protoHandle = documentStore.getHandle(prototypeId);
+	try {
+		let protoV = protoHandle.revision;
+		let tagLabel;
+		if (tag) {
+			const tagRow = protoHandle.getTag(tag);
+			if (!tagRow) throw new Error(`Requested tag ${tag} does not exist.`);
+			protoV = tagRow.v;
+			tagLabel = tag;
+		} else if (version !== undefined && version !== '' && version !== 'head') {
+			protoV = Number(version);
+			if (!Number.isInteger(protoV) || protoV < 0) {
+				throw new Error('Version must be a number or \'head\'');
+			}
+		}
+		const handle = documentStore.getHandle(webstrateId);
+		try {
+			handle.copyFrom(protoHandle, protoV, 'server', 'prototype');
+			if (tagLabel) {
+				await module.exports.tagDocument(webstrateId, handle.revision, tagLabel);
+			}
+		} finally {
+			documentStore.releaseHandle(webstrateId);
+		}
+	} finally {
+		documentStore.releaseHandle(prototypeId);
+	}
+	return webstrateId;
 };
 
 /**
- * Checks whether a snapshot is "empty", i.e. nothing but a shell of html,
- * head and body elements (with an optional title) that carries no content.
- * When in doubt, err towards "not empty" (an "empty" verdict allows the
- * document to be deleted to free its webstrate name).
- * @param  {Snapshot} snapshot Snapshot data (JsonML).
- * @return {Boolean}           Whether snapshot is empty or not.
+ * Checks whether a document's mirror is "empty": nothing but the html shell
+ * with a head (holding at most a title) and a body, carrying no content and
+ * no attributes. When in doubt, err towards "not empty" (an "empty" verdict
+ * allows the document to be deleted to free its webstrate name).
+ * @param  {Handle}  handle DocumentStore handle.
+ * @return {Boolean}        Whether the mirror is empty.
  * @private
  */
-function isSnapshotEmpty(snapshot) {
-	if (!snapshot) return true;
-	if (typeof snapshot === 'string') return snapshot.trim() === '';
-	if (!Array.isArray(snapshot)) return false;
-
-	snapshot = stripWhitespaceStrings(snapshot);
-	if (snapshot.length === 0) return true;
-	if (elementTag(snapshot) !== 'html') return false;
-	if (elementEmpty(snapshot)) return true;
-	if (!hasOnlyWidAttributes(snapshot)) return false;
+function isMirrorEmpty(handle) {
+	const nodes = handle.nodes;
+	const root = nodes.get(0);
+	const htmlEid = root && root.kids[0];
+	if (htmlEid === undefined) return true;
+	const html = nodes.get(htmlEid);
+	if (!html || html.t !== 1) return true; // NODE_ELEMENT
+	if (html.attrs.length > 0) return false; // any html attribute is content
 
 	let head = null, body = null;
-	for (const child of elementChildren(snapshot)) {
-		if (elementTag(child) === 'head' && !head) head = child;
-		else if (elementTag(child) === 'body' && !body) body = child;
+	// Whitespace-only text between the shell elements is not content
+	// (the JsonML variant stripped it before deciding).
+	const isWhitespaceText = (eid) => {
+		const node = nodes.get(eid);
+		return node && node.t === 3 && node.attrs[0] && node.attrs[0].v.trim() === '';
+	};
+
+	for (const kid of html.kids) {
+		if (isWhitespaceText(kid)) continue;
+		const node = nodes.get(kid);
+		if (!node || node.t !== 1) return false; // text/comment/… at html level
+		const name = String(node.n).toLowerCase();
+		if (name === 'head' && !head) head = node;
+		else if (name === 'body' && !body) body = node;
 		else return false;
 	}
 
-	if (body && !elementEmpty(body)) return false;
-	if (!head || elementEmpty(head)) return true;
-
-	const headChildren = elementChildren(head);
-	return hasOnlyWidAttributes(head) && headChildren.length === 1
-		&& elementTag(headChildren[0]) === 'title';
-}
-
-function elementEmpty(element) {
-	return hasOnlyWidAttributes(element) && elementChildren(element).length === 0;
-}
-
-function hasOnlyWidAttributes(element) {
-	const attributes = element[1];
-	if (!attributes || typeof attributes !== 'object' || Array.isArray(attributes)) return true;
-	return Object.keys(attributes).every(key => key === '__wid');
-}
-
-function elementTag(element) {
-	if (!Array.isArray(element) || typeof element[0] !== 'string') return null;
-	return element[0].toLowerCase();
-}
-
-function elementChildren(element) {
-	const maybeAttributes = element[1];
-	const childrenStart = (maybeAttributes && typeof maybeAttributes === 'object'
-		&& !Array.isArray(maybeAttributes)) ? 2 : 1;
-	return element.slice(childrenStart);
-}
-
-function stripWhitespaceStrings(node) {
-	if (!Array.isArray(node)) return node;
-	return node
-		.map(child => stripWhitespaceStrings(child))
-		.filter(child => !(typeof child === 'string' && child.trim() === ''));
+	if (body) {
+		for (const kid of body.kids) {
+			if (!isWhitespaceText(kid)) return false; // any body content
+		}
+	}
+	if (!head) return true;
+	if (head.attrs.length > 0) return false;
+	// An empty head, or one holding nothing but a single title, is still
+	// "empty" (the JsonML variant's verdict; the title's own content does
+	// not count).
+	const headContent = head.kids.filter((kid) => !isWhitespaceText(kid));
+	if (headContent.length === 0) return true;
+	if (headContent.length > 1) return false;
+	const only = nodes.get(headContent[0]);
+	return !!only && only.t === 1 && String(only.n).toLowerCase() === 'title';
 }
 
 /**
- * Retrieve a document snapshot. Versions are revisions (the commit opids the
- * history un-winds from); a tag resolves to the revision it was set at. The
- * snapshot's data is JsonML in the canonical escaped form, type is
- * 'http://sharejs.org/types/JSONv0' (null when the document is empty).
- * @param  {string}   options.webstrateId WebstrateId.
- * @param  {string}   options.version     Desired document version (or 'head').
- * @param  {string}   options.tag         Desired document tag.
- * @return {Snapshot}                     (async) Document snapshot.
+ * Retrieve a document's lightweight header — everything the HTTP, asset and
+ * permission paths need, read straight off the mirror with no serialization:
+ * the revision (version- or tag-resolved, like the old snapshot API),
+ * existence (v > 0), and the html element's data-auth permissions and
+ * data-cors strings.
+ * @param  {string} options.webstrateId WebstrateId.
+ * @param  {string} options.version      Desired document version (or 'head').
+ * @param  {string} options.tag          Desired document tag.
+ * @return {Header}                      {id, v, exists, dataAuth, dataCors,
+ *                                        tag?}.
  * @public
  */
-module.exports.getDocument = async function({ webstrateId, version, tag }) {
-	if (tag) {
-		const handle = documentStore.getHandle(webstrateId);
-		try {
-			const tagRow = handle.getTag(tag);
-			if (!tagRow) throw new Error(`Requested tag ${tag} does not exist.`);
-			return snapshotFrom(handle, handle.snapshotAt(tagRow.v), tagRow.v, tag);
-		} finally {
-			documentStore.releaseHandle(webstrateId);
-		}
-	}
-
-	if (version === undefined || version === '' || version === 'head') {
-		const handle = documentStore.getHandle(webstrateId);
-		try {
-			const cached = headCache.get(webstrateId);
-			if (cached && cached.v === handle.revision) {
-				return { id: webstrateId, v: handle.revision,
-					type: handle.revision > 0 ? TYPE_JSONv0 : null,
-					data: structuredClone(cached.jsonml) };
-			}
-			const snapshot = snapshotFrom(handle, handle.nodes, handle.revision);
-			if (handle.revision > 0) {
-				if (headCache.size > 1024) headCache.clear();
-				headCache.set(webstrateId, { v: handle.revision,
-					jsonml: structuredClone(snapshot.data) });
-			}
-			return snapshot;
-		} finally {
-			documentStore.releaseHandle(webstrateId);
-		}
-	}
-
-	// Versions may arrive as numeric strings from clients that don't coerce.
-	if (typeof version === 'string' && /^\d+$/.test(version)) version = Number(version);
-	if (typeof version !== 'number' || Number.isNaN(version)) {
-		throw new Error('Version must be a number or \'head\'');
-	}
-
+module.exports.getDocumentHeader = async function({ webstrateId, version, tag }) {
 	const handle = documentStore.getHandle(webstrateId);
 	try {
-		return snapshotFrom(handle, handle.snapshotAt(version), version);
+		let v = handle.revision;
+		let tagLabel;
+		if (tag) {
+			const tagRow = handle.getTag(tag);
+			if (!tagRow) throw new Error(`Requested tag ${tag} does not exist.`);
+			v = tagRow.v;
+			tagLabel = tag;
+		} else if (version !== undefined && version !== '' && version !== 'head') {
+			// Versions may arrive as numeric strings from clients that don't coerce.
+			if (typeof version === 'string' && /^\d+$/.test(version)) version = Number(version);
+			if (typeof version !== 'number' || Number.isNaN(version)) {
+				throw new Error('Version must be a number or \'head\'');
+			}
+			v = version;
+		}
+		if (v > handle.revision) {
+			throw new Error(`Version ${v} does not exist (newest is ${handle.revision}).`);
+		}
+		const header = { id: webstrateId, v, exists: v > 0,
+			dataAuth: null, dataCors: null };
+		if (tagLabel !== undefined) header.tag = tagLabel;
+		if (header.exists) {
+			const nodes = v === handle.revision ? handle.nodes : handle.snapshotAt(v);
+			const root = nodes.get(0);
+			const htmlEid = root && root.kids[0];
+			const htmlNode = nodes.get(htmlEid);
+			// The html-level attributes (data-auth, data-cors) belong to an
+			// <html> root: a document rooted in any other element (legacy /
+			// REST-created) must not grant permissions or CORS through them —
+			// the old snapshot readers checked data[0] === 'html' the same way.
+			if (htmlNode && htmlNode.t === 1 && htmlNode.n === 'html') {
+				const authAttr = htmlNode.attrs.find((a) => a.n === 'data-auth');
+				header.dataAuth = authAttr ? authAttr.v : null;
+				const corsAttr = htmlNode.attrs.find((a) => a.n === 'data-cors');
+				header.dataCors = corsAttr ? corsAttr.v : null;
+			}
+		}
+		return header;
 	} finally {
 		documentStore.releaseHandle(webstrateId);
 	}
@@ -249,24 +234,18 @@ module.exports.documentExists = async function(webstrateId) {
 };
 
 /**
- * Apply ops to a document as one commit, from the server side (used by
- * restore and the permission-update path). Like the old ShareDB submitOp, the
- * op shape is the legacy json0 form limited to root-element attribute paths
- * (p: [1, name]) — PermissionManager's data-auth updates.
- * @param  {string} webstrateId WebstrateId.
- * @param  {Op}     op          Legacy json0 op ({p: [1, name], od?, oi?}).
- * @param  {string} source      Source of the operation.
- * @param  {Function} next      Callback (optional).
+ * Set (or remove) an attribute on the document's html element as one
+ * server-side commit — the permission-update path's data-auth writes. Like
+ * every server-side commit it notifies the onCommit listeners (which
+ * broadcast it to the subscribers).
+ * @param  {string}   webstrateId WebstrateId.
+ * @param  {string}   name        Attribute name.
+ * @param  {string?}  value       New value (null/undefined removes the attribute).
+ * @param  {string}   source      Source of the operation.
+ * @param  {Function} next        Callback (optional).
  * @public
  */
-module.exports.submitOp = function(webstrateId, op, source, next) {
-	if (!op || !Array.isArray(op.p) || op.p.length !== 2 || op.p[0] !== 1
-		|| typeof op.p[1] !== 'string') {
-		const err = new Error('Only root-element attribute ops are supported '
-			+ 'server-side.');
-		return next && next(err);
-	}
-	const attrName = op.p[1];
+module.exports.setHtmlAttribute = function(webstrateId, name, value, source, next) {
 	const handle = documentStore.getHandle(webstrateId);
 	try {
 		const root = handle.nodes.get(0);
@@ -274,24 +253,27 @@ module.exports.submitOp = function(webstrateId, op, source, next) {
 		if (!htmlEid) {
 			throw new Error('Cannot submit op to an empty document.');
 		}
-		const ops = [];
 		const htmlNode = handle.nodes.get(htmlEid);
-		const existingPos = htmlNode.attrs.findIndex((a) => a.n === attrName);
-		if (op.od !== undefined && existingPos !== -1) {
-			ops.push({ k: 'ar', e: htmlEid, n: attrName });
-		}
-		if (op.oi !== undefined) {
-			// An existing name updates in place; a new one appends.
+		const existingPos = htmlNode.attrs.findIndex((a) => a.n === name);
+		const ops = [];
+		const removing = value === null || value === undefined;
+		if (removing) {
+			// Deleting a nonexistent attribute is a no-op commit, but we still
+			// commit so the version bump semantics match the old system.
+			if (existingPos !== -1) {
+				ops.push({ k: 'ar', e: htmlEid, n: name });
+			}
+		} else {
+			// An existing name is replaced in place (remove, then re-insert at
+			// its own position); a new one appends.
+			if (existingPos !== -1) {
+				ops.push({ k: 'ar', e: htmlEid, n: name });
+			}
 			const i = existingPos !== -1 ? existingPos : htmlNode.attrs.length;
-			ops.push({ k: 'aa', e: htmlEid, i, n: attrName, v: String(op.oi) });
-		}
-		if (ops.length === 0) {
-			// Deleting a nonexistent attribute is a no-op, but we still commit
-			// so the version bump semantics match the old system.
+			ops.push({ k: 'aa', e: htmlEid, i, n: name, v: String(value) });
 		}
 		const result = handle.applyCommit({ base: handle.revision, ops,
 			userId: 'server', source });
-		headCache.delete(webstrateId);
 		notifyCommit(webstrateId, handle, result);
 		next && next(null, result);
 	} catch (err) {
@@ -299,23 +281,6 @@ module.exports.submitOp = function(webstrateId, op, source, next) {
 	} finally {
 		documentStore.releaseHandle(webstrateId);
 	}
-};
-
-/**
- * Recursively submits ops to a document (each as its own commit).
- * @param {string}   webstrateId WebstrateId.
- * @param {Ops}      ops         Ops to be applied.
- * @param {string}   source      Source.
- * @param {Function} next       Callback (optional).
- * @public
- */
-module.exports.submitOps = function(webstrateId, ops, source, next) {
-	const op = ops.shift();
-	if (!op) return next && next();
-	module.exports.submitOp(webstrateId, op, source, function(err) {
-		if (err) return next && next(err);
-		module.exports.submitOps(webstrateId, ops, source, next);
-	});
 };
 
 /**
@@ -334,7 +299,6 @@ module.exports.submitOps = function(webstrateId, ops, source, next) {
 module.exports.submitPaintNormalization = function(webstrateId, handle, ops) {
 	const result = handle.applyCommit({ base: handle.revision, ops,
 		userId: 'server', source: 'documentNormalize' });
-	headCache.delete(webstrateId);
 	notifyCommit(webstrateId, handle, result);
 	return result;
 };
@@ -356,7 +320,6 @@ module.exports.sendNoOp = function(webstrateId, reason, source, next) {
 		}
 		const result = handle.applyCommit({ base: handle.revision, ops: [],
 			userId: 'server', source: source || reason });
-		headCache.delete(webstrateId);
 		notifyCommit(webstrateId, handle, result);
 		next && next(null, result);
 	} catch (err) {
@@ -377,8 +340,10 @@ module.exports.sendNoOp = function(webstrateId, reason, source, next) {
  * @public
  */
 module.exports.restoreDocument = async function({ webstrateId, version, tag }, source) {
-	const oldVersion = await module.exports.getDocument({ webstrateId, version, tag });
-	const label = oldVersion.tag; // old system read .label (always undefined); we use the tag
+	// Resolve the target revision (the tag's label survives into the restore
+	// tag) — a header read, no serialization.
+	const header = await module.exports.getDocumentHeader({ webstrateId, version, tag });
+	const label = header.tag; // old system read .label (always undefined); we use the tag
 
 	// A no-op first marks the restore in the op log and bumps the version to
 	// avoid asset name conflicts (as the old system did).
@@ -386,7 +351,7 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 
 	const handle = documentStore.getHandle(webstrateId);
 	try {
-		const ops = diffMirrors(handle, handle.snapshotAt(oldVersion.v));
+		const ops = diffMirrors(handle, handle.snapshotAt(header.v));
 		if (ops.length > 0) {
 			// The restore's sa fix-ups must not re-attach stashed (removed)
 			// subtrees: the stash holds the removal-time shape of nodes —
@@ -409,7 +374,6 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 			} finally {
 				handle.detached = stash;
 			}
-			headCache.delete(webstrateId);
 			notifyCommit(webstrateId, handle, result);
 		}
 		const newVersion = handle.revision;
@@ -436,7 +400,6 @@ module.exports.deleteDocument = async function(webstrateId) {
 	} finally {
 		documentStore.releaseHandle(webstrateId);
 	}
-	headCache.delete(webstrateId);
 
 	if (!hadContent) throw new Error('No webstrate to delete');
 
@@ -459,6 +422,62 @@ module.exports.getDocumentVersion = async function(webstrateId) {
 			throw new Error(`Webstrate ${webstrateId} does not exist.`);
 		}
 		return handle.revision;
+	} finally {
+		documentStore.releaseHandle(webstrateId);
+	}
+};
+
+/**
+ * Get a document's structure — the eid-native rows the client rebuilds from
+ * (fetchdoc replies with them as JSON, fetchStructure as a brotli binary
+ * frame). `struct` rows are [parentEid, index, eid, type, name] in document
+ * order; `state` rows are [eid, attrIndex, attrName, attrValue] where a null
+ * name marks the node's content row. Version resolution matches
+ * getDocumentHeader (tag wins over version; head when neither is given).
+ * @param {string} options.webstrateId WebstrateId.
+ * @param {mixed}  options.version     Requested version (number or 'head').
+ * @param {string} options.tag          Requested tag.
+ * @return {object}                    (async) {v, struct, state}.
+ * @public
+ */
+module.exports.getStructure = async function({ webstrateId, version, tag }) {
+	const handle = documentStore.getHandle(webstrateId);
+	try {
+		let v = handle.revision;
+		if (tag !== undefined && tag !== null && tag !== '') {
+			const tagRow = handle.getTag(tag);
+			if (!tagRow) throw new Error(`Requested tag ${tag} does not exist.`);
+			v = tagRow.v;
+		} else if (version !== undefined && version !== '' && version !== 'head') {
+			const requested = Number(version);
+			if (!Number.isInteger(requested) || requested < 0) {
+				throw new Error('Invalid version.');
+			}
+			v = requested;
+		}
+		if (v > handle.revision) {
+			throw new Error(`Version ${v} does not exist (newest is ${handle.revision}).`);
+		}
+
+		const nodes = v === handle.revision ? handle.nodes : handle.snapshotAt(v);
+		const struct = [];
+		const state = [];
+		const walk = (p) => {
+			const node = nodes.get(p);
+			if (!node) return;
+			node.kids.forEach((e, i) => {
+				const child = nodes.get(e);
+				struct.push([p, i, e, child.t, child.n]);
+				// state rows come out in the mirror's attribute order — a
+				// rebuilt DOM's attribute list matches these positions.
+				child.attrs.forEach((attr, ai) => {
+					state.push([e, ai, attr.n, attr.v]);
+				});
+				walk(e);
+			});
+		};
+		walk(0);
+		return { v, struct, state };
 	} finally {
 		documentStore.releaseHandle(webstrateId);
 	}

@@ -843,9 +843,9 @@ describe('ZIP import', function () {
 		assert.equal(response.status, 200, 'Importing a valid ZIP file should succeed');
 		createdWebstrateIds.push(webstrateId);
 
-		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?raw`);
 		assert.equal(docResponse.status, 200, 'The imported webstrate should exist');
-		assert.include(JSON.stringify(await docResponse.json()), 'zip import test',
+		assert.include(await docResponse.text(), 'zip import test',
 			'The imported webstrate should contain the index.html document');
 	});
 
@@ -862,7 +862,7 @@ describe('ZIP import', function () {
 		assert.include((await response.json()).error, 'uncompressed size',
 			'The rejection should explain the uncompressed size limit');
 
-		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?raw`);
 		assert.equal(docResponse.status, 404, 'No webstrate should be created from a zip bomb');
 	});
 
@@ -879,7 +879,7 @@ describe('ZIP import', function () {
 		assert.include((await response.json()).error, 'too many entries',
 			'The rejection should explain the entry limit');
 
-		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+		const docResponse = await fetch(`${config.server_address}${webstrateId}/?raw`);
 		assert.equal(docResponse.status, 404, 'No webstrate should be created from an archive with too many entries');
 	});
 });
