@@ -7,7 +7,7 @@
 // anywhere in client/. The real implementation drags the entire `async`
 // library plus a dozen presence modules into the bundle (~34 KiB minified),
 // for a feature no Webstrates document can reach. webpack.config.js aliases
-// the presence requires onto these stubs instead (see DEAD_CODE.md 10.3).
+// the presence requires onto these stubs instead
 //
 // The stub satisfies everything Connection does with the class — construct it,
 // read `.channel`, flip `_wantsDestroy`, and call back into the internal

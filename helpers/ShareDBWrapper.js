@@ -167,9 +167,7 @@ share.use(['afterWrite'], (req, next) => {
 });
 
 // Permission enforcement on the actions a connected client can trigger. Only 'query',
-// 'submit' and 'receive' are real ShareDB 6 middleware actions (MIDDLEWARE_ACTIONS); the
-// also-registered 'fetch'/'getOps'/'bulk fetch'/'delete'/'handshake' never fire, so reads
-// over the websocket relied on the permission checks elsewhere. See DEAD_CODE.md §7.1.
+// 'submit' and 'receive' are real ShareDB 6 middleware actions
 share.use(['query', 'submit', 'receive'], async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).

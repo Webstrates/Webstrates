@@ -29,7 +29,7 @@ MongoClient.connect(global.config.db).then(client =>{
 	db.assetSearchCache = _db.collection('assetSearchCache');
 	// Locks that keep concurrent processes from building the same search cache twice. A lock
 	// expires after 60 seconds, so one held by a process that dies mid-build doesn't block the
-	// file's cache forever. (Must match LOCK_TTL_SECONDS in SearchableAssets.js.)
+	// file's cache forever.
 	db.assetSearchCacheLocks = _db.collection('assetSearchCacheLocks');
 	db.assetSearchCacheLocks.createIndex({ createdAt: 1 }, { expireAfterSeconds: 60 });
 

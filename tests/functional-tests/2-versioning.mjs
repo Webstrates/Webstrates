@@ -186,8 +186,6 @@ describe('Versioning (restores spanning multiple ops)', function () {
 	});
 
 	after(async () => {
-		// Slashed delete URL + disabled browser cache, so the goto can't hang on a
-		// redirect (302) to a cached document (see DOM-STRESS-FLAKE.md).
 		await page.setCacheEnabled(false);
 		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 		await browser.close();
@@ -291,8 +289,6 @@ describe('Versioning (version zero)', function () {
 	});
 
 	after(async () => {
-		// Slashed delete URL + disabled browser cache, so the goto can't hang on a
-		// redirect (302) to a cached document (see DOM-STRESS-FLAKE.md).
 		await page.setCacheEnabled(false);
 		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 		await browser.close();
@@ -396,8 +392,6 @@ describe('Versioning (tag payload)', function () {
 	});
 
 	after(async () => {
-		// Slashed delete URL + disabled browser cache, so the goto can't hang on a
-		// redirect (302) to a cached document (see DOM-STRESS-FLAKE.md).
 		await page.setCacheEnabled(false);
 		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
 		await browser.close();
@@ -507,7 +501,6 @@ describe('Versioning (auto-tagging)', function () {
 	});
 
 	after(async () => {
-		// Slashed delete URL + disabled browser cache (see DOM-STRESS-FLAKE.md).
 		if (page && url) {
 			await page.setCacheEnabled(false);
 			await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
