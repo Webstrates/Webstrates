@@ -70,6 +70,10 @@ const getSampleConfig = () => {
  * @return {Object}        target object with missing properties from filler object.
  */
 const mergeJSON = (target, filler) => {
+	// An explicit `false` or `null` in the target 
+	// (undefined) still falls back to the filler.
+	if (target === false || target === null) return target;
+
 	if (!target) return filler;
 
 	if (typeof filler === 'object') {

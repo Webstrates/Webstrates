@@ -35,6 +35,11 @@
     ],
     "providers": {}
   },
+  "basicAuth": {
+    "realm": "webstrate",
+    "username": "web",
+    "password": "strate"
+  },
   "tagging": {
     "autotagInterval": 3600,
     "tagPrefix": "Session of "

@@ -125,7 +125,10 @@ if (config.basicAuth) {
 	});
 	app.use((req, res, next) => {
 		if (!req.ws) {
-			httpAuth.connect(basic)(req, res, next);
+			// basic.check() returns a handler that ends the response with a 401 on failure and, on
+			// success, invokes our callback with (req, res) — which we turn into a
+			// plain next() so the middleware chain continues.
+			basic.check(() => next())(req, res);
 		}
 		else {
 			next();

@@ -5,6 +5,7 @@
 	"niceWebstrateIds": false,
 	"maxAge": "1d",
 	"maxAssetSize": 100,
+	"basicAuth": false,
 	"auth": {
 		"cookie": {
 			"secret": "xVxE+V6o4bl0OoTvCCL6Ag==",
