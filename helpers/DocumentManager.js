@@ -402,15 +402,16 @@ module.exports.getOps = async function({ webstrateId, initialVersion, version })
 	// If no version is defined, all operations will be retrieved.
 	let ops = await util.promisify(ShareDbWrapper.getOps)(webstrateId, initialVersion, version);	
 
-	// If we have access to a session log, and it is not disabled, we attach session 
-	// entries to operations before returning them.
+	// If we have access to a session log, and it is not disabled, we attach session
+	// entries to operations before returning them. 
 	if (db.sessionLog && !config.disableSessionLog){
 		var sessionsInOps = new Set();
 		ops.forEach(function(op) {
 			sessionsInOps.add(op.src);
 		});
-	
-		let sessions = await db.sessionLog.find({'sessionId': { $in: Array.from(sessionsInOps) }}).toArray();
+
+		let sessions = await db.sessionLog.find({'sessionId': { $in: Array.from(sessionsInOps) }},
+			{ projection: { _id: 0 } }).toArray();
 		ops.forEach(op =>{
 			op.session = sessions.find(session => op.src === session.sessionId);
 		});
@@ -575,7 +576,7 @@ async function transformDocumentToVersion({ webstrateId, snapshot, version }) {
  * @private
  */
 function getTagBeforeVersion(webstrateId, version, next) {
-	db.tags.find({ webstrateId, v: { $lte: version } }).sort({ v : -1 }).limit(1).toArray().then(tags=>{
+	db.tags.find({ webstrateId, v: { $lte: version } }, { projection: { _id: 0 } }).sort({ v : -1 }).limit(1).toArray().then(tags=>{
 	    return next && next(null, tags[0]);
 	}).catch(err=>{
 	    return next && next(err);
@@ -591,7 +592,7 @@ function getTagBeforeVersion(webstrateId, version, next) {
  * @private
  */
 function getDocumentFromTag(webstrateId, label, next) {
-	db.tags.findOne({ webstrateId, label }).then(snapshot=>{
+	db.tags.findOne({ webstrateId, label }, { projection: { _id: 0 } }).then(snapshot=>{
 		if (!snapshot) return next && next(new Error(`Requested tag ${label} does not exist.`));
 		snapshot.tag = label;
 		next && next(null, snapshot);

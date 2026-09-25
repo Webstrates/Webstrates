@@ -53,6 +53,7 @@ exports.admin = {
         };
 
         await db.invites.insertOne(inviteDocument);
+        delete inviteDocument._id;
         return inviteDocument;
     },
 
@@ -110,7 +111,7 @@ exports.invitee = {
         let invite = await db.invites.findOne({
             webstrateId: webstrateId,
             key: key,
-        });
+        }, { projection: { _id: 0 } });
         if (!invite) {
             throw new Error("Invalid invitation key");
         }

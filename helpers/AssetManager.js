@@ -155,10 +155,10 @@ module.exports.markAssetAsDeleted = async function(webstrateId, assetName){
 		{ webstrateId, originalFileName: assetName},
 		{ $set: { deletedAt: version } },
 		// Sort to ensure that we mark the newest verison of the file as deleted.
-		{ sort: { v: -1 } });
-	
-	if (res.value === null) throw new Error('Update failed');
-	return res.value;
+		{ sort: { v: -1 }, projection: { _id: 0 } });
+
+	if (!res) throw new Error('Update failed');
+	return res;
 };
 
 /**
