@@ -21,7 +21,8 @@ module.exports = {
 		'userHistory',
 		'assets',
 		'messages',
-		'keepAlive'
+		'keepAlive',
+		'deleteEvent'
 	],
 	// Reuse the parent's websocket when doing transclusion. Very experimental.
 	reuseWebsocket: false,

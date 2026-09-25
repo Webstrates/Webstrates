@@ -1139,6 +1139,14 @@ async function deleteWebstrate(req, res) {
 		await assetManager.deleteAssets(req.params.webstrateId);
 		await documentManager.deleteDocument(req.params.webstrateId, source);
 		snapshotCacheManager.removeEntry(req.params.webstrateId);
+		// Mark this deletion in the deleting browser, so the deleting browser's own
+		// clients can tell their delete redirect apart from one triggered by another
+		// client: the ?delete response already navigates this browser to /, and the
+		// client's own (redundant) redirect would race and abort that navigation. The
+		// cookie is short-lived — it only needs to survive the few hundred
+		// milliseconds until the clients' deferred redirect decision (see
+		// client/webstrates/deleteEvent.js).
+		res.cookie(`webstrates-deleted-${req.params.webstrateId}`, '1', { maxAge: 10000, httpOnly: false });
 		res.redirect('/');
 	} catch (err){
 		console.error(err);
