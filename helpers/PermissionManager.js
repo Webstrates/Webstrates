@@ -13,6 +13,29 @@ var timeToLive = authConfig && authConfig.permissionTimeout || 120;
 var defaultPermissionsList = authConfig && authConfig.defaultPermissions;
 
 /**
+ * Determines whether a permission string grants read access. Read access is
+ * granted by any of the letters "r", "w" and "a", i.e. write permissions
+ * implicitly include read permissions ("w" implies "r") and admin permissions
+ * implicitly include both read and write permissions ("a" implies "rw").
+ * @param  {string} permissions Permission string, e.g. "rw".
+ * @return {boolean}           True if the permissions grant read access.
+ * @public
+ */
+module.exports.canRead = (permissions) =>
+	typeof permissions === 'string' && /[rwa]/.test(permissions);
+
+/**
+ * Determines whether a permission string grants write access. Write access is
+ * granted by both "w" and "a", i.e. admin permissions implicitly include write
+ * permissions ("a" implies "w").
+ * @param  {string} permissions Permission string, e.g. "rw".
+ * @return {boolean}           True if the permissions grant write access.
+ * @public
+ */
+module.exports.canWrite = (permissions) =>
+	typeof permissions === 'string' && /[wa]/.test(permissions);
+
+/**
  * Determines whether a user is allowed to create a webstrate.
  * @param  {Object} user User object (retrieved from the request object).
  * @return {boolean}     True if allowed to create a webstrate, false otherwise.

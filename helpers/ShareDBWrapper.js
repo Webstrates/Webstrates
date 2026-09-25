@@ -233,12 +233,12 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 
 		switch (req.action) {
 			case 'query': // Document request.
-				if (permissions.includes('r')) {
+				if (permissionManager.canRead(permissions)) {
 					return next();
 				}
 				break;
 			case 'submit': // Operation submission.
-				if (permissions.includes('w')) {
+				if (permissionManager.canWrite(permissions)) {
 					return next();
 				}
 				break;
@@ -277,7 +277,7 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 				}
 
 				// Initial document request (s = subscribe).
-				if (req.data.a === 's' && permissions.includes('r')) {
+				if (req.data.a === 's' && permissionManager.canRead(permissions)) {
 				// Add client and send "hello" message including client list.
 					clientManager.addClientToWebstrate(socketId, user.userId, webstrateId);
 
@@ -307,7 +307,7 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 				break;
 		}
 
-		return next('Forbidden, write permissions required');
+		return next('Forbidden, insufficient permissions');
 	});
 
 module.exports.submit = async (webstrateId, op) => {

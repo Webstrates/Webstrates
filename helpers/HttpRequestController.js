@@ -653,13 +653,13 @@ module.exports.requestHandler = async function(req, res) {
 			req.user.provider, snapshot);
 
 		// If the webstrate doesn't exist, write permissions are required to create it.
-		if (!snapshot.type && !req.user.permissions.includes('w')) {
+		if (!snapshot.type && !permissionManager.canWrite(req.user.permissions)) {
 			return res.status(403).send('Insufficient permissions. Write is required to create a new webstrate.');
 		}
 
 		// If the webstrate does exist, read permissions are required to access it (or any of its
 		// assets).
-		if (!req.user.permissions.includes('r')) {
+		if (!permissionManager.canRead(req.user.permissions)) {
 			return res.status(403).send('Insufficient permissions. Read is required to access this webstrate.');
 		}
 
@@ -806,7 +806,7 @@ module.exports.requestHandler = async function(req, res) {
 			}
 
 			// If the user has no default write permissions, they're not allowed to create documents.
-			if (!defaultPermissions.includes('w')) {
+			if (!permissionManager.canWrite(defaultPermissions)) {
 				return res.status(403).send('Write permissions are required to create a new document.');
 			}
 			return copyWebstrate(req, res, snapshot);
@@ -815,7 +815,7 @@ module.exports.requestHandler = async function(req, res) {
 		// Requesting to restore document to a previous version or tag by calling:
 		// `/<id>/?restore=<version|tag>`.
 		if ('restore' in req.query) {
-			if (!req.user.permissions.includes('w')) {
+			if (!permissionManager.canWrite(req.user.permissions)) {
 				return res.status(403).send('Write permissions are required to restore a document.');
 			}
 
@@ -841,7 +841,7 @@ module.exports.requestHandler = async function(req, res) {
 				return res.status(403).send(err);
 			}
 
-			if (!req.user.permissions.includes('w')) {
+			if (!permissionManager.canWrite(req.user.permissions)) {
 				return res.status(403).send('Write permissions are required to delete a document.');
 			}
 
@@ -1038,7 +1038,10 @@ async function copyWebstrate(req, res, snapshot) {
 		let webstrateId = req.query.copy || await generateWebstrateId(req);
 
 		// If user doesn't have write permissions to the docuemnt, add them if the user is logged in,
-		// otherwise just delete all permissions on the new document.
+		// otherwise just delete all permissions on the new document. Note: this is a literal check
+		// for the 'w' letter on purpose. Admin permissions are stripped from the new snapshot below
+		// (removeAdminPermissionsFromSnapshot), so an 'a'-only user must be granted 'rw' here to
+		// not lose access to their own copy — using canWrite() instead would lock them out.
 		if (!req.user.permissions.includes('w')) {
 			if (req.user.username === 'anonymous' && req.user.provider === '') {
 				snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
@@ -1316,7 +1319,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		req.user.provider);
 
 			// If the user has no default write permissions, they're not allowed to create documents.
-	if (!defaultPermissions.includes('w')) {
+	if (!permissionManager.canWrite(defaultPermissions)) {
 		return res.status(403).send('Write permissions are required to create a new document');
 	}
 
@@ -1530,8 +1533,10 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 										snapshot);
 								// If user doesn't have write permissions to the document, add them if
 								// the user is logged in, otherwise just delete all permissions on the
-								// new document.
-								if (!userPermissions.includes('w')) {
+								// new document. (Note: admin permissions imply write, so a user with
+								// only "a" permissions keeps them as-is here — unlike ?copy, no admin
+								// permissions are stripped from imported documents.)
+								if (!permissionManager.canWrite(userPermissions)) {
 									if (req.user.username === 'anonymous' && req.user.provider === '') {
 										snapshot = permissionManager.clearPermissionsFromSnapshot(snapshot);
 									} else {

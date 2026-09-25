@@ -77,7 +77,7 @@ exports.onmessage = async (ws, req, data, next) => {
 
 			const senderPermissions = await permissionManager.getUserPermissions(user.username,
 				user.provider, senderWebstrateId);
-			if (!senderPermissions || !senderPermissions.includes('r')) {
+			if (!permissionManager.canRead(senderPermissions)) {
 				return console.error('Insufficient read permissions in', data.wa, 'call');
 			}
 
@@ -124,7 +124,7 @@ exports.onmessage = async (ws, req, data, next) => {
 	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
 		webstrateId);
 
-	if (!permissions.includes('r')) {
+	if (!permissionManager.canRead(permissions)) {
 		return console.error('Insufficient read permissions in', data.wa, 'call');
 	}
 
@@ -215,7 +215,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Mark asset as deleted.
 		case 'deleteAsset': {
-			if (!permissions.includes('w')) {
+			if (!permissionManager.canWrite(permissions)) {
 				console.error('Insufficient write permissions in', data.wa, 'call');
 				if (data.token) {
 					ws.send(JSON.stringify({ wa: 'reply', token: data.token,
@@ -238,7 +238,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Restoring a document to a previous version.
 		case 'restore': {
-			if (!permissions.includes('w')) {
+			if (!permissionManager.canWrite(permissions)) {
 				ws.send(JSON.stringify({ wa: 'reply', token: data.token,
 					error: 'Write permissions are required to restore a document.' }));
 				return;
@@ -294,7 +294,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Adding a tag to a document version.
 		case 'tag': {
-			if (!permissions.includes('w')) {
+			if (!permissionManager.canWrite(permissions)) {
 				console.error('Insufficient write permissions in', data.wa, 'call');
 				if (data.token) {
 					ws.send(JSON.stringify({ wa: 'reply', token: data.token,
@@ -324,7 +324,7 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Removing a tag from a document version.
 		case 'untag': {
-			if (!permissions.includes('w')) {
+			if (!permissionManager.canWrite(permissions)) {
 				return console.error('Insufficient write permissions in', data.wa, 'call');
 			}
 			const tag = data.l;

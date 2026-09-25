@@ -483,7 +483,7 @@ function fileFilter(req, file, next) {
 
 		const permissions = await permissionManager
 			.getUserPermissionsFromSnapshot(req.user.username, req.user.provider, snapshot);
-		if (!permissions.includes('w')) throw new Error('Insufficient permissions.');
+		if (!permissionManager.canWrite(permissions)) throw new Error('Insufficient permissions.');
 
 		if (/^\d+$/.test(file.originalname)) throw new Error('File name cannot be only numbers.');
 
