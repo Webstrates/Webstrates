@@ -561,7 +561,7 @@ function setCorsHeaders(req, res, snapshot) {
  * @private
  */
 const getZipStructure = async (fileName) => new Promise((accept, reject) => {
-	yauzl.open(APP_PATH + '/uploads/' + fileName, { lazyEntries: true }, (err, zipFile) => {
+	yauzl.open(assetManager.UPLOAD_DEST + fileName, { lazyEntries: true }, (err, zipFile) => {
 		if (err || !zipFile) {
 			return reject(new Error(`"${fileName}" is not a valid ZIP file.`));
 		}
@@ -686,7 +686,7 @@ module.exports.requestHandler = async function(req, res) {
 				}
 
 				if (req.params.assetPath) {
-					return yauzl.open(APP_PATH + '/uploads/' + asset.fileName, { lazyEntries: true },
+					return yauzl.open(assetManager.UPLOAD_DEST + asset.fileName, { lazyEntries: true },
 						(err, zipFile) => {
 							if (err) {
 								return res.status(400).send(`"${req.params.assetName}" is not a valid ZIP file.`);
@@ -731,7 +731,7 @@ module.exports.requestHandler = async function(req, res) {
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
 				var maxAge = req.params.version ? '1y' : (config.maxAge || '1m');
 				res.type(asset.mimeType);
-				return res.sendFile(APP_PATH + '/uploads/' + asset.fileName, { maxAge });
+				return res.sendFile(assetManager.UPLOAD_DEST + asset.fileName, { maxAge });
 			} catch (error) {
 				console.error(error);
 				return res.status(409).send(String(error));

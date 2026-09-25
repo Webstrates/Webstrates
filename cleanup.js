@@ -15,7 +15,8 @@ const configHelper = require(APP_PATH + '/helpers/ConfigHelper.js');
 const config = global.config = configHelper.getConfig();
 const db = require(APP_PATH + '/helpers/database.js');
 
-const UPLOAD_DEST = `${APP_PATH}/uploads/`;
+// Same directory the server uploads assets to 
+const UPLOAD_DEST = configHelper.uploadsPath();
 
 const cleanUp = async () => {
 	const rl = readline.createInterface({ input: process.stdin, output: process.stdout });

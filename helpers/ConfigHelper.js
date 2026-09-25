@@ -82,10 +82,42 @@ const mergeJSON = (target, filler) => {
 };
 
 /**
+ * Environment variables that override individual config.json properties.
+ * An environment variable set to a non-empty string replaces the value of
+ * the config property it maps to; everything else keeps its config.json value.
+ */
+const ENV_OVERRIDES = {
+	// Directory uploads (assets) are stored in, e.g. WEBSTRATES_UPLOADS_DIR=/var/webstrates/uploads.
+	uploadsDir: 'WEBSTRATES_UPLOADS_DIR'
+};
+
+/** Apply the environment overrides (ENV_OVERRIDES) onto a config object. */
+const applyEnvOverrides = (config) => {
+	Object.entries(ENV_OVERRIDES).forEach(([configKey, envVar]) => {
+		const value = process.env[envVar];
+		if (typeof value === 'string' && value !== '') {
+			config[configKey] = value;
+		}
+	});
+	return config;
+};
+
+/**
  * Get merge configs from disk as object.
  * @return {Object} Config.
  */
 exports.getConfig = () => {
 	createConfig();
-	return mergeJSON(getConfig(), getSampleConfig());
+	return applyEnvOverrides(mergeJSON(getConfig(), getSampleConfig()));
+};
+
+/**
+ * Absolute path of the directory uploaded assets are stored in, with a trailing path
+ * separator (callers concatenate file names onto it). 
+ * @param  {Object} [cfg] Config to read `uploadsDir` from (defaults to global.config).
+ * @return {string}      Absolute uploads directory path, with trailing separator.
+ */
+exports.uploadsPath = (cfg) => {
+	const uploadsDir = (cfg || global.config || {}).uploadsDir || 'uploads';
+	return path.join(path.resolve(APP_PATH, uploadsDir), path.sep);
 };

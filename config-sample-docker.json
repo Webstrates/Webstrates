@@ -2,6 +2,7 @@
 	"listeningAddress": "0.0.0.0",
 	"listeningPort": 7007,
 	"db": "mongodb://mongodb:27017/webstrate",
+	"uploadsDir": "uploads",
 	"niceWebstrateIds": false,
 	"maxAge": "1d",
 	"maxAssetSize": 100,

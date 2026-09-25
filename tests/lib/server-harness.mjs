@@ -40,8 +40,11 @@ const START_TIMEOUT_MS = 20000;
 
 const servers = [];
 
-// Kill every tracked server now; safe to call repeatedly.
-const stopAll = () => Promise.all(servers.map((server) => server.stop().catch(() => {})));
+// Kill every tracked server now; safe to call repeatedly. The array is snapshotted
+// first: stop() removes each server from `servers` as it goes, and a plain map()
+// re-reads the shrinking array length on every iteration, skipping every server
+// after the first (leaking their child processes and the mocha run's exit).
+const stopAll = () => Promise.all([...servers].map((server) => server.stop().catch(() => {})));
 
 // Deep merge `override` into `base`: plain objects merge recursively, everything else
 // (including arrays) is replaced by the override value.
@@ -100,9 +103,12 @@ const waitForServer = async (server) => {
  * @param  {string} [opts.label]    Instance name (log and config file names).
  * @param  {number} [opts.port]     Preferred port; a random free one if omitted.
  * @param  {Object} [opts.config]   Overrides deep-merged over the base config.
+ * @param  {Object} [opts.env]      Extra environment variables for the server process
+ *                                  (e.g. WEBSTRATES_UPLOADS_DIR to test env-var overrides,
+ *                                  which take precedence over the generated config file).
  * @return {Promise<Object>}        { label, port, address, config, child, logFile, stop }
  */
-const startServer = async ({ label = `server-${servers.length + 1}`, port, config = {} } = {}) => {
+const startServer = async ({ label = `server-${servers.length + 1}`, port, config = {}, env = {} } = {}) => {
 	const port_ = await findFreePort(port);
 	// The effective configuration the server will run: the sample's defaults, overridden
 	// by the base config, overridden by this instance's overrides. Building it here (the
@@ -135,7 +141,7 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 
 	const child = spawn(process.execPath, [path.join(REPO_ROOT, 'webstrates.js')], {
 		cwd: REPO_ROOT,
-		env: { ...process.env, WEBSTRATES_CONFIG: configFile },
+		env: { ...process.env, WEBSTRATES_CONFIG: configFile, ...env },
 		stdio: ['ignore', fs.openSync(logFile, 'w'), fs.openSync(logFile, 'a')]
 	});
 
