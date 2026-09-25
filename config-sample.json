@@ -30,7 +30,7 @@
       {
         "username": "anonymous",
         "provider": "",
-        "permissions": "arw"
+        "permissions": "rw"
       }
     ],
     "providers": {}
