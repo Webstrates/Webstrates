@@ -21,7 +21,14 @@ fs.writeFileSync(configFixturePath, JSON.stringify({ uploadsDir: '/uploads/from/
 process.env.WEBSTRATES_CONFIG = configFixturePath;
 
 const require = createRequire(import.meta.url);
-const configHelper = require(path.join(global.APP_PATH, 'helpers/ConfigHelper.js'));
+const configHelperPath = path.join(global.APP_PATH, 'helpers/ConfigHelper.js');
+// ConfigHelper captures WEBSTRATES_CONFIG when it is loaded, and mocha loads
+// all spec files into one process: whichever spec required it first would fix
+// the fixture path for every other spec. Drop any cached copy and load a fresh
+// one bound to the fixture above (tests/unit-tests/env-vars-test.mjs does the
+// same, so the two specs stay order-independent).
+delete require.cache[require.resolve(configHelperPath)];
+const configHelper = require(configHelperPath);
 
 describe('Uploads directory resolution', function () {
 

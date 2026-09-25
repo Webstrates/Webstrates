@@ -9,5 +9,7 @@ services:
     volumes:
       - ./uploads:/app/uploads
       - ./config.json:/app/config.json
+    environment:
+      - WEBSTRATES_DB=mongodb://mongodb:27017/webstrate
     ports:
       - 7007:7007

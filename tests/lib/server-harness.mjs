@@ -13,6 +13,13 @@
 //     port: 7011,                                // preferred port; random free one if omitted
 //     config: { rateLimit: { ... } }             // deep-merged over the base config
 //   });
+//   // or, to exercise WEBSTRATES_* env overrides against a config.json of the
+//   // spec's own choosing (the harness then dictates neither config nor port):
+//   const server = await harness.startServer({
+//     label: 'env-vars', configFile: 'spec-config.json',
+//     address: 'http://127.0.0.2:7185/',         // where the env vars put the server
+//     env: { WEBSTRATES_LISTENING_ADDRESS: '127.0.0.2', ... }
+//   });
 //   server.address  // e.g. http://localhost:7011/ — point tests at this
 //   server.config   // the exact config the server is running (including the chosen port)
 //   await server.stop();
@@ -100,55 +107,106 @@ const waitForServer = async (server) => {
 /**
  * Start a Webstrates server instance against a generated configuration.
  * @param  {Object} opts
- * @param  {string} [opts.label]    Instance name (log and config file names).
- * @param  {number} [opts.port]     Preferred port; a random free one if omitted.
- * @param  {Object} [opts.config]   Overrides deep-merged over the base config.
- * @param  {Object} [opts.env]      Extra environment variables for the server process
- *                                  (e.g. WEBSTRATES_UPLOADS_DIR to test env-var overrides,
- *                                  which take precedence over the generated config file).
- * @return {Promise<Object>}        { label, port, address, config, child, logFile, stop }
+ * @param  {string} [opts.label]      Instance name (log and config file names).
+ * @param  {number} [opts.port]        Preferred port; a random free one if omitted.
+ * @param  {Object} [opts.config]      Overrides deep-merged over the base config.
+ * @param  {Object} [opts.env]         Extra environment variables for the server process
+ *                                     (e.g. WEBSTRATES_UPLOADS_DIR to test env-var overrides,
+ *                                     which take precedence over the generated config file).
+ * @param  {string} [opts.configFile]  Use this config file verbatim instead of generating
+ *                                     one: no sample/base merge, and the harness does NOT
+ *                                     dictate the port (the point is to let the file and
+ *                                     `env` disagree, so the WEBSTRATES_* overrides decide
+ *                                     where the server binds). Requires `address`.
+ * @param  {string} [opts.address]     Where the configFile-mode server comes up (waited
+ *                                     on and reported as server.address). Required with
+ *                                     configFile, ignored without it.
+ * @return {Promise<Object>}           { label, port, address, config, child, logFile, stop }
  */
-const startServer = async ({ label = `server-${servers.length + 1}`, port, config = {}, env = {} } = {}) => {
-	const port_ = await findFreePort(port);
-	// The effective configuration the server will run: the sample's defaults, overridden
-	// by the base config, overridden by this instance's overrides. Building it here (the
-	// same merge the server applies to a config.json against the sample — see
-	// helpers/ConfigHelper.js) means server.config reports exactly what runs, including
-	// keys only the sample provides (e.g. messageRateLimit, maxZipEntries).
-	const sample = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'config-sample.json'), 'utf8'));
-	const fullConfig = mergeConfig(mergeConfig(sample, JSON.parse(fs.readFileSync(BASE_CONFIG_PATH, 'utf8'))), config);
-	// The harness always dictates the port: instances with the same base config (which
-	// carries listeningPort 7007) must not fight over it.
-	fullConfig.listeningPort = port_;
+const startServer = async ({ label = `server-${servers.length + 1}`, port, config = {}, env = {},
+	configFile, address } = {}) => {
+	if (configFile) {
+		if (port !== undefined || Object.keys(config).length > 0) {
+			throw new Error('configFile cannot be combined with port or config ' +
+				'overrides (the file is used verbatim)');
+		}
+		if (!address) {
+			throw new Error('configFile requires address (the harness cannot know ' +
+				'where the server will bind)');
+		}
+	}
+	const port_ = configFile ? null : await findFreePort(port);
+	let fullConfig;
+	if (configFile) {
+		// The spec's own config file, verbatim: server.config reports its contents (the
+		// WEBSTRATES_* overrides from `env` apply on top at runtime — see ConfigHelper).
+		fullConfig = JSON.parse(fs.readFileSync(configFile, 'utf8'));
+	} else {
+		// The effective configuration the server will run: the sample's defaults, overridden
+		// by the base config, overridden by this instance's overrides. Building it here (the
+		// same merge the server applies to a config.json against the sample — see
+		// helpers/ConfigHelper.js) means server.config reports exactly what runs, including
+		// keys only the sample provides (e.g. messageRateLimit, maxZipEntries).
+		const sample = JSON.parse(fs.readFileSync(path.join(REPO_ROOT, 'config-sample.json'), 'utf8'));
+		const baseConfig = JSON.parse(fs.readFileSync(BASE_CONFIG_PATH, 'utf8'));
+		fullConfig = mergeConfig(mergeConfig(sample, baseConfig), config);
+		// The harness always dictates the port: instances with the same base config (which
+		// carries listeningPort 7007) must not fight over it.
+		fullConfig.listeningPort = port_;
+	}
 
 	const tmp = os.tmpdir();
-	// The sample config points the compressed-snapshot cache at a directory relative to
-	// the repo cwd, which every concurrently running server instance (and every suite
-	// sharing this checkout) would write into. Random webstrate ids make actual cache
-	// collisions between instances unlikely, but give each instance its own directory
-	// anyway — the cache is per-server mutable state and deserves the same isolation as
-	// the port. (Entry names are just the webstrate id, so sharing also let one suite's
-	// entries accumulate in another's checkout forever.)
-	fullConfig.compressedSnapshotCacheDir = path.join(
-		fs.mkdtempSync(path.join(tmp, 'webstrates-harness-')), 'snapshot-cache');
+	// Generated configurations get the compressed-snapshot cache pointed at a private
+	// directory: the sample config points it at a directory relative to the repo cwd,
+	// which every concurrently running server instance (and every suite sharing this
+	// checkout) would write into. Random webstrate ids make actual cache collisions
+	// between instances unlikely, but the cache is per-server mutable state and deserves
+	// the same isolation as the port. (Entry names are just the webstrate id, so sharing
+	// also let one suite's entries accumulate in another's checkout forever.) A
+	// configFile the spec provided verbatim is left alone — its cache settings are part
+	// of what the spec is exercising.
+	if (!configFile) {
+		fullConfig.compressedSnapshotCacheDir = path.join(
+			fs.mkdtempSync(path.join(tmp, 'webstrates-harness-')), 'snapshot-cache');
+	}
 	// Config and log files carry the spawning process's pid in their name: labels are the
 	// same across test suites (every suite's ratelimit tests use "ratelimit"), so on a
 	// shared host two concurrent runs would otherwise overwrite each other's config mid-
 	// boot and interleave their logs (the state file is already pid-unique).
-	const configFile = path.join(tmp, `webstrates-harness-config-${label}-${process.pid}.json`);
+	const configFilePath = path.join(tmp, `webstrates-harness-config-${label}-${process.pid}.json`);
 	const logFile = path.join(tmp, `webstrates-harness-${label}-${process.pid}.log`);
-	fs.writeFileSync(configFile, JSON.stringify(fullConfig, null, '\t'));
+	if (!configFile) {
+		fs.writeFileSync(configFilePath, JSON.stringify(fullConfig, null, '\t'));
+	}
 
+	// The harness dictates every instance's configuration through the generated
+	// config file (and per-instance `env` overrides, applied after this). A
+	// WEBSTRATES_* variable inherited from the shell running the tests would
+	// override the harness's own choices — every instance would bind the same
+	// WEBSTRATES_LISTENING_PORT, say — so the inherited environment is cleaned
+	// first. (WEBSTRATES_CONFIG is set explicitly below; `env` is applied on
+	// top and may deliberately carry WEBSTRATES_* variables, e.g. the
+	// uploads-dir suite sets WEBSTRATES_UPLOADS_DIR.)
+	const cleanEnv = { ...process.env };
+	Object.keys(cleanEnv).forEach((key) => {
+		if (key.startsWith('WEBSTRATES_')) delete cleanEnv[key];
+	});
+
+	// One file descriptor for both streams, so stdout and stderr interleave
+	// chronologically in the log: with two descriptors ('w' for stdout, 'a'
+	// for stderr) the first stdout write restarts at offset 0 and overwrites
+	// whatever early stderr (startup warnings) had already been appended.
+	const logFd = fs.openSync(logFile, 'w');
 	const child = spawn(process.execPath, [path.join(REPO_ROOT, 'webstrates.js')], {
 		cwd: REPO_ROOT,
-		env: { ...process.env, WEBSTRATES_CONFIG: configFile, ...env },
-		stdio: ['ignore', fs.openSync(logFile, 'w'), fs.openSync(logFile, 'a')]
+		env: { ...cleanEnv, WEBSTRATES_CONFIG: configFile || configFilePath, ...env },
+		stdio: ['ignore', logFd, logFd]
 	});
 
 	const server = {
 		label,
 		port: port_,
-		address: `http://localhost:${port_}/`,
+		address: address || `http://localhost:${port_}/`,
 		config: fullConfig,
 		child,
 		logFile,
@@ -191,5 +249,5 @@ process.on('exit', () => {
 process.on('SIGINT', async () => { await stopAll(); process.exit(130); });
 process.on('SIGTERM', async () => { await stopAll(); process.exit(143); });
 
-export default { startServer, stopAll, mergeConfig };
-export { startServer, stopAll, mergeConfig };
+export default { startServer, stopAll };
+export { startServer, stopAll };
