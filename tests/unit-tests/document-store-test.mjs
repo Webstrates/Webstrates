@@ -688,6 +688,174 @@ describe('DocumentStore (SQLite document engine)', function() {
 		});
 	});
 
+	describe('same-base-origin concurrent commits (OT convergence)', function() {
+		// Wikipedia OT: convergence means every replica holds the same
+		// document at quiescence. This system guarantees it by having a
+		// single linearizer — the server assigns one opid order and
+		// transforms every incoming commit against everything committed
+		// after its base opid (pairwise TP1 transforms with committed-
+		// first tie-breaks; TP2 is unnecessary because there is exactly
+		// one transform path: ascending server opid order). The tests pin
+		// the protocol promise: commits sent with the last opid the
+		// client knew — even several clients naming the SAME base origin
+		// opid — merge deterministically, and the SQL history (not just
+		// the warm in-memory log) yields that same merge.
+		const SEED_HTML = '<html><head></head><body><div id="d">abcdef</div></body></html>';
+		const seedHandle = () => {
+			const handle = store.getHandle(wid());
+			handle.fromHtml(SEED_HTML, 'seed', 'seed');
+			const ops = handle.allCommits()[0].ops;
+			return {
+				handle,
+				divEid: ops.find((op) => op.k === 'sa' && op.n === 'div').e,
+				textEid: ops.find((op) => op.k === 'sa' && op.t === NODE_TEXT).e
+			};
+		};
+		const divJml = (jml) => jml[3].slice(2).find((node) =>
+			Array.isArray(node) && node[0] === 'div');
+		const divText = (jml) => divJml(jml).slice(2).find((node) =>
+			typeof node === 'string');
+
+		it('merges two commits from one base origin across all op kinds', function() {
+			const {handle: h, divEid, textEid} = seedHandle();
+			const base = h.revision; // the shared base origin opid
+
+			// Client A commits first: insert at div child slot 1, insert in
+			// the middle of the text at offset 3, insert an attribute at 0.
+			const a = h.applyCommit({base, ops: [
+				{k: 'sa', p: divEid, i: 1, e: 4001, t: NODE_ELEMENT, n: 'span'},
+				{k: 'si', e: textEid, q: 3, v: 'X'},
+				{k: 'aa', e: divEid, i: 0, n: 'alpha', v: '1'}
+			], userId: 'a', source: 'sa'});
+			assert.isNotTrue(a.xformed, 'A was based on head');
+
+			// Client B's commit names the SAME base origin opid.
+			const b = h.applyCommit({base, ops: [
+				{k: 'sa', p: divEid, i: 1, e: 4002, t: NODE_ELEMENT, n: 'span'},
+				{k: 'si', e: textEid, q: 3, v: 'Y'},
+				{k: 'aa', e: divEid, i: 0, n: 'beta', v: '2'}
+			], userId: 'b', source: 'sb'});
+			assert.isTrue(b.xformed, 'B was transformed past A');
+
+			// Both intents survive and committed-first wins the left slot in
+			// every dimension: child order, string offset, attribute order.
+			const jml = mirrorToJsonML(h.nodes);
+			const div = divJml(jml);
+			assert.deepEqual(Object.keys(div[1]), ['alpha', 'beta', 'id'],
+				'attributes: A first, B shifted behind it, id last');
+			const spans = div.slice(2).filter((node) =>
+				Array.isArray(node) && node[0] === 'span');
+			assert.equal(spans.length, 2, 'both concurrent inserts landed');
+			assert.equal(divText(jml), 'abcXYdef',
+				'X keeps offset 3, Y shifts one past it');
+			// A fresh subscriber rebuilding from the SQL history sees
+			// exactly the merged head (convergence at quiescence).
+			assert.deepEqual(mirrorToJsonML(h.snapshotAt(h.revision)), jml);
+		});
+
+		it('stacks three writers from one base in commit order', function() {
+			const {handle: h, textEid} = seedHandle();
+			const base = h.revision;
+			const at = (v) => h.applyCommit({base, ops: [
+				{k: 'si', e: textEid, q: 0, v}
+			], userId: 'w', source: 'sw'});
+			const a = at('A'), b = at('B'), c = at('C');
+			assert.isNotTrue(a.xformed, 'first commit is based on head');
+			assert.isTrue(b.xformed, 'second transformed past first');
+			assert.isTrue(c.xformed, 'third transformed past both');
+			const si = c.ops.find((op) => op.k === 'si');
+			assert.equal(si.q, 2, "C's insert shifted past A's and B's");
+			const jml = mirrorToJsonML(h.nodes);
+			assert.equal(divText(jml), 'ABCabcdef');
+			assert.deepEqual(mirrorToJsonML(h.snapshotAt(h.revision)), jml);
+		});
+
+		it('transforms a stale base identically warm and cold', function() {
+			// Two documents with identical histories. The same stale commit
+			// is applied to one handle with a warm in-memory log and to the
+			// other after dropping the log — the process-restart state, where
+			// commitsSince must rebuild the transform sources from the SQL
+			// history and produce the same effective ops.
+			const seed = (handle) => {
+				handle.fromHtml(SEED_HTML, 'seed', 'seed');
+				const ops = handle.allCommits()[0].ops;
+				return {
+					divEid: ops.find((op) => op.k === 'sa' && op.n === 'div').e,
+					textEid: ops.find((op) => op.k === 'sa' && op.t === NODE_TEXT).e
+				};
+			};
+			const h1 = store.getHandle(wid());
+			const s1 = seed(h1);
+			const h2 = store.getHandle(wid());
+			const s2 = seed(h2);
+			const staleBase = h1.revision;
+			assert.equal(staleBase, h2.revision);
+
+			// An intervening commit both handles have seen.
+			const intervening = (h, s) => h.applyCommit({base: h.revision, ops: [
+				{k: 'sa', p: s.divEid, i: 1, e: 4001, t: NODE_ELEMENT, n: 'span'},
+				{k: 'si', e: s.textEid, q: 3, v: 'X'},
+				{k: 'aa', e: s.divEid, i: 0, n: 'alpha', v: '1'}
+			], userId: 'i', source: 'si'});
+			intervening(h1, s1);
+			intervening(h2, s2);
+
+			const stale = (h, s) => h.applyCommit({base: staleBase, ops: [
+				{k: 'sa', p: s.divEid, i: 1, e: 5002, t: NODE_ELEMENT, n: 'em'},
+				{k: 'si', e: s.textEid, q: 3, v: 'Y'},
+				{k: 'aa', e: s.divEid, i: 0, n: 'beta', v: '2'}
+			], userId: 'b', source: 'sb'});
+			const r1 = stale(h1, s1);
+			// Cold: drop the log, exactly like a restart.
+			h2.log = [];
+			h2.logFirstV = null;
+			const r2 = stale(h2, s2);
+
+			assert.isTrue(r1.xformed, 'stale warm commit was transformed');
+			assert.isTrue(r2.xformed, 'stale cold commit was transformed');
+			assert.deepEqual(
+				{v: r2.v, firstOpid: r2.firstOpid, xformed: r2.xformed},
+				{v: r1.v, firstOpid: r1.firstOpid, xformed: r1.xformed},
+				'cold transform yields the same commit coordinates');
+			assert.deepEqual(r2.ops, r1.ops,
+				'cold transform yields the same effective ops');
+			assert.deepEqual(mirrorToJsonML(h2.nodes), mirrorToJsonML(h1.nodes),
+				'cold transform converges to the same mirror');
+			assert.deepEqual(mirrorToJsonML(h1.snapshotAt(h1.revision)),
+				mirrorToJsonML(h1.nodes));
+		});
+
+		it('accepts any known opid as base (a mid-commit op id)', function() {
+			// The protocol names bases by opid, and any opid the sender
+			// has seen is a legal base: commitsSince transforms against
+			// every commit with v > base, so a base inside a multi-op
+			// commit means the whole enclosing commit (plus everything
+			// later) is transformed past. Clients only ever name commit
+			// opids (acks and frames carry commit versions), so this is
+			// a robustness/fuzz case; for ops that do not collide with
+			// the already-seen prefix of the enclosing commit it must
+			// still merge exactly like the same-base case above.
+			const {handle: h, divEid, textEid} = seedHandle();
+			const res = h.applyCommit({base: h.revision, ops: [
+				{k: 'sa', p: divEid, i: 1, e: 4001, t: NODE_ELEMENT, n: 'span'},
+				{k: 'si', e: textEid, q: 3, v: 'X'},
+				{k: 'aa', e: divEid, i: 0, n: 'alpha', v: '1'}
+			], userId: 'u', source: 'su'});
+			// res.firstOpid is the opid of the sa — the sender "knows" the
+			// state up to and including that op, i.e. it has NOT seen the
+			// si/aa that follow inside the same commit.
+			const midBase = res.firstOpid;
+			const r = h.applyCommit({base: midBase, ops: [
+				{k: 'si', e: textEid, q: 3, v: 'Y'}
+			], userId: 'b', source: 'sb'});
+			assert.isTrue(r.xformed, 'a mid-commit base still transforms');
+			const jml = mirrorToJsonML(h.nodes);
+			assert.equal(divText(jml), 'abcXYdef',
+				'Y shifted past the concurrent si inside the same commit');
+			assert.deepEqual(mirrorToJsonML(h.snapshotAt(h.revision)), jml);
+		});
+	});
+
 	describe('history: reverse diff and version reconstruction', function() {
 		let h;
 		before(function() {
