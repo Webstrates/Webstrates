@@ -140,7 +140,14 @@ function addChildren(/*DOM*/ elem, /*function*/ filter, /*JsonML*/ jml) {
 
 	for (let i=0; i<childNodes.length; i++) {
 		const child = fromHTML(childNodes[i], filter);
-		if (child) {
+		// Only drop children that are not part of the JsonML at all (null — transient
+		// nodes, unsupported node types). Empty strings are kept: the PathTree registers
+		// every non-transient text node, empty or not, so dropping empty text nodes here
+		// would shift every following sibling's JsonML index relative to the PathTree.
+			
+		// fromHTML returns either a JsonML value (array or string, possibly '') or null, so comparing
+		// against null is the precise "not in the model" test.
+		if (child !== null) {
 			jml.push(child);
 		}
 	}
@@ -208,7 +215,9 @@ function fromHTML(elem, filter) {
 						for (i=0; i<childNodes.length; i++) {
 							child = childNodes[i];
 							child = fromHTML(child, filter);
-							if (child && 'string' === typeof child) {
+							// Intentionally keep empty strings too (see addChildren): dropping them
+							// would misalign the PathTree indices
+							if ('string' === typeof child) {
 								// unwrap comment blocks
 								child = child.replace('<!--', '').replace('-->', '');
 								jml.push(child);

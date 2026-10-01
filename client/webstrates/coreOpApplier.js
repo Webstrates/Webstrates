@@ -65,12 +65,11 @@ function getNamespace(element) {
 function setRawAttribute(rootElement, path, cleanAttributeName, newRawValue) {
 	const [childElement] = corePathTree.elementAtPath(rootElement, path);
 
-	// This has been commented out as it makes non-transient attributes appear transient in protected
-	// mode, and we don't really seem to need it. If an op comes in, it can't really be transient
-	// after all.
-	//if (config.isTransientAttribute(childElement, cleanAttributeName)) {
-	//	return;
-	//}
+	if (!childElement || typeof childElement.getAttribute !== 'function') {
+		console.warn('Webstrates: attribute op target not found, skipping op.', path);
+		return;
+	}
+
 
 	// The __wid attribute is a unique ID assigned each node and should not be in the DOM.
 	if (cleanAttributeName === '__wid') {
@@ -100,6 +99,10 @@ function setRawAttribute(rootElement, path, cleanAttributeName, newRawValue) {
  */
 function removeAttribute(rootElement, path, attributeName) {
 	const [childElement ] = corePathTree.elementAtPath(rootElement, path);
+	if (!childElement || typeof childElement.getAttribute !== 'function') {
+		console.warn('Webstrates: attribute op target not found, skipping op.', path);
+		return;
+	}
 
 	if (config.isTransientAttribute(childElement, attributeName)) {
 		return;
@@ -125,6 +128,20 @@ function insertNode(rootElement, path, value) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
 
+	if (!parentElement) {
+		console.warn('Webstrates: insertion op target not found, skipping op.', path);
+		return;
+	}
+
+	// A null value is not a JsonML node (null is fromHTML's "not part of the model"
+	// marker), but old clients submitted li:null ops for comments containing "DOCTYPE"
+	// and for processing instructions. Inserting it would crash toHTML (null[0]) here and
+	// brick the document on reload — skip it instead, keeping this DOM clean.
+	if (value === null) {
+		console.warn('Webstrates: insertion op has a null payload, skipping op.', path);
+		return;
+	}
+
 	const namespace = getNamespace(parentElement);
 	const newElement = typeof value === 'string' ?
 		document.createTextNode(value) : coreJsonML.toHTML(value, namespace);
@@ -139,7 +156,7 @@ function insertNode(rootElement, path, value) {
 	// childPathNode may not have been created, because its parent doesn't have a PathTree (because
 	// its a descendant of a transient element, or a transient element itself) or because the new
 	// element itself is a transient element.
-	if (childPathNode) {
+	if (childPathNode && parentPathNode) {
 		// Insert new element into parent PathTree.
 		parentPathNode.children.splice(childIndex, 0, childPathNode);
 	}
@@ -156,6 +173,11 @@ function insertNode(rootElement, path, value) {
 function deleteNode(rootElement, path) {
 	const [childElement, childIndex, parentElement] =
 		corePathTree.elementAtPath(rootElement, path);
+
+	if (!childElement || !parentElement) {
+		console.warn('Webstrates: deletion op target not found, skipping op.', path);
+		return;
+	}
 
 	// This part is a bit of a hack, because contenteditable is a weird beast to play with.
 	// Consider a contenteditable field with the text HELLO in it. Say user A puts a cursor before
@@ -198,7 +220,9 @@ function deleteNode(rootElement, path) {
 	// TODO: Use PathTree.remove() instead.
 	const parentPathNode = corePathTree.getPathNode(parentElement);
 	//const childPathNode = corePathTree.getPathNode(childElement, parentPathNode);
-	parentPathNode.children.splice(childIndex, 1);
+	if (parentPathNode) {
+		parentPathNode.children.splice(childIndex, 1);
+	}
 
 	// And remove the actual DOM node.
 	childElement.remove();
@@ -409,6 +433,11 @@ function insertInText(rootElement, path, charIndex, value) {
 		corePathTree.elementAtPath(rootElement, path);
 	let attributeName = typeof path[path.length-1] === 'string' ? path[path.length-1] : undefined;
 
+	if (!childElement) {
+		console.warn('Webstrates: text op target not found, skipping op.', path);
+		return;
+	}
+
 	switch (indexType) {
 		case jsonml.TAG_NAME_INDEX:
 			// Diff changes to tag names is not supported.
@@ -418,6 +447,10 @@ function insertInText(rootElement, path, charIndex, value) {
 			// optional. Therefore, it may just be a change made to a comment or regular text node
 			// without an attribute object. We verify by seeing if an attribute name exists.
 			if (attributeName) {
+				if (typeof childElement.getAttribute !== 'function') {
+					console.warn('Webstrates: attribute text op target not found, skipping op.', path);
+					return;
+				}
 				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
 				// form while the value set/getAttribute and passed to event system are in unescaped form.
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
@@ -441,8 +474,12 @@ function insertInText(rootElement, path, charIndex, value) {
 			// falls through if not an attribute value change.
 		default:
 			// Text node or comment content change.
-			var isComment = parentElement.nodeType === document.COMMENT_NODE;
+			var isComment = parentElement && parentElement.nodeType === document.COMMENT_NODE;
 			parentElement = isComment ? parentElement : childElement;
+			if (!parentElement || typeof parentElement.data !== 'string') {
+				console.warn('Webstrates: text op target not found, skipping op.', path);
+				return;
+			}
 			var oldValue = parentElement.data;
 			var newValue = oldValue.substring(0, charIndex)
 				+ value + oldValue.substring(charIndex);
@@ -508,6 +545,10 @@ function deleteInText(rootElement, path, charIndex, value) {
 	let [childElement, /*childIndex*/, parentElement, indexType] =
 		corePathTree.elementAtPath(rootElement, path);
 	let attributeName = typeof path[path.length-1] === 'string' ? path[path.length-1] : undefined;
+	if (!childElement) {
+		console.warn('Webstrates: text op target not found, skipping op.', path);
+		return;
+	}
 
 	switch (indexType) {
 		case jsonml.TAG_NAME_INDEX:
@@ -515,6 +556,11 @@ function deleteInText(rootElement, path, charIndex, value) {
 			throw Error('Unsupported indexType jsonml.TAGNAME_INDEX (1)');
 		case jsonml.ATTRIBUTE_INDEX:
 			if (attributeName) {
+				// The attribute op target has to be an actual element.
+				if (typeof childElement.getAttribute !== 'function') {
+					console.warn('Webstrates: attribute text op target not found, skipping op.', path);
+					return;
+				}
 				// Attribute value diff - keep in mind that the values sent over the wire are in escaped
 				// form while the value set/getAttribute and passed to event system are in unescaped form.
 				// The SVG stuff below is a hack, because Microsoft Edge rounds the d value on SVG paths,
@@ -538,8 +584,12 @@ function deleteInText(rootElement, path, charIndex, value) {
 			// If not an attribute value change: falls through.
 		default:
 			// Text node or comment content change.
-			var isComment = parentElement.nodeType === document.COMMENT_NODE;
+			var isComment = parentElement && parentElement.nodeType === document.COMMENT_NODE;
 			parentElement = isComment ? parentElement : childElement;
+			if (!parentElement || typeof parentElement.data !== 'string') {
+				console.warn('Webstrates: text op target not found, skipping op.', path);
+				return;
+			}
 			// Generate current text selection range.
 			var fakeRange = getSelectionRange(parentElement);
 			var oldValue = parentElement.data;
@@ -645,7 +695,11 @@ function applyOpsFromEvent(ops) {
 	coreMutation.pause();
 
 	ops.forEach((op) => {
-		applyOp(op, savedRootElement);
+		try {
+			applyOp(op, savedRootElement);
+		} catch (error) {
+			console.error('Webstrates: error while applying op, skipping it.', op, error);
+		}
 	});
 
 	// Attributes are no longer in-flight and should be stable

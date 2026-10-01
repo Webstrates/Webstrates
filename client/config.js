@@ -50,7 +50,13 @@ module.exports = {
 	// it synchronize onto persisted elements would desynchronize the JsonML from the path
 	// tree on the next load (the element would arrive transient where the JsonML has it
 	// persisted).
+	// An attribute named '__proto__' must also be transient: storing it in the JsonML
+	// attributes object is a silent no-op (plain assignment to __proto__ sets the
+	// prototype instead of creating an own property), so the attribute would silently
+	// vanish from the model — and it *can* be created via innerHTML — leaving the DOM,
+	// the PathTree and the JsonML model disagreeing about the element's attributes.
 	isTransientAttribute: (DOMNode, attributeName) => attributeName === 'transient'
+		|| attributeName === '__proto__'
 		|| attributeName.startsWith('transient-'),
 	// Peer Connection configuration used for the WebRTC-based signal streaming.
 	peerConnectionConfig: {

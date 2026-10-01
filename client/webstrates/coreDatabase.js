@@ -3,6 +3,7 @@ const coreEvents = require('./coreEvents');
 const coreUtils = require('./coreUtils');
 const coreWebsocket = require('./coreWebsocket');
 const globalObject = require('./globalObject');
+const coreOpValidator = require('./coreOpValidator');
 const sharedb = require('sharedb/lib/client');
 const COLLECTION_NAME = 'webstrates';
 
@@ -231,6 +232,23 @@ exports.subscribe = webstrateId => {
 			const source = coreUtils.randomString();
 
 			coreEvents.addEventListener('createdOps', (ops) => {
+				// If the DOM, the PathTree and
+				// this JsonML snapshot ever diverge, the op creator can emit ops that
+				// do not apply to the document. Submitting them anyway would crash the
+				// local OT apply in ShareDB, hard-rollback the document and silently
+				// lose the user's edit. Refuse to submit anything that doesn't apply;
+				// the DOM keeps the edit, the failure is reported loudly.
+				const validationError = coreOpValidator.validateOps(doc.data, ops);
+				if (validationError) {
+					console.error('Webstrates: refusing to submit op(s) that do not apply to the ' +
+						'document — the DOM and the document model have diverged, please reload ' +
+						'the page.', ops, validationError);
+					coreEvents.triggerEvent('databaseError', {
+						message: validationError.message,
+						data: { a: 'op', op: ops }
+					});
+					return;
+				}
 				doc.submitOp(ops, { source });
 			}, coreEvents.PRIORITY.IMMEDIATE);
 

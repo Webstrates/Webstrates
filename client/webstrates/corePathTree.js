@@ -53,6 +53,12 @@ function PathTree(DOMNode, parentPathTree, overwrite) {
 
 	var childNodes = DOMNode.hasChildNodes() ? DOMNode.childNodes :
 		(DOMNode.content && DOMNode.content.childNodes) || [];
+
+	// Iframe (and frame) children are never serialized into the JsonML 
+	if (DOMNode.nodeType === document.ELEMENT_NODE
+		&& ['IFRAME', 'FRAME'].includes((DOMNode.tagName || '').toUpperCase())) {
+		childNodes = [];
+	}
 	Array.from(childNodes).forEach(function(childNode) {
 		var childPathNode = PathTree.create(childNode, this, overwrite);
 		if (childPathNode) {

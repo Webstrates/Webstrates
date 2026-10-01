@@ -150,7 +150,11 @@ function characterDataMutation(mutation, targetPathNode) {
 	}
 
 	ops = patchesToOps(path, oldValue, newValue);
-	if (isComment) {
+	// The ops list is empty when the JsonML already matches the node's (batch-final)
+	// data, e.g. for characterData records about nodes covered by a same-batch ancestor
+	// insertion — their payload was built from the batch-final DOM and already reflects
+	// the change. Guard the comment fixup accordingly; ops[0] would be undefined.
+	if (isComment && ops.length > 0) {
 		ops[0].p.splice(ops[0].p.length - 1, 0, 1);
 	}
 
@@ -200,6 +204,13 @@ function childListMutation(mutation, targetPathNode) {
 		// generate an op if the element is being moved. However, if the element is already in the DOM,
 		// and it has the same parent as before, then it hasn't moved, so there's no reason to generate
 		// an op.
+		//
+		// A node can legitimately already have a pathNode with the same parent when an earlier
+		// record *in the same MutationObserver batch* inserted an ancestor: creating that
+		// ancestor's PathTree (and its li op payload, built from the batch-final DOM) already
+		// covers this node. Skipping the op is then correct, because the payload already
+		// contains the node's final state. (This is what happens when an editor restructures
+		// the DOM by moving nodes through detached intermediates in one tick.)
 		//
 		// NOTE: I think there might be a bug here: If moving a text node around, it could have a
 		// pathNode, but also have the same parent, in which case the move wouldn't create an op.
@@ -297,7 +308,27 @@ function childListMutation(mutation, targetPathNode) {
 			targetPathNode.children.push(newPathNode);
 		}
 		const path = corePathTree.getPathNode(addedNode, parentNode).toPath();
-		const op = { li: coreJsonML.fromHTML(addedNode), p: path };
+
+		// Building the op's payload may reveal that the node, while registered in the PathTree
+		// (comments are non-transient, and fromHTML only rejects *elements* as transient), is not
+		// representable in the JsonML at all: fromHTML returns null for comments whose text
+		// contains "DOCTYPE" and for processing instructions (and any other node type it has no
+		// branch for). Submitting that null as the li payload would put a literal null into the
+		// document: every other client desyncs, and any *reload* crashes in toHTML (null.nodeType),
+		// leaving the document unloadable. Treat such nodes exactly like transient elements
+		// instead: roll the PathTree registration (the splice above) back and emit no op. The
+		// DOM keeps the node for the local user; it just isn't part of the document model.
+		// (This has to happen after the splice: PathTree.remove() removes the node from its
+		// parent's children by index, so removing an un-spliced node would splice out the
+		// wrong — the last — sibling.)
+		const liPayload = coreJsonML.fromHTML(addedNode);
+		if (liPayload === null) {
+			newPathNode.remove();
+			coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
+			return;
+		}
+
+		const op = { li: liPayload, p: path };
 		ops.push(op);
 
 		coreEvents.triggerEvent('DOMNodeInserted', addedNode, mutation.target, true);
