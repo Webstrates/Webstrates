@@ -209,6 +209,11 @@ exports.onmessage = async (ws, req, data, next) => {
 		}
 		// Signaling on user object.
 		case 'signalUserObject': {
+			if (user.userId === 'anonymous:') {
+				// The signal reaches all of the sender's user-object clients, and every anonymous
+				// socket shares the userId 'anonymous:', ignore it
+				return console.error('signalUserObject from anonymous client, ignoring.');
+			}
 			const message = data.m;
 			clientManager.signalUserObject(user.userId, socketId, message, webstrateId);
 			return;
