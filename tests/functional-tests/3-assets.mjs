@@ -175,6 +175,27 @@ describe('Assets', function () {
 		assert.equal(content, textFileContent, 'Content of the asset does not match the expected content');
 	});
 
+	it('Assets should not be accessible at version 0, where none exist yet', async () => {
+		// Version 0 is a valid version (the initial, empty document), not "no version": the
+		// asset was uploaded at version 2, so requesting it at version 0 must not silently
+		// fall back to serving the newest asset.
+		const versioned = await pageA.evaluate(async (url) => {
+			const atUpload = await fetch(url + '/2/test.txt');
+			const atZero = await fetch(url + '/0/test.txt');
+			return {
+				atUploadStatus: atUpload.status,
+				atUploadBody: atUpload.status === 200 ? await atUpload.text() : null,
+				atZeroStatus: atZero.status,
+				atZeroBody: atZero.status === 200 ? await atZero.text() : null
+			};
+		}, urlA);
+
+		assert.equal(versioned.atUploadStatus, 200, 'Asset should be accessible at the version it was uploaded at');
+		assert.equal(versioned.atUploadBody, textFileContent, 'Asset at its upload version does not match the expected content');
+		assert.equal(versioned.atZeroStatus, 404, 'Version 0 should not serve the asset (nothing exists at version 0 yet)');
+		assert.isNull(versioned.atZeroBody, 'Version 0 should not have served anything');
+	});
+
 	it('All assets should be listed in the API and HTTP API', async () => {
 		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
 

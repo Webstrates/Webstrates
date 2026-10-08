@@ -106,15 +106,19 @@ module.exports.getAssets = async function(webstrateId, latestOnly = false) {
  * @public
  */
 module.exports.getCurrentAssets = async function(webstrateId, version) {
+	// Version 0 (the initial, empty version of every document) is a valid version to list the
+	// assets at, so presence must be tested against undefined, not with truthiness: `if (version)`
+	// treats 0 as "no version" and returns the assets of the newest version instead.
+	const hasVersion = version !== undefined && version !== null;
 	const query = { webstrateId };
-	if (version) query.v = { $lte: version };
+	if (hasVersion) query.v = { $lte: version };
 	let assets = await db.assets
 		.find(query, { projection: { _id: 0, _originalId: 0, webstrateId: 0 } })
 		.toArray();
 	assets = filterNewestAssets(assets);
 	// Filter out assets that were deleted at or before `version`. Without a version we're looking at
 	// the newest version of the document, where every deleted asset is gone.
-	assets = assets.filter(asset => !asset.deletedAt || (version && asset.deletedAt > version));
+	assets = assets.filter(asset => !asset.deletedAt || (hasVersion && asset.deletedAt > version));
 	return assets;
 };
 
@@ -129,14 +133,19 @@ module.exports.getCurrentAssets = async function(webstrateId, version) {
  */
 module.exports.getAsset = async function({ webstrateId, assetName, version }) {
 	version = Number.parseInt(version);
+	// Version 0 (the initial, empty version of every document — and the version every asset of
+	// a copied webstrate sits at) is a valid version to request an asset at, so presence must
+	// be tested against NaN (Number.parseInt of undefined/null), not with truthiness:
+	// `if (version)` treats 0 as "no version" and serves the newest asset instead.
+	const hasVersion = !Number.isNaN(version);
 	const query = { webstrateId, originalFileName: assetName };
-	if (version) query.v = { $lte: version };
+	if (hasVersion) query.v = { $lte: version };
 	const asset = await db.assets.findOne(query, { sort: { v: -1 } });
 	if (!asset) return undefined;
 	// If the asset has been deleted (i.e. deletedAt exists), we only serve the asset if it's being
 	// requested at a version prior to its deletion. E.g. if it was deleted at version 5, it should
 	// still be accessible at version 3, otherwise deletions would break history.
-	if (asset.deletedAt && ((version && asset.deletedAt <= version) || !version)) return undefined;
+	if (asset.deletedAt && (!hasVersion || asset.deletedAt <= version)) return undefined;
 	return asset;
 };
 

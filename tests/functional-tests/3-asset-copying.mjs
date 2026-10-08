@@ -247,6 +247,31 @@ describe('Asset copying', function () {
 			'The content of the copied asset does not match the original');
 	});
 
+	it("a copy's version 0 assets should be servable at version 0, not the newest upload", async () => {
+		await page.goto(tagCopyUrl, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+
+		// Copies reset every copied asset to version 0 (see AssetManager.copyAssets), so
+		// re-uploading an asset in the copy leaves two records under the same name: the
+		// copied one at v0 and the new one at the copy's current version. Requesting the
+		// asset at version 0 must serve the copied record — version 0 is a valid version,
+		// not "no version" — and not silently fall back to the newest upload.
+		fs.writeFileSync(keptFile, 'Asset re-uploaded in the copy. ' + util.randomString(10));
+		await uploadAssetHelper(page, keptFile);
+
+		const atZero = await page.evaluate(async (url) => {
+			const response = await fetch(url + '0/copy-keep.txt');
+			return {
+				status: response.status,
+				body: response.status === 200 ? await response.text() : null
+			};
+		}, tagCopyUrl);
+
+		assert.equal(atZero.status, 200, 'The copied asset (sitting at v0) should be servable at version 0');
+		assert.equal(atZero.body, keptFileContent,
+			'Version 0 should serve the copied asset, not the newest upload');
+	});
+
 	it('copying at HEAD should not carry over deleted assets', async () => {
 		await page.goto(url + '?copy', { waitUntil: 'networkidle2' });
 
