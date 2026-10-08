@@ -243,9 +243,10 @@ function setupSignalStream(publicObject, eventObject) {
 
 	Object.defineProperty(publicObject, 'stopStreamSignal', {
 		value: (callback) => {
-			// Find the ownId that was generated when adding this callback.
+			// Find the ownId that was generated when adding this callback. 
 			const streamers = Array.from(wantToStreamCallbacks.get(wid).entries());
-			const [ownId, ] = streamers.find(([ownId, callback]) => callback === callback);
+			const streamer = streamers.find(([, registeredCallback]) => registeredCallback === callback);
+			const ownId = streamer && streamer[0];
 
 			if (ownId) {
 				wantToStreamCallbacks.get(wid).delete(ownId);
@@ -275,7 +276,8 @@ function setupSignalStream(publicObject, eventObject) {
 		removeListener: (callback) => {
 			// Find the ownId that was generated when adding this callback.
 			const listeners = Array.from(wantToListenCallbacks.get(wid).entries());
-			const [ownId, ] = listeners.find(([ownId, callback]) => callback === callback);
+			const listener = listeners.find(([, registeredCallback]) => registeredCallback === callback);
+			const ownId = listener && listener[0];
 
 			if (ownId) {
 				wantToListenCallbacks.get(wid).delete(ownId);
