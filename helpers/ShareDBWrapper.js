@@ -12,9 +12,10 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const snapshotCacheManager = require(APP_PATH + '/helpers/SnapshotCacheManager.js');
 
 const COLLECTION_NAME = 'webstrates';
+const mongoAdapter = sharedbMongo(global.config.db, { mongoOptions: {} });
 
 const share = sharedb({
-	db: sharedbMongo(global.config.db,{mongoOptions: {}})
+	db: mongoAdapter
 });
 
 const agent = share.connect();
@@ -346,6 +347,22 @@ module.exports.getOps = (webstrateId, versionFrom, versionTo, next) => {
 
 module.exports.fetch = (webstrateId, next) => {
 	share.fetch(agent, COLLECTION_NAME, webstrateId, next);
+};
+
+/**
+ * Delete all of a webstrate's operations from the op history. The op history belongs
+ * to ShareDB, and where its database adapter stores it is the adapter's business
+ * (sharedb-mongo: an "o_"-prefixed collection per ShareDB collection) — so the
+ * collection is requested from the adapter rather than hardcoded. 
+ * @param  {string}   webstrateId WebstrateId.
+ * @param  {Function} next       Callback.
+ * @public
+ */
+module.exports.deleteOps = (webstrateId, next) => {
+	mongoAdapter.getOpCollection(COLLECTION_NAME, (err, opsCollection) => {
+		if (err) return next(err);
+		opsCollection.deleteMany({ d: webstrateId }).then(() => next(), next);
+	});
 };
 
 module.exports.submitOp = (webstrateId, op, next) => {

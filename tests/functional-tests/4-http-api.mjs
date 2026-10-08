@@ -3,6 +3,7 @@
 
 import http from 'node:http';
 import puppeteer from 'puppeteer';
+import { MongoClient } from 'mongodb';
 import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
@@ -508,6 +509,148 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 			'the html-root control document should be CORS-enabled');
 		assert.isNull(divHeaders.allowOrigin, 'a non-HTML document must not receive ' +
 			'Access-Control-Allow-Origin');
+	});
+
+});
+
+// `?delete` promises to delete a webstrate entirely: its current state *and* its
+// history. The history is the ShareDB op log — every operation the webstrate ever
+// received — and it belongs to ShareDB's database adapter, which stores it wherever
+// it decides (sharedb-mongo: an "o_"-prefixed collection, currently "o_webstrates").
+describe('HTTP API: ?delete', function() {
+	this.timeout(30000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId + '/';
+
+	let browser, page;
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		page = await browser.newPage();
+	});
+
+	after(async () => {
+		await browser.close();
+	});
+
+	// Retry a predicate until it holds, or give up after `seconds` seconds.
+	const eventually = async (seconds, predicate) => {
+		const endAt = Date.now() + seconds * 1000;
+		do {
+			await util.sleep(0.25);
+			if (await predicate()) return true;
+		} while (Date.now() < endAt);
+		return false;
+	};
+
+	// Op documents carry their webstrate's id in `d` (no other Webstrates or ShareDB
+	// collection uses that field). Which collection they live in is the database
+	// adapter's decision, so count a webstrate's op documents across every collection
+	// of the test database rather than hardcoding a name the adapter could change.
+	const countOps = async (db, id) => {
+		const collectionNames = (await db.listCollections().toArray())
+			.map((collection) => collection.name);
+		let ops = 0;
+		for (const name of collectionNames) {
+			ops += await db.collection(name).countDocuments({ d: id });
+		}
+		return ops;
+	};
+
+	// Create a webstrate through the browser client, append a marker text node, and
+	// wait for the edit to be committed server-side: ?json serves exactly the committed
+	// snapshot, and the op commits together with it.
+	const createAndEdit = async (id) => {
+		const docUrl = config.server_address + id + '/';
+		await page.goto(docUrl, { waitUntil: 'networkidle2' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+
+		const marker = 'op-history-' + util.randomString();
+		await page.evaluate((markerText) => {
+			document.body.appendChild(document.createTextNode(markerText));
+		}, marker);
+
+		const editCommitted = await eventually(5, async () => {
+			const snapshot = await (await fetch(docUrl + '?json')).json();
+			return JSON.stringify(snapshot).includes(marker);
+		});
+		assert.isTrue(editCommitted, `the edit on ${id} never reached the server snapshot`);
+	};
+
+	it('deletes the webstrate\'s op history', async () => {
+		await createAndEdit(webstrateId);
+
+		const client = new MongoClient(config.server.db);
+		await client.connect();
+		const db = client.db();
+		try {
+			// Sanity: before the delete there is a snapshot and an op history (at least the
+			// create op plus the edit above) — this also proves countOps finds the ops.
+			assert.isNotNull(await db.collection('webstrates').findOne({ _id: webstrateId }),
+				'the webstrate snapshot should exist before ?delete');
+			const opsBefore = await countOps(db, webstrateId);
+			assert.isAtLeast(opsBefore, 2, 'the webstrate should have an op history before ?delete');
+
+			// Delete the webstrate. The redirect response is only sent after
+			// deleteDocument has finished, so the database state is final when goto
+			// resolves. 
+			await page.setCacheEnabled(false);
+			await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+
+			// The current snapshot is gone…
+			assert.isNull(await db.collection('webstrates').findOne({ _id: webstrateId }),
+				'?delete should delete the webstrate snapshot');
+			// …and so is the whole op history: nothing of the webstrate may survive ?delete.
+			const opsAfter = await countOps(db, webstrateId);
+			assert.equal(opsAfter, 0, '?delete should delete the webstrate\'s op history, but ' +
+				`${opsAfter} of ${opsBefore} op documents survived the deletion`);
+		} finally {
+			await client.close();
+		}
+	});
+
+	it('does not delete other webstrates\' op history', async () => {
+		// A deleteDocument that filtered the ops deletion wrongly (say, a deleteMany
+		// without the document filter) would take every other webstrate's history with
+		// it. Deleting one webstrate must leave another webstrate entirely alone.
+		const targetId = 'test-' + util.randomString();
+		const bystanderId = 'test-' + util.randomString();
+		await createAndEdit(targetId);
+		await createAndEdit(bystanderId);
+
+		const client = new MongoClient(config.server.db);
+		await client.connect();
+		const db = client.db();
+		try {
+			// Sanity: both webstrates exist, each with an op history of its own.
+			const targetOpsBefore = await countOps(db, targetId);
+			const bystanderOpsBefore = await countOps(db, bystanderId);
+			assert.isAtLeast(targetOpsBefore, 2, 'the deleted webstrate should have an op history');
+			assert.isAtLeast(bystanderOpsBefore, 2,
+				'the bystander webstrate should have an op history');
+			assert.isNotNull(await db.collection('webstrates').findOne({ _id: bystanderId }),
+				'the bystander snapshot should exist before ?delete');
+
+			// Delete only the target webstrate.
+			await page.setCacheEnabled(false);
+			await page.goto(config.server_address + targetId + '/?delete',
+				{ waitUntil: 'domcontentloaded' });
+
+			// The target's ops are gone…
+			assert.equal(await countOps(db, targetId), 0,
+				'?delete should delete the webstrate\'s op history');
+			// …the bystander keeps its snapshot…
+			assert.isNotNull(await db.collection('webstrates').findOne({ _id: bystanderId }),
+				'?delete must not delete other webstrates\' snapshots');
+			// …and every one of its ops.
+			const bystanderOpsAfter = await countOps(db, bystanderId);
+			assert.equal(bystanderOpsAfter, bystanderOpsBefore, '?delete must not delete other ' +
+				`webstrates' op history, but only ${bystanderOpsAfter} of the bystander's ` +
+				`${bystanderOpsBefore} ops remain`);
+		} finally {
+			await client.close();
+		}
 	});
 
 });

@@ -11,8 +11,6 @@ MongoClient.connect(global.config.db).then(client =>{
 	db.sessionLog = _db.collection('sessionLog');
 	db.webstrates = _db.collection('webstrates');
 
-	db.ops = _db.collection('ops');
-
 	db.tags = _db.collection('tags');
 	db.tags.createIndex({ webstrateId: 1, label: 1 }, { unique: true });
 	db.tags.createIndex({ webstrateId: 1, v: 1 }, { unique: true });

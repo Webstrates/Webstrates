@@ -356,7 +356,7 @@ module.exports.deleteDocument = async function(webstrateId) {
 	});
 
 	await db.tags.deleteMany({ webstrateId });
-	await db.ops.deleteMany({ d: webstrateId });
+	await util.promisify(ShareDbWrapper.deleteOps)(webstrateId);
 };
 
 /**
