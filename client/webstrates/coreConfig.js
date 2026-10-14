@@ -28,12 +28,16 @@ Object.defineProperty(coreConfigModule, 'peerConnectionConfig', {
 	}
 });
 
+// The serverConfig value gets injected with webpack at compile-time: the string
+// serverConfig below will literally be replaced with the object defined in
+// webpack.config.js. It is captured into a constant once so that every access returns
+// the same object — reading the injected literal directly in the getter would construct
+// a fresh copy on every access, and mutations (the client version check in
+// coreWebsocket.js reads serverConfig.clientVersion) would never be seen anywhere.
+const serverConfigObject = serverConfig;
+
 Object.defineProperty(coreConfigModule, 'serverConfig', {
-	// serverConfig gets injected with webpack at compile-time, the string serverConfig below will
-	// literally be replaced with the value defined in webpack.config.js. Therefore, we have to have
-	// the return and curly brackets, or the object itself would be interpreted as a code block, e.g.
-	//   get: () => { niceWebstrateIds: true, maxAssetSize: 10485760, ... },
-	get: () => { return serverConfig; },
+	get: () => serverConfigObject,
 	set: () => { throw new Error('Server config is read-only'); }
 });
 

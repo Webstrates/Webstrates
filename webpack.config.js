@@ -1,5 +1,6 @@
 const fs = require('fs');
 const path = require('path');
+const crypto = require('crypto');
 const execSync = require('child_process').execSync;
 const zlib = require('zlib');
 const webpack = require('webpack');
@@ -43,6 +44,34 @@ const brotliWasmPath = path.resolve(__dirname,
         'node_modules/brotli-dec-wasm/pkg/brotli_dec_wasm_bg.wasm');
 fs.writeFileSync(path.resolve(__dirname, 'client/webstrates/brotli-wasm-bytes.b64'),
         fs.readFileSync(brotliWasmPath).toString('base64'));
+
+// Version identity of this client build: 16 hex chars of sha256 over every input that
+// shapes the bundle — all files under client/ (the generated brotli decoder bytes above
+// included), the embedded server config, and the dependency manifest. It changes
+// whenever the client build changes (and only then), so the server can tell builds
+// apart: it announces the version of the bundle it ships on every websocket connection
+// (middleware/versionMiddleware.js), and clients compare it against the copy embedded
+// below as serverConfig.clientVersion — a mismatch means the server was upgraded
+// underneath the running page, which then reloads. Computed before it is embedded,
+// so it never hashes itself.
+const clientVersion = (() => {
+        const hash = crypto.createHash('sha256');
+        const walk = (dir) => fs.readdirSync(dir, { withFileTypes: true })
+                .filter(entry => entry.name[0] !== '.')
+                .sort((a, b) => a.name < b.name ? -1 : 1)
+                .flatMap(entry => {
+                        const full = path.join(dir, entry.name);
+                        return entry.isDirectory() ? walk(full) : [full];
+                });
+        for (const file of walk(path.resolve(__dirname, 'client'))) {
+                hash.update(path.relative(__dirname, file));
+                hash.update(fs.readFileSync(file));
+        }
+        hash.update(JSON.stringify(cleanServerConfig));
+        hash.update(JSON.stringify(require('./package.json').dependencies));
+        return hash.digest('hex').slice(0, 16);
+})();
+cleanServerConfig.clientVersion = clientVersion;
 
 const isProduction = process.env.NODE_ENV && process.env.NODE_ENV.trim() === 'production';
 
@@ -116,15 +145,54 @@ const config = {
                         }
                 },
                 {
-                        // Add a hash of webstrates.js to the HTML that's being served to the client in order to
-                        // invalidate webstrates.js when it gets updated.
+                        // Serve the client bundle under a content-hashed filename
+                        // (static/webstrates_<hash>.js) and reference that URL from the skeleton
                         apply(compiler) {
-                                compiler.hooks.done.tap('AddHashPlugin', (stats) => {        
+                                compiler.hooks.done.tap('AddHashPlugin', () => {
+                                        const staticPath = path.resolve(__dirname, 'static');
+                                        const bundlePath = path.join(staticPath, 'webstrates.js');
+                                        const bundle = fs.readFileSync(bundlePath);
+                                        // 16 hex chars of the bundle's sha256: identifies the
+                                        // exact build, short enough for readable URLs.
+                                        const hash = crypto.createHash('sha256')
+                                                .update(bundle).digest('hex').slice(0, 16);
+
+                                        const writeAtomically = (targetPath, content) => {
+                                                const tmpPath = path.join(staticPath,
+                                                        '.tmp-' + path.basename(targetPath));
+                                                fs.writeFileSync(tmpPath, content);
+                                                fs.renameSync(tmpPath, targetPath);
+                                        };
+
+                                        writeAtomically(path.join(staticPath, `webstrates_${hash}.js`), bundle);
+                                        // The pre-compressed bundle (EmitPrecompressedBundle
+                                        // above) is written before this plugin in the same pass.
+                                        writeAtomically(path.join(staticPath, `webstrates_${hash}.js.br`),
+                                                fs.readFileSync(bundlePath + '.br'));
+
+                                        // Point the skeleton at the hashed bundle before
+                                        // removing earlier builds' copies: with this order, a
+                                        // failure mid-hook leaves the old skeleton paired with
+                                        // the old (not yet deleted) bundle, so pages keep
+                                        // working; the other order could leave the skeleton
+                                        // referencing a deleted bundle.
                                         const htmlInputPath = './client/client.html';
                                         const htmlOutputPath = path.resolve(compiler.options.output.path, 'client.html');
                                         const htmlInput = fs.readFileSync(htmlInputPath, 'utf-8');
-                                        const htmlOutput = htmlInput.replace('{{hash}}', stats.hash);
-                                        fs.writeFileSync(htmlOutputPath, htmlOutput);
+                                        writeAtomically(htmlOutputPath, htmlInput.replace('{{hash}}', hash));
+
+                                        // Remove the hashed copies of previous builds (and any
+                                        // temp files a failed earlier pass left behind) so they
+                                        // don't accumulate across development rebuilds. Stale
+                                        // copies would only ever serve outdated clients again;
+                                        // pages still running an old build reload and fetch the
+                                        // current one.
+                                        for (const file of fs.readdirSync(staticPath)) {
+                                                if (/^(\.tmp-|webstrates_[0-9a-f]+\.js(\.br)?$)/.test(file)
+                                                        && !file.startsWith(`webstrates_${hash}`)) {
+                                                        fs.unlinkSync(path.join(staticPath, file));
+                                                }
+                                        }
                                 });
                         }
                 },

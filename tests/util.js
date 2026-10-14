@@ -211,6 +211,21 @@ util.sleep = async function (seconds) {
 	return new Promise(resolve => setTimeout(resolve, seconds * 1000));
 };
 
+// The client version the server is currently shipping: the one embedded in the client
+// bundle it serves (serverConfig.clientVersion), which the server also announces on
+// every websocket connection (middleware/versionMiddleware.js).
+let cachedClientVersion;
+util.clientVersion = async function () {
+	if (cachedClientVersion) return cachedClientVersion;
+	const response = await fetch(config.server_address + 'webstrates.js');
+	const bundle = await response.text();
+	const match = /"?clientVersion"?\s*:\s*"([0-9a-f]{16})"/.exec(bundle);
+	if (!match) throw new Error('Could not determine client version from the served bundle ' +
+		`(status ${response.status}, url ${response.url}).`);
+	cachedClientVersion = match[1];
+	return cachedClientVersion;
+};
+
 util.waitForWebstrateLoaded = async (page) => {
 	await util.waitForFunction(page, async () => {
 		await new Promise((resolve, reject) => {

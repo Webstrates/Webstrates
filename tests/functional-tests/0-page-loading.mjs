@@ -2,6 +2,7 @@
 /* global describe after it */
 
 import puppeteer from 'puppeteer';
+import WebSocket from 'ws';
 import { assert } from 'chai';
 import config from '../config.js';
 import util from '../util.js';
@@ -96,5 +97,91 @@ describe('Page Loading', function() {
 		}
 
 		assert.equal(innerText.version, 0, 'Version should be 0');
-	});	
+	});
+});
+
+describe('Client version reload', function() {
+	this.timeout(30000);
+
+	const webstrateId = 'test-' + util.randomString();
+	const url = config.server_address + webstrateId + '/';
+	let browser;
+
+	after(async () => {
+		// Best-effort cleanup of the webstrate created above.
+		await fetch(url + '?delete').catch(() => {});
+		if (browser) await browser.close();
+	});
+
+	it('serves the client bundle under a versioned, immutably cacheable URL', async () => {
+		const page = await fetch(url);
+		assert.include(page.headers.get('cache-control') || '', 'no-store',
+			'the skeleton must never be cached, so it always references the current bundle');
+		const html = await page.text();
+		const hash = /\/webstrates_([0-9a-f]+)\.js/.exec(html);
+		assert.isNotNull(hash, 'skeleton references a hashed webstrates_<hash>.js URL');
+
+		const bundle = await fetch(config.server_address + 'webstrates_' + hash[1] + '.js');
+		assert.equal(bundle.status, 200, 'the hashed bundle is served');
+		assert.include(bundle.headers.get('cache-control') || '', 'immutable',
+			'the hashed bundle is served as immutable, so it can be cached forever');
+
+		// The pre-versioning URL now points at the current versioned bundle.
+		const legacy = await fetch(config.server_address + 'webstrates.js', { redirect: 'manual' });
+		assert.equal(legacy.status, 302);
+		assert.equal(legacy.headers.get('location'), '/webstrates_' + hash[1] + '.js');
+	});
+
+	it('announces the client version it is shipping on every websocket connection', async () => {
+		const wsUrl = config.server_address.replace(/^http/, 'ws') + webstrateId;
+		const clientVersion = await util.clientVersion();
+
+		// Any websocket connection (no query params, no version handshake of our own) is
+		// first told which client version the server ships; frames are then processed as
+		// before, here: ShareDB's handshake reply. Comparing the announced version against
+		// the one embedded in its bundle (serverConfig.clientVersion) is up to the client —
+		// the server never refuses a connection.
+		const messages = await new Promise((resolve) => {
+			const socket = new WebSocket(wsUrl);
+			const seen = [];
+			socket.on('message', data => seen.push(JSON.parse(data.toString())));
+			socket.on('message', data => {
+				if (JSON.parse(data.toString()).a === 'hs') {
+					socket.close();
+					resolve(seen);
+				}
+			});
+			socket.on('open', () => socket.send(JSON.stringify({ a: 'hs' })));
+			socket.on('error', () => {});
+			setTimeout(() => { socket.terminate(); resolve(null); }, 5000);
+		});
+		assert.isNotNull(messages, 'no ShareDB handshake reply within 5 seconds');
+		assert.deepEqual(messages[0], { wa: 'version', v: clientVersion },
+			'the first frame on a connection announces the current client version');
+		assert.ok(messages.some(m => m.a === 'hs'), 'frames are processed as before');
+	});
+
+	it('reloads the page when the server announces a different client version', async () => {
+		browser = await puppeteer.launch();
+		const page = await browser.newPage();
+		await page.goto(url, { waitUntil: 'domcontentloaded' });
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded);
+
+		// Pretend the page is running a different build and force a websocket reconnect: the
+		// client must notice the mismatch with the server's announced version, abort the
+		// connection (rather than reconnect and submit anything) and reload the page after
+		// a ~5 second wait, after which it is connected again with the real version.
+		await page.evaluate(() => {
+			window.webstrate.config.serverConfig.clientVersion = '0000000000000000';
+		});
+		const navigation = page.waitForNavigation({ timeout: 20000 });
+		await page.evaluate(() => window.webstrate.getWebsocket().refresh());
+		await navigation;
+
+		const clientVersion = await util.clientVersion();
+		assert.equal(await page.evaluate(() => window.webstrate.config.serverConfig.clientVersion),
+			clientVersion, 'after the reload the page runs the current build again');
+		assert.isTrue(await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded), 'the reloaded page reconnects');
+	});
 });

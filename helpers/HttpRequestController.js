@@ -1161,8 +1161,10 @@ async function deleteWebstrate(req, res) {
  * @private
  */
 function serveWebstrate(req, res) {
-	var maxAge = config.maxAge || '1d';
-	return res.sendFile(APP_PATH + '/static/client.html', { maxAge });
+	// The skeleton HTML is tiny, but it is what ties a page to a specific client bundle
+	// (webstrates_<hash>.js): never cache it
+	res.set('Cache-Control', 'no-store');
+	return res.sendFile(APP_PATH + '/static/client.html', { cacheControl: false });
 }
 
 /**

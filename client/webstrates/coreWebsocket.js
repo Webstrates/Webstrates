@@ -1,6 +1,7 @@
 'use strict';
 const coreUtils = require('./coreUtils');
 const globalObject = require('./globalObject');
+const coreConfig = require('./coreConfig');
 
 const coreWebsocketModule = {};
 const webstrateId = coreUtils.getLocationObject().webstrateId;
@@ -120,6 +121,28 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 		}
 
 		if (typeof event.data !== 'string') return;
+
+		// The server announces the client version it is shipping on every connection (see
+		// middleware/versionMiddleware.js). If it differs from the version embedded in this
+		// build (serverConfig.clientVersion, injected at compile time and read through the
+		// shared coreConfig so every module sees the same object), the server was upgraded
+		// (or downgraded) underneath this page: stop using the connection without
+		// reconnecting — an outdated client must not submit anything to a server it may be
+		// incompatible with — and reload the page after a short wait, so we get served the
+		// current client build. The wait gives a server that is restarting (e.g. mid-upgrade)
+		// time to come back up before we reload into it (#82).
+		if (event.data.startsWith('{"wa":"version"')) {
+			const serverVersion = JSON.parse(event.data).v;
+			// A build without an embedded version (injected by the webpack config together
+			// with this check) has nothing to compare against and just connects.
+			const clientVersion = coreConfig.serverConfig.clientVersion;
+			if (clientVersion && serverVersion !== clientVersion) {
+				forceClose = true;
+				websocket.close();
+				setTimeout(() => window.location.reload(), 5000);
+			}
+			return;
+		}
 
 		// If the message has a reply attached, it means it's an answer to a specific request, and not
 		// something that should just be sent to everybody. Therefore, we find the requester in the

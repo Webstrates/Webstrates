@@ -75,6 +75,7 @@ const wsInstance = expressWs(app);
 const middleware = [];
 
 middleware.push(require('./middleware/dosProtectionMiddleware.js'));
+middleware.push(require('./middleware/versionMiddleware.js'));
 middleware.push(require('./middleware/keepAliveMiddleware.js'));
 middleware.push(require('./middleware/userHistory.js'));
 middleware.push(require('./middleware/userInvites.js'));
@@ -98,19 +99,32 @@ function runMiddleware(type, args, middleware, ...middlewares) {
 
 app.use(bodyParser.urlencoded({ extended: true }));
 
-// Serve the pre-compressed client bundle (webstrates.js.br, emitted by the
-// webpack build) to browsers that accept brotli
-app.get('/webstrates.js', (req, res, next) => {
-	if (!(req.headers['accept-encoding'] || '').includes('br')) return next();
-	const compressedPath = path.join(APP_PATH, 'static', 'webstrates.js.br');
-	fs.readFile(compressedPath, (err, data) => {
-		if (err) return next();
+// Serve the client bundle under its content-hashed name (webstrates_<hash>.js, emitted by
+// the webpack build). The hash changes with every rebuild, so these files are immutable and
+// can be cached forever — every page load gets the current build by construction. Serve the
+// pre-compressed copy (webstrates_<hash>.js.br) to browsers that accept brotli.
+app.get(/^\/webstrates_[0-9a-f]+\.js$/, (req, res) => {
+	const file = path.basename(req.path);
+	const acceptsBr = (req.headers['accept-encoding'] || '').includes('br');
+	fs.readFile(path.join(APP_PATH, 'static', file + (acceptsBr ? '.br' : '')), (err, data) => {
+		// An unknown hash is not a bundle this build ever shipped (stale references from a
+		// misbehaving cache, or a made-up URL): answer 404 rather than fall through to the
+		// webstrate routes, which would happily serve a page for the made-up id.
+		if (err) return res.status(404).send('Unknown client bundle version.');
 		res.set('Content-Type', 'text/javascript; charset=UTF-8');
-		res.set('Content-Encoding', 'br');
 		res.set('Vary', 'Accept-Encoding');
-		res.set('Cache-Control', 'public, max-age=186400');
+		res.set('Cache-Control', 'public, max-age=31536000, immutable');
+		if (acceptsBr) res.set('Content-Encoding', 'br');
 		res.end(data);
 	});
+});
+
+// The skeleton is never be cached: it references the bundle by hash, and a cached copy
+// outliving a build would request a hashed bundle file that the build has since deleted.
+// express.static below would serve it with config.maxAge, so handle it here first.
+app.get('/client.html', (req, res) => {
+	res.set('Cache-Control', 'no-store');
+	res.sendFile(path.join(APP_PATH, 'static', 'client.html'), { cacheControl: false });
 });
 
 app.use(express.static('static', { maxAge: config.maxAge }));
