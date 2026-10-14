@@ -423,6 +423,13 @@ module.exports.subscribe = function(socketId, webstrateId, nodeId, retry = 5) {
 			setTimeout(function() {
 				module.exports.subscribe(socketId, webstrateId, nodeId, retry - 1);
 			}, 200);
+		} else {
+			// The client never joined the document within the retry window, so
+			// its subscription is dropped: it won't receive signals on this node
+			// until it subscribes again. Make the give-up visible instead of
+			// silently losing the subscription.
+			console.warn('Signal subscribe to', webstrateId + ':' + nodeId,
+				'gave up after retries; client', socketId, 'never joined the document.');
 		}
 		return;
 	}
@@ -539,6 +546,15 @@ module.exports.publish = function(senderSocketId, webstrateId, nodeId, message, 
 	(recipients || defaultRecipients).forEach(function(recipientId) {
 		// We don't know the client, or it isn't listening.
 		if (!clients[recipientId] || !listeners.has(recipientId)) {
+			// Directly addressed frames (e.g. the WebRTC sdp/ice exchange) are part
+			// of a signaling handshake — losing one silently breaks the dance with
+			// no retry. Broadcasts routinely skip clients that haven't subscribed to
+			// this node, so only explicitly addressed recipients are worth logging.
+			if (recipients) {
+				console.warn('Dropped direct signal in', webstrateId + ':' + nodeId, 'from',
+					senderSocketId, 'to', recipientId, '-',
+					clients[recipientId] ? 'recipient not subscribed' : 'recipient unknown');
+			}
 			return;
 		}
 

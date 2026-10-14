@@ -127,9 +127,13 @@ describe('Signal streams', function () {
 		await addListener(pageB, 'second');
 		await waitForCalls(pageB, (logs) =>
 			logs.listen.filter((l) => l === 'second').length >= 1);
-		// 'first' has now fired for both handshakes, 'second' for the latest one.
+		// 'first' fired for its own registration's handshake, 'second' for its own.
+		// With connection dedup (one live client per streamer per listener
+		// registration — see the multi-client spec) the reply to 'second's request
+		// no longer re-fires the already-connected 'first': stock fired every
+		// listener for every handshake delivery, duplicating connections.
 		const before = await getCalls(pageB);
-		assert.deepEqual(before.listen, ['first', 'first', 'second'],
+		assert.deepEqual(before.listen, ['first', 'second'],
 			'unexpected listener handshake');
 
 		// Remove the SECOND listener. With the shadowed-callback bug this removed the first
@@ -145,11 +149,11 @@ describe('Signal streams', function () {
 		// A registers another streamer: the broadcast fires whatever listeners remain on B.
 		// Exactly one listener must fire, and it must be the one that was NOT removed.
 		await addStreamer(pageA, 'streamer2');
-		await waitForCalls(pageB, (logs) => logs.listen.length === 4);
+		await waitForCalls(pageB, (logs) => logs.listen.length === 3);
 
 		const after = await getCalls(pageB);
-		assert.equal(after.listen.length, 4, 'exactly the surviving listener should have fired');
-		assert.equal(after.listen[3], 'first',
+		assert.equal(after.listen.length, 3, 'exactly the surviving listener should have fired');
+		assert.equal(after.listen[2], 'first',
 			'the surviving listener should fire; the removed one must stay silent');
 
 		// Clean up for the next test.
@@ -187,5 +191,71 @@ describe('Signal streams', function () {
 		// Clean up.
 		await stopStreamer(pageA, 's1');
 		await removeListener(pageB, 'listener');
+	});
+
+	it('a second listener registering should get its own connection without duplicating the first', async () => {
+		await Promise.all([resetCalls(pageA), resetCalls(pageB)]);
+
+		// A real streamer on A: a painted canvas gives captureStream() a live
+		// video track from the first moment (a media element only exposes tracks
+		// once its metadata has parsed, which is a race this suite doesn't want to
+		// depend on — see the multi-client spec), and the streamer actually calls
+		// connect(), so every acceptance negotiates a real peer connection.
+		await pageA.evaluate(() => {
+			window.__accepts = [];
+			const canvas = document.createElement('canvas');
+			canvas.width = 160;
+			canvas.height = 120;
+			const ctx = canvas.getContext('2d');
+			let hue = 0;
+			setInterval(() => {
+				hue = (hue + 17) % 360;
+				ctx.fillStyle = `hsl(${hue}, 100%, 50%)`;
+				ctx.fillRect(0, 0, canvas.width, canvas.height);
+			}, 100);
+			window.__stream = canvas.captureStream(10);
+			document.body.webstrate.signalStream((clientId, connect) => {
+				const stub = connect(window.__stream, {}, () => {});
+				window.__accepts.push({ peer: clientId, stub });
+			});
+		});
+
+		// First listener on B: accepts, so a real connection forms.
+		await pageB.evaluate(() => {
+			window.__streams = [];
+			document.body.webstrate.on('signalStream', (senderClientId, metaData, clientAcceptCallback) => {
+				clientAcceptCallback((remoteStream) => {
+					window.__streams.push(remoteStream.id);
+				});
+			});
+		});
+		await pageA.waitForFunction(() => window.__accepts.length >= 1,
+			{ polling: 100, timeout: 10000 });
+
+		// A second listener registers on B. Its requestForStreams is answered by
+		// the streamer's direct wantToStream 
+		await pageB.evaluate(() => {
+			document.body.webstrate.on('signalStream', (senderClientId, metaData, clientAcceptCallback) => {
+				clientAcceptCallback((remoteStream) => {
+					window.__streams.push(remoteStream.id);
+				});
+			});
+		});
+
+		// Wait for both the count and the connections 
+		await pageA.waitForFunction(() => window.__accepts.length >= 2 &&
+			window.__accepts.every((accept) => accept.stub.isConnected()),
+			{ polling: 100, timeout: 10000 });
+		const accepts = await pageA.evaluate(() => window.__accepts.map((accept) => ({
+			peer: accept.peer,
+			connected: accept.stub.isConnected()
+		})));
+		assert.equal(accepts.length, 2,
+			'one connection per listener registration (stock: three — the first listener connected twice)');
+		assert.isTrue(accepts.every((accept) => accept.connected),
+			'both connections should be live');
+
+		const streams = await pageB.evaluate(() => window.__streams.slice());
+		assert.equal(streams.length, 2, 'both listeners should have received the stream');
 	});
 });

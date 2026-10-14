@@ -44,7 +44,21 @@ function handleSignal(wid, senderClientId, message) {
 	// If we get a message from somebody wanting to stream, we ask all the people listening for
 	// streams. If they accept, we create the webrtcClient.
 	if (message.wantToStream) {
-		Array.from(wantToListenCallbacks.get(wid).values()).forEach(callback => {
+		const listenerSendersForWid = listenerSenders.get(wid);
+		Array.from(wantToListenCallbacks.get(wid).entries()).forEach(([listenerId, callback]) => {
+			// One streamer registration can reach a listener more than once:
+			// as the registration broadcast, as the direct reply to a
+			// listener's own requestForStreams, and — whenever ANOTHER listener
+			// on the same page registers — as a re-fire of every already-
+			// connected listener callback, so accept
+			// each (streamer, listener registration) pair only while it
+			// doesn't already have a live client.
+			const dedupKey = message.senderId + '\u0000' + listenerId;
+			const knownOwnId = listenerSendersForWid.get(dedupKey);
+			if (knownOwnId && webrtcClients.get(wid).has(knownOwnId)) {
+				return;
+			}
+
 			const ownId = coreUtils.randomString();
 			// Other clients may be responding to the same recipientId/stream. Therefore, the streamer
 			// can't create a WebRTCClient with the original recipientId as these would override each
@@ -56,14 +70,18 @@ function handleSignal(wid, senderClientId, message) {
 			// id instead".
 			const newRecipientId = coreUtils.randomString();
 			const webrtcClient = new WebRTCClient(ownId, newRecipientId, senderClientId,
-				node, { listener: true });
+				node, wid, { listener: true });
 			webrtcClients.get(wid).set(ownId, webrtcClient);
+			listenerSendersForWid.set(dedupKey, ownId);
 
 			// If the client hasn't connected after 30 seconds, we conclude that it won't happen and clean
 			// up the client we created.
 			setTimeout(() => {
 				if (!webrtcClient.stub.isConnected()) {
-					webrtcClients.get(wid).delete(ownId);
+					webrtcClient.reap();
+					if (listenerSendersForWid.get(dedupKey) === ownId) {
+						listenerSendersForWid.delete(dedupKey);
+					}
 				}
 			}, 30 * 1000);
 
@@ -89,10 +107,19 @@ function handleSignal(wid, senderClientId, message) {
 		if (callback) {
 			callback(senderClientId, (localStream, meta, onConnectCallback) => {
 				const webrtcClient = new WebRTCClient(message.newRecipientId, message.senderId,
-					senderClientId, node, { streamer: true });
+					senderClientId, node, wid, { streamer: true });
 				webrtcClient.onConnect(onConnectCallback);
 				webrtcClients.get(wid).set(message.newRecipientId, webrtcClient);
 				webrtcClient.start(localStream);
+				// If the listener never answers (e.g. it reloaded while our
+				// offer was in flight and the frames were dropped), this peer
+				// connection stays 'new' forever — gotStateChange never fires
+				// for it. Mirror the listener-side 30 s unconnected cleanup.
+				setTimeout(() => {
+					if (!webrtcClient.stub.isConnected()) {
+						webrtcClient.reap();
+					}
+				}, 30 * 1000);
 				return webrtcClient.stub;
 			});
 		}
@@ -113,9 +140,15 @@ function handleSignal(wid, senderClientId, message) {
 const wantToStreamCallbacks = new Map();
 const wantToListenCallbacks = new Map();
 const webrtcClients = new Map();
+// Per wid: (streamer senderId, listener registration ownId) -> the listener-side
+// ownId of the client created for that pair, used to dedup connections in the
+// wantToStream branch above (one live client per streamer per listener
+// registration).
+const listenerSenders = new Map();
 
-function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, streamer }) {
+function WebRTCClient(ownId, recipientId, clientRecipientId, node, wid, { listener, streamer }) {
 	let active = false, peerConnection, onRemoteStreamCallback, onConnectCallback, onCloseCallback;
+	let reaped = false;
 
 	const start = (localStream) => {
 		active = true;
@@ -179,7 +212,7 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 			case 'disconnected':
 			case 'failed':
 				onCloseCallback && onCloseCallback(event);
-				webrtcClients.delete(ownId);
+				reap();
 				break;
 		}
 	};
@@ -192,10 +225,32 @@ function WebRTCClient(ownId, recipientId, clientRecipientId, node, { listener, s
 		console.error(...error);
 	};
 
+	const close = () => {
+		if (peerConnection && peerConnection.connectionState !== 'closed') {
+			peerConnection.close();
+		}
+	};
+
+	// Remove this client from its wid's map and close the peer connection.
+	// Idempotent, so it's safe to call from both gotStateChange and the 30 s
+	// unconnected-listener timer. 
+	const reap = () => {
+		if (reaped) {
+			return;
+		}
+		reaped = true;
+		const clients = webrtcClients.get(wid);
+		if (clients) {
+			clients.delete(ownId);
+		}
+		close();
+	};
+
 	return {
 		id: ownId, active, listener, streamer, peerConnection,
 		onRemoteStream: callback => onRemoteStreamCallback = callback,
 		onConnect: callback => onConnectCallback = callback,
+		close, reap,
 		stub: {
 			isConnected: () => !!peerConnection &&
 				['checking', 'connected', 'completed'].includes(peerConnection.iceConnectionState),
@@ -221,6 +276,7 @@ function setupSignalStream(publicObject, eventObject) {
 	webrtcClients.set(wid, new Map());
 	wantToStreamCallbacks.set(wid, new Map());
 	wantToListenCallbacks.set(wid, new Map());
+	listenerSenders.set(wid, new Map());
 
 	// A mapping from user callbacks to our internal callbacks: fn -> fn.
 	//const callbacks = new Map();
