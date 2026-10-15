@@ -59,7 +59,8 @@ describe('Assets', function () {
 
 	let browserA, browserB, pageA, pageB;
 	let testDir;
-	let testTextFile, testCsvFile, testEmptyCsvFile, testImageFile, testZipFile, testNumericFile;
+	let testTextFile, testCsvFile, testNumbersCsvFile, testEmptyCsvFile, testImageFile, testZipFile,
+		testNumericFile;
 
 	before(async () => {
 		browserA = await puppeteer.launch();
@@ -82,6 +83,12 @@ describe('Assets', function () {
 		// Create a simple CSV file for searchable assets
 		testCsvFile = path.join(testDir, 'test.csv');
 		fs.writeFileSync(testCsvFile, 'name,age,city\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago');
+
+		// Create a CSV file with more rows than the default search limit (10), so that the
+		// total number of matching records and the number of records on a page differ.
+		testNumbersCsvFile = path.join(testDir, 'numbers.csv');
+		fs.writeFileSync(testNumbersCsvFile, 'n,label\n' +
+			Array.from({ length: 15 }, (_, i) => `${i + 1},row${i + 1}`).join('\n'));
 
 		// Create an empty CSV file (no rows at all)
 		testEmptyCsvFile = path.join(testDir, 'empty.csv');
@@ -118,7 +125,8 @@ describe('Assets', function () {
 
 	after(async () => {
 		// Clean up test files
-		[testTextFile, testCsvFile, testEmptyCsvFile, testImageFile, testZipFile, testNumericFile].forEach(file => {
+		[testTextFile, testCsvFile, testNumbersCsvFile, testEmptyCsvFile, testImageFile, testZipFile,
+			testNumericFile].forEach(file => {
 			if (fs.existsSync(file)) {
 				fs.unlinkSync(file);
 			}
@@ -309,6 +317,44 @@ describe('Assets', function () {
 			age: 35,
 			city: 'Chicago'
 		}, 'Search result does not match expected data');
+	});
+
+	it('Searching a searchable CSV asset should return the total number of matching records, not just the page', async () => {
+		await uploadAssetHelper(pageA, testNumbersCsvFile, true);
+
+		// With 15 matching rows and the default limit of 10, the first page holds 10 records
+		// while 'count' must still cover all 15.
+		const firstPage = await pageA.evaluate(() => {
+			return new Promise((resolve) => {
+				window.webstrate.searchAsset('numbers.csv', {
+					query: {}, sort: { n: 1 }
+				}, (err, result, count) => {
+					resolve({ err, result, count });
+				});
+			});
+		});
+
+		assert.isUndefined(firstPage.err, 'Searching with more matches than the limit should not throw an error');
+		assert.isArray(firstPage.result, 'Search result should be an array');
+		assert.equal(firstPage.result.length, 10, 'The first page should hold the default limit of 10 records');
+		assert.equal(firstPage.count, 15, 'The count should be the total number of matching records (15), not the page size');
+
+		// Explicit limit and skip page through the same matches without changing the count.
+		const lastPage = await pageA.evaluate(() => {
+			return new Promise((resolve) => {
+				window.webstrate.searchAsset('numbers.csv', {
+					query: {}, sort: { n: 1 }, limit: 5, skip: 10
+				}, (err, result, count) => {
+					resolve({ err, result, count });
+				});
+			});
+		});
+
+		assert.isUndefined(lastPage.err, 'Searching with limit and skip should not throw an error');
+		assert.isArray(lastPage.result, 'Search result should be an array');
+		assert.equal(lastPage.result.length, 5, 'The last page should hold the 5 records left after skipping 10');
+		assert.deepEqual(lastPage.result.map(row => row.n), [11, 12, 13, 14, 15], 'The last page should hold the records the skip left over');
+		assert.equal(lastPage.count, 15, 'The count should still be the total number of matching records (15)');
 	});
 
 	it('An empty searchable CSV should upload and be searchable with no results', async () => {

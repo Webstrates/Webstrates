@@ -223,7 +223,9 @@ const isValidValue = value => ['string', 'number'].includes(typeof value)
  * @param  {Object} sort         Mongodb sort object.
  * @param  {Number} limit        Max number of records.
  * @param  {Number} skip         Number of records to skip over (useful for pagination).
- * @return {Array}               (async) Search result.
+ * @return {Object}              (async) Search result: `records` (the records on the requested
+ *                               page) and `count` (the total number of records matching the
+ *                               query, disregarding limit and skip).
  * @public
  */
 module.exports.search = async (webstrateId, assetName, assetVersion,
@@ -255,6 +257,10 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 	await ensureCached(asset.fileName);
 
 	query._fileName = asset.fileName;
+	// Counted before limit and skip narrow the records below, so that 'count' covers the entire
+	// result set rather than just the returned page of it. (countDocuments only applies limit
+	// and skip when they are passed to it, which they never are here.)
+	const count = await db.assetsCsv.countDocuments(query);
 	const result = await db.assetsCsv
 		.find(query, { projection: { _id: 0, _fileName: 0 } })
 		.limit(limit)
@@ -267,6 +273,6 @@ module.exports.search = async (webstrateId, assetName, assetVersion,
 		delete row._fileName;
 	});
 
-	// 'count' is the the number of all records matching the query, disregarding the limit we've set.
-	return { records: result, count: result.length };
+	// 'count' is the number of all records matching the query, disregarding the limit and skip.
+	return { records: result, count };
 };
