@@ -7,6 +7,7 @@ const bodyParser = require('body-parser');
 const express = require('express');
 const expressWs = require('express-ws');
 const httpAuth = require('http-auth');
+const http = require('http');
 const passport = require('passport');
 const sessions = require('client-sessions');
 
@@ -69,18 +70,53 @@ const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
 
 const app = express();
-const wsInstance = expressWs(app);
 
+// We create the HTTP server ourselves rather than letting express-ws do it, so that our
+// 'upgrade' listener below is registered before express-ws's WebSocketServer attaches
+// its own: Node calls 'upgrade' listeners in registration order, and the first one to
+// answer owns the socket. The ws library completes the 101 handshake on its own, before
+// any express middleware runs — express-ws only replays the request through the express
+// stack AFTER the socket is established (with a dummy response), so an express-level
+// gate can close a websocket but never refuse its handshake. The handshake has to be
+// answered here.
+const server = http.createServer(app);
 
-const middleware = [];
+// The same credentials check the express-level basic auth gate applies to HTTP
+const isBasicAuthorized = (req) => {
+	const [scheme, encoded] = (req.headers.authorization || '').split(' ');
+	if (!/^basic$/i.test(scheme) || encoded === undefined) return false;
+	const decoded = Buffer.from(encoded, 'base64').toString('utf8');
+	const separator = decoded.indexOf(':');
+	if (separator < 0) return false;
+	return decoded.slice(0, separator) === config.basicAuth.username
+		&& decoded.slice(separator + 1) === config.basicAuth.password;
+};
 
-middleware.push(require('./middleware/dosProtectionMiddleware.js'));
-middleware.push(require('./middleware/versionMiddleware.js'));
-middleware.push(require('./middleware/keepAliveMiddleware.js'));
-middleware.push(require('./middleware/userHistory.js'));
-middleware.push(require('./middleware/userInvites.js'));
-middleware.push(require('./middleware/customActionHandlerMiddleware.js'));
-middleware.push(require('./middleware/shareDbMiddleware.js'));
+if (config.basicAuth) {
+	server.on('upgrade', (req, socket) => {
+		if (isBasicAuthorized(req)) return;
+		// Errors from a socket we are destroying are expected; make sure none of them
+		// takes the server down.
+		socket.on('error', () => {});
+		socket.end(
+			'HTTP/1.1 401 Unauthorized\r\n'
+			+ `WWW-Authenticate: Basic realm="${config.basicAuth.realm}"\r\n`
+			+ 'Connection: close\r\n'
+			+ '\r\n',
+			() => socket.destroy());
+	});
+}
+
+const wsInstance = expressWs(app, server);
+const middleware = [
+  require('./middleware/dosProtectionMiddleware.js'),
+  require('./middleware/versionMiddleware.js'),
+  require('./middleware/keepAliveMiddleware.js'),
+  require('./middleware/userHistory.js'),
+  require('./middleware/userInvites.js'),
+  require('./middleware/customActionHandlerMiddleware.js'),
+  require('./middleware/shareDbMiddleware.js'),
+];
 
 /**
  * Execute a type of middleware
@@ -98,6 +134,23 @@ function runMiddleware(type, args, middleware, ...middlewares) {
 
 
 app.use(bodyParser.urlencoded({ extended: true }));
+
+// Basic auth, when enabled, gates EVERY surface of the server
+if (config.basicAuth) {
+	console.log('Basic auth enabled');
+	var basic = httpAuth.basic({
+		realm: config.basicAuth.realm
+	}, function (username, password, callback) {
+		return callback(username === config.basicAuth.username
+			&& password === config.basicAuth.password);
+	});
+	app.use((req, res, next) => {
+		// basic.check() returns a handler that ends the response with a 401 on failure
+		// and, on success, invokes our callback with (req, res) — which we turn into a
+		// plain next() so the middleware chain continues.
+		basic.check(() => next())(req, res);
+	});
+}
 
 // Serve the client bundle under its content-hashed name (webstrates_<hash>.js, emitted by
 // the webpack build). The hash changes with every rebuild, so these files are immutable and
@@ -128,27 +181,6 @@ app.get('/client.html', (req, res) => {
 });
 
 app.use(express.static('static', { maxAge: config.maxAge }));
-
-if (config.basicAuth) {
-	console.log('Basic auth enabled');
-	var basic = httpAuth.basic({
-		realm: config.basicAuth.realm
-	}, function (username, password, callback) {
-		return callback(username === config.basicAuth.username
-			&& password === config.basicAuth.password);
-	});
-	app.use((req, res, next) => {
-		if (!req.ws) {
-			// basic.check() returns a handler that ends the response with a 401 on failure and, on
-			// success, invokes our callback with (req, res) — which we turn into a
-			// plain next() so the middleware chain continues.
-			basic.check(() => next())(req, res);
-		}
-		else {
-			next();
-		}
-	});
-}
 
 if (config.auth) {
 	const { secret, duration } = config.auth.cookie;
@@ -470,5 +502,5 @@ app.use((err, req, res, next) => {
 
 const port = argv.p || config.listeningPort || 7007;
 const address = argv.h || config.listeningAddress || 'localhost';
-app.listen(port, address);
+server.listen(port, address);
 console.log(`Listening on http://${address}:${port}/`);
