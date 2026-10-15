@@ -34,8 +34,66 @@
 const json0 = require('ot-json0/lib/json0');
 
 /**
+ * Shallow-copy an array or plain object (one level).
+ * @param  {mixed} node Array or object to copy.
+ * @return {mixed}      Shallow copy.
+ * @private
+ */
+function shallowCloneNode(node) {
+	return Array.isArray(node) ? node.slice() : Object.assign({}, node);
+}
+
+/**
+ * Clone, in `root` (a working copy), the chain of arrays/objects along one
+ * op's path, so that applying the op cannot reach — and mutate — a node that
+ * is still shared with the live snapshot. Siblings along the chain stay
+ * shared by reference: json0.apply only ever mutates nodes ON an op's path
+ * (list splices and object writes at the walked keys); everything off the
+ * path is only read.
+ *
+ * Called per op, immediately before that op is applied, against the state
+ * left by the previous ops: if an earlier op in the list shifted siblings
+ * around (li/ld), a position may now hold a node that was not on any earlier
+ * spine, so the spine has to be refreshed for the current op.
+ *
+ * @param  {JsonML} root Working copy (already detached from the snapshot).
+ * @param  {Object} op   Operation about to be applied.
+ * @private
+ */
+function cloneOpPathSpine(root, op) {
+	if (!op || !Array.isArray(op.p)) return;
+	if (root === null || typeof root !== 'object') return;
+	let node = root;
+	for (let i = 0; i < op.p.length; i++) {
+		const child = node[op.p[i]];
+		// Strings (attribute values, text nodes) and other leaves are
+		// immutable — json0 replaces them wholesale, so they need no clone.
+		// Missing (undefined) children are left as-is; json0.apply reports
+		// them ('Path invalid').
+		if (child === null || typeof child !== 'object') break;
+		node[op.p[i]] = shallowCloneNode(child);
+		node = node[op.p[i]];
+	}
+}
+
+/**
  * Validate that a list of json0 operations applies, in order, to a clone of the
  * snapshot.
+ *
+ * The clone is a working copy in which only each op's path spine is private
+ * (see cloneOpPathSpine); the real submission re-applies the ops through
+ * ShareDB as usual. An earlier version of this check deep-cloned the whole
+ * snapshot with a JSON round-trip on every createdOps event; validateOps runs
+ * synchronously per event inside the MutationObserver callback, so a batch
+ * emitting one op per record (hundreds of multi-KB attribute updates) cloned
+ * the entire document once per op — quadratic transient allocation (GBs of
+ * churn on multi-MB documents) and multi-second main-thread CPU (measured
+ * ~4-8s for a 600-op storm on a 1-2.4MB document, growing with document size
+ * and op count). Cloning only
+ * the op paths is equivalent for apply purposes (json0 mutates nothing off an
+ * op's path) and costs O(siblings along the op paths) instead of O(document
+ * bytes).
+ *
  * @param  {JsonML} snapshot Document snapshot the ops will be applied to.
  * @param  {Array}   ops     Operations as triggered through the createdOps event.
  * @return {Error?}         First operation that does not apply, or null.
@@ -43,9 +101,15 @@ const json0 = require('ot-json0/lib/json0');
  */
 exports.validateOps = (snapshot, ops) => {
 	// JsonML is plain JSON, so a JSON round-trip is an exact, dependency-free
-	// clone. The clone is discarded afterwards; the real submission re-applies
-	// the ops through ShareDB as usual.
-	const clone = JSON.parse(JSON.stringify(snapshot || null));
+	// clone — kept as the fallback for degenerate snapshots, where it
+	// preserves the exact previous behavior (including what json0.apply then
+	// throws on).
+	let clone;
+	if (!snapshot || typeof snapshot !== 'object') {
+		clone = JSON.parse(JSON.stringify(snapshot || null));
+	} else {
+		clone = shallowCloneNode(snapshot);
+	}
 
 	for (const op of ops) {
 		// json0 would happily insert null into the document (listInsert/objectInsert
@@ -61,6 +125,7 @@ exports.validateOps = (snapshot, ops) => {
 		}
 
 		try {
+			cloneOpPathSpine(clone, op);
 			json0.apply(clone, [op]);
 		} catch (error) {
 			const validationError = new Error('op does not apply to the snapshot: '
