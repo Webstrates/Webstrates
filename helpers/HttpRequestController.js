@@ -770,6 +770,16 @@ module.exports.requestHandler = async function(req, res) {
 					return res.status(404).send(`Asset "${req.params.assetName}" not found.`);
 				}
 
+				// An asset record can lose sync — the ?dl download path already heals such records). Serving a
+				// dead record through any of the paths below would 500 through sendFile's
+				// error path or misreport the failure; report it as what it is — a missing
+				// asset
+				const assetFilePath = `${assetManager.UPLOAD_DEST}${asset.fileName}`;
+				if (!fs.existsSync(assetFilePath)) {
+					return res.status(404).send(`Asset "${req.params.assetName}" is currently ` +
+						'unavailable (its file is missing).');
+				}
+
 				if ('dir' in req.query) {
 					const zipStructure = await getZipStructure(asset.fileName);
 					res.json(zipStructure);
@@ -822,7 +832,7 @@ module.exports.requestHandler = async function(req, res) {
 				// it'll always refer to the same thing, allowing us to set a longer maxAge.
 				var maxAge = req.params.version ? '1y' : (config.maxAge || '1m');
 				res.type(asset.mimeType);
-				return res.sendFile(assetManager.UPLOAD_DEST + asset.fileName, { maxAge });
+				return res.sendFile(assetFilePath, { maxAge });
 			} catch (error) {
 				console.error(error);
 				return res.status(409).send(String(error));
@@ -1073,9 +1083,7 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 				}
 			} else {
 				console.warn(`Asset ${filePath} (${asset.originalFileName}) for Webstrate ` +
-					`${req.params.webstrateId} doesn't exist. Deleting it from database.`);
-				// The deletion happens async, but there's no reason to make the user wait for it.
-				assetManager.deleteAssetFromDatabase(asset.fileName);
+					`${req.params.webstrateId} is currently unavailable on disk.`);
 			}
 		});
 		archive.finalize();

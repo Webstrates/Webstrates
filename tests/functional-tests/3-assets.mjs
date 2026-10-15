@@ -709,6 +709,142 @@ describe('Searchable asset cleanup', function () {
 	});
 });
 
+describe('Dangling asset records', function () {
+	this.timeout(60000);
+
+	// An asset record can outlive its file — or its file outlive its content: the
+	// database and the uploads directory can lose sync (files lost from disk, records
+	// restored without them, files corrupted in place). Three behaviors are covered:
+	// re-uploading content whose record points at a missing file must resurrect the
+	// shared name with the fresh copy (before the fix, the dedupe chained every
+	// re-upload onto the dead name and deleted its own fresh copy — a self-propagating
+	// dangling pointer), re-uploading content whose shared file was corrupted must
+	// fix the file (the dedupe trusts a record only if its file still hashes to what
+	// the records claim), and requesting an asset whose file is missing must 404.
+
+	const webstrateIdA = 'test-' + util.randomString();
+	const webstrateIdB = 'test-' + util.randomString();
+	const urlA = config.server_address + webstrateIdA;
+	const urlB = config.server_address + webstrateIdB;
+
+	let browser, pageA, pageB;
+	let testDir, contentFile;
+
+	const uploadsPath = (identifier) => path.join(process.cwd(), 'uploads', identifier);
+
+	const identifierOf = async (url, fileName) => {
+		const asset = (await (await fetch(url + '?assets')).json())
+			.find(asset => asset.fileName === fileName);
+		assert.isDefined(asset, `The webstrate at ${url} should have an asset ${fileName}`);
+		return asset.identifier;
+	};
+
+	before(async () => {
+		browser = await puppeteer.launch();
+		pageA = await browser.newPage();
+		pageB = await browser.newPage();
+		await pageA.goto(urlA + '/', { waitUntil: 'networkidle2' });
+		await pageB.goto(urlB + '/', { waitUntil: 'networkidle2' });
+
+		testDir = path.join(process.cwd(), 'tests', 'test-assets');
+		if (!fs.existsSync(testDir)) {
+			fs.mkdirSync(testDir, { recursive: true });
+		}
+		// Unique name and content per run, so the uploads can never deduplicate against
+		// records left behind by a previous (possibly interrupted) run.
+		contentFile = path.join(testDir, 'dangling-' + util.randomString(10) + '.txt');
+		fs.writeFileSync(contentFile, 'dangling asset content ' + util.randomString(20));
+	});
+
+	after(async () => {
+		// The tests delete their webstrates as they go; delete any left behind by a
+		// failure so no uploaded files outlive the run.
+		await Promise.all([urlA, urlB].map(url =>
+			fetch(url + '?delete').catch(() => {})));
+		await browser.close();
+		if (contentFile && fs.existsSync(contentFile)) fs.unlinkSync(contentFile);
+		if (fs.existsSync(testDir)) {
+			try { fs.rmdirSync(testDir); } catch { /* other suite's files — fine */ }
+		}
+	});
+
+	it('re-uploading content whose file was lost resurrects the shared file', async () => {
+		const fileName = path.basename(contentFile);
+
+		await uploadAssetHelper(pageA, contentFile);
+		const identifier = await identifierOf(urlA, fileName);
+		assert.isTrue(fs.existsSync(uploadsPath(identifier)),
+			'The uploaded file should exist on disk');
+
+		// Simulate the file being lost while its records survive.
+		fs.unlinkSync(uploadsPath(identifier));
+		assert.isFalse(fs.existsSync(uploadsPath(identifier)),
+			'The file should be gone before the re-upload');
+
+		await uploadAssetHelper(pageB, contentFile);
+		assert.equal(await identifierOf(urlB, fileName), identifier,
+			'The re-upload should deduplicate onto the same shared file name');
+		assert.isTrue(fs.existsSync(uploadsPath(identifier)),
+			'The re-upload should have resurrected the shared file on disk');
+
+		const responses = await Promise.all([urlA, urlB].map(url =>
+			fetch(url + '/' + fileName)));
+		assert.equal(responses[0].status, 200,
+			'The asset should serve again on the webstrate it was first uploaded to');
+		assert.equal(responses[1].status, 200,
+			'The asset should serve on the webstrate it was re-uploaded to');
+		const content = fs.readFileSync(contentFile, 'utf8');
+		assert.equal(await responses[0].text(), content,
+			'The resurrected asset should serve the uploaded content');
+	});
+
+	it('re-uploading content whose file was corrupted fixes the shared file', async () => {
+		const fileName = path.basename(contentFile);
+		const identifier = await identifierOf(urlA, fileName);
+		const content = fs.readFileSync(contentFile, 'utf8');
+
+		// Simulate the file being corrupted in place while its records survive: the
+		// records still carry the hash of the original content, but the bytes on disk
+		// no longer match it. (The serving path can't tell — only a re-upload brings
+		// the content back into the dedupe and notices the mismatch.)
+		fs.writeFileSync(uploadsPath(identifier), 'corrupted ' + util.randomString(20));
+
+		await uploadAssetHelper(pageB, contentFile);
+		assert.equal(await identifierOf(urlB, fileName), identifier,
+			'The re-upload should deduplicate onto the same shared file name');
+		assert.equal(fs.readFileSync(uploadsPath(identifier), 'utf8'), content,
+			'The re-upload should have replaced the corrupted file with the uploaded content');
+
+		const responses = await Promise.all([urlA, urlB].map(url =>
+			fetch(url + '/' + fileName)));
+		assert.equal(await responses[0].text(), content,
+			'The fixed asset should serve the re-uploaded content on the first webstrate');
+		assert.equal(await responses[1].text(), content,
+			'The fixed asset should serve the re-uploaded content on the re-uploading webstrate');
+	});
+
+	it('requesting an asset whose file is missing returns 404',
+		async () => {
+			const fileName = path.basename(contentFile);
+			const identifier = await identifierOf(urlA, fileName);
+
+			// Several records point at the shared file (A's and B's across the
+			// uploads); lose the file and request it. The heal 404s (rather than
+			// 500s) and drops the webstrate's dead records one per request, so
+			// poll until the listing no longer advertises the asset. The unlink is
+			// guarded so the case still reaches its own 404-vs-500 assertion when
+			// an earlier case failed on a broken server and left no file behind.
+			if (fs.existsSync(uploadsPath(identifier))) {
+				fs.unlinkSync(uploadsPath(identifier));
+			}
+			const response = await fetch(urlA + '/' + fileName);
+			assert.equal(response.status, 404,
+				'A missing asset file should be reported as 404, not 500');
+			assert.include(await response.text(), 'missing',
+				'The 404 should say the file is missing, to distinguish it from an unknown asset');			
+		});
+});
+
 // Creates a ZIP archive in memory from a list of [name, data] entries. Entries
 // are deflated, so redundant data (e.g. a buffer of zeros) compresses extremely
 // well — which is exactly what a zip bomb is.

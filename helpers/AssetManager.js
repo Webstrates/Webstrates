@@ -176,11 +176,18 @@ module.exports.markAssetAsDeleted = async function(webstrateId, assetName){
  * the database to avoid lingering files in the file system as well.
  * @param  {string} fileName Name of the file in the file system. This is not the original file
  *                           name used when uploading the file, but rather the 'identifier'.
+ * @param  {string} [webstrateId] WebstrateId to scope the deletion to. Every record sharing a
+ *                                 fileName is equally dead (the guard above only lets records
+ *                                 through whose file is missing), but scoping makes a webstrate's
+ *                                 listing heal deterministically on its own requests instead of
+ *                                 on whichever record an unscoped deleteOne happens to pick.
  * @public
  */
-module.exports.deleteAssetFromDatabase = async (fileName) => {
+module.exports.deleteAssetFromDatabase = async (fileName, webstrateId) => {
 	if (!fileName || fs.existsSync(`${module.exports.UPLOAD_DEST}${fileName}`)) return;
-	return await db.assets.deleteOne({ fileName: fileName });
+	return await db.assets.deleteOne(webstrateId
+		? { fileName: fileName, webstrateId: webstrateId }
+		: { fileName: fileName });
 };
 
 /**
@@ -413,12 +420,55 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 	// Check for duplicates and handle accordingly
 	const duplicate = await db.assets.findOne({ fileSize: asset.size, fileHash: asset.fileHash });
 	if (duplicate) {
-		// deleteAssetFromFileSystem actually returns a promise that we could wait for, but there's
-		// no reason to make the user wait for us to delete the file. The user doesn't care.
-		deleteAssetFromFileSystem(asset.filename);
-		// Multer uses lower case properties, we save assets as camelCase in the database, so the
-		// properties are indeed asset.filename and duplicate.fileName (capital N). This is not a typo.
-		asset.filename = duplicate.fileName;
+		// An asset record can outlive its file — or its file outlive its content: the database
+		// and the file system can lose sync (files lost from the uploads directory, records
+		// restored without them, files corrupted in place), and a record's fileHash only ever
+		// describes what the file was when it was uploaded. Trusting the record blindly would
+		// chain every future upload of the same content onto a dead or broken name *and* delete
+		// each fresh copy it just extracted — a self-propagating dangling pointer: once one
+		// file is lost or corrupted, all re-uploads of that content break while looking
+		// successful. So only trust the duplicate if its file is still healthy (present, and
+		// still hashing to what both records claim); otherwise resurrect the name with the
+		// freshly uploaded copy — the content is identical (same hash and size), so every
+		// record pointing at that fileName comes back to life, re-upload fixes the file.
+		const duplicatePath = `${module.exports.UPLOAD_DEST}${duplicate.fileName}`;
+		let duplicateIsHealthy = false;
+		if (fs.existsSync(duplicatePath)) {
+			try {
+				duplicateIsHealthy = await md5File(duplicatePath) === asset.fileHash;
+			} catch {
+				// An unreadable file is as good as a broken one; the resurrection below
+				// either revives the name or the record keeps the fresh upload.
+				duplicateIsHealthy = false;
+			}
+		}
+		if (duplicateIsHealthy) {
+			// deleteAssetFromFileSystem actually returns a promise that we could wait for, but
+			// there's no reason to make the user wait for us to delete the file. The user
+			// doesn't care.
+			deleteAssetFromFileSystem(asset.filename);
+			// Multer uses lower case properties, we save assets as camelCase in the
+			// database, so the properties are indeed asset.filename and
+			// duplicate.fileName (capital N). This is not a typo.
+			asset.filename = duplicate.fileName;
+		} else {
+			try {
+				await fs.promises.rename(`${module.exports.UPLOAD_DEST}${asset.filename}`, duplicatePath);
+				asset.filename = duplicate.fileName;
+				// The search cache (if any) may have been built from, or rebuilt
+				// against, the broken file — the resurrected file must not serve rows
+				// parsed from wrong bytes. Dropping the cache is enough, it rebuilds
+				// lazily; a failure to drop it only delays that, so don't fail the
+				// upload over it.
+				searchableAssets.deleteSearchable(duplicate.fileName).catch(console.error);
+			} catch (err) {
+				// If the resurrection failed (e.g. the uploads directory turned unwritable
+				// mid-request, or the fresh file vanished as well), keep the record on the
+				// fresh upload's own name: the uploader still gets a working asset, and the
+				// dead records are dropped lazily by the serving path.
+				console.error(err);
+			}
+		}
 	}
 
 	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + ' ' + source);
