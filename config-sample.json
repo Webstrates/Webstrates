@@ -7,7 +7,9 @@
   "maxAge": "1d",
   "maxAssetSize": 100,
   "maxZipEntries": 1000,
-  "maxZipUncompressedSize": 250,
+  "maxZipUncompressedSize": 256,
+  "maxPrototypeUrlRawSize": 100,
+  "maxPrototypeUrlDecodedSize": 256,
   "messageRateLimit": {
     "messagesPerInterval": 100,
     "intervalLength": 60000,

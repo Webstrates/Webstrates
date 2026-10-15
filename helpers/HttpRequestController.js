@@ -31,6 +31,8 @@ const invites = require(APP_PATH + '/middleware/userInvites.js');
 
 const DEFAULT_PROTOTYPE_URL_DNS_SERVERS = ['8.8.8.8', '1.1.1.1'];
 const PROTOTYPE_URL_FETCH_TIMEOUT_MS = 30000;
+const MAX_PROTOTYPE_URL_RAW_SIZE = (config.maxPrototypeUrlRawSize || 100) * 1024 * 1024;
+const MAX_PROTOTYPE_URL_DECODED_SIZE = (config.maxPrototypeUrlDecodedSize || 100) * 1024 * 1024;
 
 /**
  * Parse a dotted-quad IPv4 address into its 4 bytes, or null.
@@ -326,22 +328,77 @@ function makePinnedLookup(hostname, addresses) {
 }
 
 /**
- * Decode a prototypeUrl response body the way fetch() does for the
- * encodings we request (gzip, deflate). Anything else passes through.
- * @param  {Buffer} buffer  Raw body bytes.
- * @param  {string} encoding Content-Encoding header value.
- * @return {Buffer}         Decoded body.
- * @throws {Error}          If the body cannot be decoded.
+ * Decompress a prototypeUrl response body through an already-created zlib
+ * decoder, counting the decoded bytes as the stream produces them (the
+ * decompression-side counterpart of the ZIP import's byte counting): the
+ * moment the output crosses MAX_PROTOTYPE_URL_DECODED_SIZE, the decoder is
+ * destroyed mid-expansion and the fetch rejected — instead of letting a
+ * tiny compressed body expand to any size in memory.
+ * @param  {Buffer}          buffer  Raw (still compressed) body bytes.
+ * @param  {zlib.Gunzip|zlib.Inflate|zlib.InflateRaw} decoder Decoder created
+ *                                  by the caller, so the encoding choice
+ *                                  stays visible at the dispatch site.
+ * @return {Promise<Buffer>}         Decoded body.
+ * @throws {Error}                   When the body cannot be decoded, or
+ *                                  expands beyond the decoded-size limit
+ *                                  (such errors carry
+ *                                  err.decodedLimitExceeded = true).
  * @private
  */
-function decodePrototypeUrlBody(buffer, encoding) {
+function decompressPrototypeUrlBody(buffer, decoder) {
+	return new Promise((resolve, reject) => {
+		const chunks = [];
+		let decodedSize = 0;
+		let aborted = false;
+		const abort = (err) => {
+			if (aborted) return;
+			aborted = true;
+			decoder.destroy();
+			reject(err);
+		};
+		decoder.on('data', (chunk) => {
+			if (aborted) return;
+			chunks.push(chunk);
+			decodedSize += chunk.length;
+			if (decodedSize > MAX_PROTOTYPE_URL_DECODED_SIZE) {
+				const err = new Error('prototypeUrl body expands beyond the maximum decoded size of ' +
+					`${MAX_PROTOTYPE_URL_DECODED_SIZE / 1024 / 1024} MB.`);
+				err.decodedLimitExceeded = true;
+				abort(err);
+			}
+		});
+		decoder.once('error', abort);
+		decoder.once('end', () => {
+			if (!aborted) resolve(Buffer.concat(chunks));
+		});
+		decoder.end(buffer);
+	});
+}
+
+/**
+ * Decode a prototypeUrl response body the way fetch() does for the
+ * encodings we request (gzip, deflate). Anything else passes through
+ * undecoded exactly as before (mislabeled bodies are then inert and stay
+ * bounded by the raw-size limit).
+ * @param  {Buffer}          buffer  Raw body bytes.
+ * @param  {string}          encoding Content-Encoding header value.
+ * @return {Promise<Buffer>}         Decoded body.
+ * @throws {Error}                   If the body cannot be decoded.
+ * @private
+ */
+async function decodePrototypeUrlBody(buffer, encoding) {
 	const enc = String(encoding || '').trim().toLowerCase();
-	if (enc === 'gzip') return zlib.gunzipSync(buffer);
+	if (enc === 'gzip') {
+		return decompressPrototypeUrlBody(buffer, zlib.createGunzip());
+	}
 	if (enc === 'deflate') {
 		try {
-			return zlib.inflateSync(buffer);
+			return await decompressPrototypeUrlBody(buffer, zlib.createInflate());
 		} catch (err) {
-			return zlib.inflateRawSync(buffer);
+			// Only decode errors fall back to raw deflate — a body that
+			// crossed the decoded limit would only burn the same limit again.
+			if (err && err.decodedLimitExceeded) throw err;
+			return decompressPrototypeUrlBody(buffer, zlib.createInflateRaw());
 		}
 	}
 	return buffer;
@@ -382,8 +439,10 @@ class PrototypeUrlResponse {
 /**
  * Fetch one validated prototypeUrl hop over http(s).request with the
  * connection pinned to the externally-resolved addresses, gzip/deflate
- * decoding and a hard timeout. Connections are not pooled (agent: false),
- * so no prototypeUrl socket is ever reused by anything else.
+ * decoding and a hard timeout. The fetch is capped as it runs on both axes
+ * (MAX_PROTOTYPE_URL_RAW_SIZE on the wire, MAX_PROTOTYPE_URL_DECODED_SIZE
+ * after decoding). Connections are not pooled (agent: false), so no
+ * prototypeUrl socket is ever reused by anything else.
  * @param  {Object} validated {url, addresses} from validatePrototypeUrl.
  * @return {Promise<PrototypeUrlResponse>}
  * @private
@@ -402,14 +461,46 @@ function requestPrototypeUrl(validated) {
 		}
 		const request = transport.request(validated.url, options, (response) => {
 			const chunks = [];
-			response.on('data', (chunk) => chunks.push(chunk));
+			let rawSize = 0;
+			// The fetch-side counterpart of abortZipImport: settle once, then
+			// clear the timer and tear the socket down so no further bytes are
+			// received. Rejecting before the destroy makes the cap message
+			// deterministically win the settle race against the generic
+			// 'aborted'/'error' events that the destroy triggers.
+			let aborted = false;
+			const abortPrototypeUrlFetch = (err) => {
+				if (aborted) return;
+				aborted = true;
+				reject(err);
+				clearTimeout(timer);
+				request.destroy();
+			};
+			response.on('data', (chunk) => {
+				chunks.push(chunk);
+				rawSize += chunk.length;
+				if (rawSize > MAX_PROTOTYPE_URL_RAW_SIZE) {
+					abortPrototypeUrlFetch(new Error('prototypeUrl response exceeds the maximum raw size of ' +
+						`${MAX_PROTOTYPE_URL_RAW_SIZE / 1024 / 1024} MB.`));
+				}
+			});
 			response.on('error', reject);
 			response.on('aborted', () => reject(new Error('prototypeUrl fetch aborted.')));
-			response.on('end', () => {
+			response.on('end', async () => {
 				clearTimeout(timer);
 				try {
-					resolve(new PrototypeUrlResponse(response,
-						decodePrototypeUrlBody(Buffer.concat(chunks), response.headers['content-encoding'])));
+					// Redirect-hop bodies are never read (fetchPrototypeUrl
+					// consumes only the Location header), so decoding them
+					// would only let the sending side spend our CPU; they stay
+					// raw — and raw-capped.
+					const body = (response.statusCode >= 300 && response.statusCode < 400)
+						? Buffer.concat(chunks)
+						: await decodePrototypeUrlBody(Buffer.concat(chunks),
+							response.headers['content-encoding']);
+					// A settle that raced the decode (e.g. the raw cap tripping
+					// on the last chunk) must not be overwritten — the re-check
+					// keeps the promise on its first verdict.
+					if (aborted) return;
+					resolve(new PrototypeUrlResponse(response, body));
 				} catch (err) {
 					reject(err);
 				}
@@ -1236,7 +1327,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		// --- ?prototypeUrl SSRF guard ------------------------------------------
 		//
 		// prototypeUrl lets an unauthenticated client make the server fetch a URL,
-		// so the fetch is wrapped in three defenses:
+		// so the fetch is wrapped in four defenses:
 		//   1. Only http(s) URLs, and only hosts that are either operator-allowlisted
 		//      (config.prototypeUrlAllowlist) or resolve to public addresses.
 		//   2. Hostnames are resolved over EXTERNAL DNS only — one of the servers in
@@ -1248,6 +1339,10 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		//      returned, so the hostname is never resolved (or re-resolved) on the
 		//      way to connect. Redirects are followed manually and every hop is
 		//      validated and pinned the same way.
+		//   4. The fetched body is capped as it arrives on both axes — raw wire
+		//      bytes (maxPrototypeUrlRawSize) and gzip/deflate-decoded bytes
+		//      (maxPrototypeUrlDecodedSize) — so a compressed response cannot
+		//      expand unbounded in memory 
 		// Address checks are byte-level so the IPv4 segments embedded in IPv6
 		// literals (IPv4-mapped ::ffff:0:0/96, IPv4-compatible ::/96, NAT64
 		// 64:ff9b::/96 and 6to4 2002::/16) are classified by the IPv4 they carry:
