@@ -1,7 +1,6 @@
 .DS_Store
 node_modules
 npm-debug.log
-package-lock.json
 config.json
 uploads
 client/webstrates/brotli-wasm-bytes.b64
