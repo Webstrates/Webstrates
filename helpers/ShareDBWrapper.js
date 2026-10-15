@@ -199,6 +199,18 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 			}
 		}
 
+		// u = unsubscribe. Handled here, ahead of the permission check below, because
+		// unsubscribing must never require the very permission it gives up: a client whose
+		// permissions were revoked after subscribing must still be able to stop the ops
+		// streaming to it.
+		if (req.action === 'receive' && req.data?.a === 'u') {
+			clientManager.removeClientFromWebstrate(socketId, webstrateId);
+
+			// Hand the unsubscribe on to ShareDB, it tears down the server-side 
+			// subscription and replies
+			return next(); 
+		}
+
 		if (!config.disableSessionLog && !req.agent.sessionLogged) {
 			await insertSessionLog({
 				sessionId: req.agent.clientId,
@@ -244,17 +256,6 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 				}
 				break;
 			case 'receive':
-			// u = unsubscribe.
-				if (req.data.a === 'u') {
-					// No userId passed: the client may stay connected after unsubscribing, so
-					// its userClient entry is only cleaned up on disconnect (removeClient).
-					// The call unsubscribes the client from all nodeIds it subscribed to in this
-					// webstrate, removes it from the webstrate's client map and broadcasts the
-					// clientPart.
-					clientManager.removeClientFromWebstrate(socketId, webstrateId);
-					return;
-				}
-
 				// Check if the incoming update is an op (and not a create op).
 				if (req.data.a === 'op' && Array.isArray(req.data.op)) {
 				// If the permissions have changed, invalidate the permissions cache and expire
