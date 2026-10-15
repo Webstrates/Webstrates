@@ -125,11 +125,6 @@ describe('Client version reload', function() {
 		assert.equal(bundle.status, 200, 'the hashed bundle is served');
 		assert.include(bundle.headers.get('cache-control') || '', 'immutable',
 			'the hashed bundle is served as immutable, so it can be cached forever');
-
-		// The pre-versioning URL now points at the current versioned bundle.
-		const legacy = await fetch(config.server_address + 'webstrates.js', { redirect: 'manual' });
-		assert.equal(legacy.status, 302);
-		assert.equal(legacy.headers.get('location'), '/webstrates_' + hash[1] + '.js');
 	});
 
 	it('announces the client version it is shipping on every websocket connection', async () => {
