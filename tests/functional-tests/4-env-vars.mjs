@@ -121,6 +121,7 @@ describe('Environment variable config overrides', function () {
 			compressedSnapshots: false,
 			niceWebstrateIds: false,
 			maxAssetSize: 100,
+			basicAuth: false,
 			compressedSnapshotCacheDir: configCacheDir,
 			// Not one of the overridable properties: a low debounce makes the
 			// snapshot cache entry appear quickly once ops settle.
