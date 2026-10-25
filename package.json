@@ -40,7 +40,7 @@
     "@babel/preset-env": "8.0.5",
     "archiver": "8.0.0",
     "babel-loader": "10.1.1",
-    "body-parser": "2.3.0",
+    "body-parser": "2.4.0",
     "brotli-dec-wasm": "^2.3.2",
     "bson": "7.3.2",
     "client-sessions": "0.8.0",
