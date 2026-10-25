@@ -24,8 +24,9 @@
   },
   "auth": {
     "cookie": {
-      "secret": "This is a secret",
-      "duration": 31536000000
+      "duration": 2592000000,
+      "activeDuration": 86400000,
+      "secure": true
     },
     "permissionTimeout": 300,
     "defaultPermissions": [

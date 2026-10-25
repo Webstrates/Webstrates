@@ -17,3 +17,6 @@ snapshot-cache
 tests/test-assets/
 tests/test-assets-copy/
 .vscode
+cookie.key
+cookie.key.tmp-*
+keys/

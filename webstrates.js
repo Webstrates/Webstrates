@@ -68,6 +68,7 @@ const permissionManager = require(APP_PATH + '/helpers/PermissionManager.js');
 const userValidation = require(APP_PATH + '/helpers/UserValidation.js');
 const assetManager = require(APP_PATH + '/helpers/AssetManager.js');
 const httpRequestController = require(APP_PATH + '/helpers/HttpRequestController.js');
+const cookieKey = require(APP_PATH + '/helpers/CookieKey.js');
 
 const app = express();
 
@@ -183,8 +184,47 @@ app.get('/client.html', (req, res) => {
 app.use(express.static('static', { maxAge: config.maxAge }));
 
 if (config.auth) {
-	const { secret, duration } = config.auth.cookie;
-	app.use(sessions({ secret, duration, cookieName: 'session' }));
+	if (config.auth.cookie.secret) {
+		console.warn('auth.cookie.secret in the configuration is deprecated and ignored. ' +
+			'Session cookies are signed with the keys from the server key file.');
+		console.warn('Session cookies are marked Secure by default, so browsers only send ' +
+			'them over HTTPS. Set auth.cookie.secure to false for a server that is ' +
+			'reached over plain HTTP.');
+	}
+
+	const { duration, activeDuration, secure } = config.auth.cookie;
+
+	// Session cookies are marked Secure by default, so browsers only ever send them back
+	// over HTTPS. TLS is typically terminated at a reverse proxy in front of the server,
+	// so the server's own socket is plain HTTP even though the client connects securely,
+	// and the session libraries need to be told that the proxied connection is secure.
+	// Setting auth.cookie.secure to false in config.json turns this off, for servers that
+	// are reached over plain HTTP.
+	if (secure !== false) {
+		app.use((req, res, next) => {
+			req.connection.proxySecure = true;
+			req.connection.encrypted = true;
+			next();
+		});
+	}
+
+	// Session cookies are signed with HMAC-SHA512 (the signature key is 512 bits) and
+	// encrypted with AES-256, using the keys from the key file — see helpers/CookieKey.js.
+	const { signatureKey, encryptionKey } = cookieKey.getCookieKeys();
+
+	app.use(sessions({
+		signatureAlgorithm: 'sha512',
+		signatureKey,
+		encryptionKey,
+		duration,
+		activeDuration,
+		cookieName: 'session',
+		cookie: {
+			httpOnly: true,
+			sameSite: 'lax',
+			secure: secure !== false
+		}
+	}));
 
 	// Work around passport >0.5.3 open issue needing session.regenerate which is not provided by client-sessions
 	// https://github.com/jaredhanson/passport/issues/904

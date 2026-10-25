@@ -1,3 +1,7 @@
 uploads
 node_modules
 config.json
+cookie.key
+**/cookie.key
+**/cookie.key.tmp-*
+keys

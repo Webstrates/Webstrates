@@ -156,19 +156,27 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 	}
 
 	const tmp = os.tmpdir();
-	// Generated configurations get the compressed-snapshot cache pointed at a private
-	// directory: the sample config points it at a directory relative to the repo cwd,
-	// which every concurrently running server instance (and every suite sharing this
-	// checkout) would write into. Random webstrate ids make actual cache collisions
-	// between instances unlikely, but the cache is per-server mutable state and deserves
-	// the same isolation as the port. (Entry names are just the webstrate id, so sharing
-	// also let one suite's entries accumulate in another's checkout forever.) A
-	// configFile the spec provided verbatim is left alone — its cache settings are part
-	// of what the spec is exercising.
+	// A per-instance scratch directory keeps per-server mutable state out of the shared
+	// checkout, which concurrently running instances and suites would otherwise write
+	// into: the compressed-snapshot cache and the cookie key file both live here.
+	const scratchDir = fs.mkdtempSync(path.join(tmp, 'webstrates-harness-'));
+	// Generated configurations get the compressed-snapshot cache pointed at that
+	// private directory: the sample config points it at a directory relative to the
+	// repo cwd, which every concurrently running server instance (and every suite
+	// sharing this checkout) would write into. Random webstrate ids make actual cache
+	// collisions between instances unlikely, but the cache is per-server mutable state
+	// and deserves the same isolation as the port. (Entry names are just the webstrate
+	// id, so sharing also let one suite's entries accumulate in another's checkout
+	// forever.) A configFile the spec provided verbatim is left alone — its cache
+	// settings are part of what the spec is exercising.
 	if (!configFile) {
-		fullConfig.compressedSnapshotCacheDir = path.join(
-			fs.mkdtempSync(path.join(tmp, 'webstrates-harness-')), 'snapshot-cache');
+		fullConfig.compressedSnapshotCacheDir = path.join(scratchDir, 'snapshot-cache');
 	}
+	// The session-cookie signing key is per-server mutable state as well: point each
+	// instance at a key file in its scratch directory rather than one in the checkout.
+	// (Specs can still override this through their own `env`, e.g. to exercise a
+	// custom key location.)
+	const cookieKeyFile = path.join(scratchDir, 'cookie.key');
 	// Config and log files carry the spawning process's pid in their name: labels are the
 	// same across test suites (every suite's ratelimit tests use "ratelimit"), so on a
 	// shared host two concurrent runs would otherwise overwrite each other's config mid-
@@ -199,7 +207,8 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 	const logFd = fs.openSync(logFile, 'w');
 	const child = spawn(process.execPath, [path.join(REPO_ROOT, 'webstrates.js')], {
 		cwd: REPO_ROOT,
-		env: { ...cleanEnv, WEBSTRATES_CONFIG: configFile || configFilePath, ...env },
+		env: { ...cleanEnv, WEBSTRATES_CONFIG: configFile || configFilePath,
+			WEBSTRATES_COOKIE_KEY_FILE: cookieKeyFile, ...env },
 		stdio: ['ignore', logFd, logFd]
 	});
 

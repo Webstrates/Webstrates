@@ -8,8 +8,9 @@
 	"basicAuth": false,
 	"auth": {
 		"cookie": {
-			"secret": "xVxE+V6o4bl0OoTvCCL6Ag==",
-			"duration": 31536000000
+			"duration": 2592000000,
+			"activeDuration": 86400000,
+			"secure": false
 		},
 		"permissionTimeout": 300,
 		"defaultPermissions": [

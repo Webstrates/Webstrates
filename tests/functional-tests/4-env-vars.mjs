@@ -127,7 +127,7 @@ describe('Environment variable config overrides', function () {
 			// snapshot cache entry appear quickly once ops settle.
 			compressedSnapshotDebounceMs: 300,
 			auth: {
-				cookie: { secret: 'env-vars-test-secret', duration: 31536000000 },
+				cookie: { duration: 2592000000, secure: false },
 				permissionTimeout: 300,
 				defaultPermissions: [
 					{ username: 'anonymous', provider: '', permissions: 'arw' }

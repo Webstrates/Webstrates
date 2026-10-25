@@ -2,7 +2,6 @@
 
 const fs = require('fs');
 const path = require('path');
-const crypto = require('crypto');
 // By default the server reads its config from <repo>/config.json. Setting the
 // WEBSTRATES_CONFIG environment variable (absolute path, or relative to the repo root)
 // overrides this; the test harness uses it to run server instances against generated
@@ -54,12 +53,9 @@ const getConfig = () => {
 	}
 };
 
-/** Read sample config from disk and add a randomly generated cookie encryption key. */
+/** Read sample config from disk. */
 const getSampleConfig = () => {
-	const config = JSON.parse(fs.readFileSync(APP_PATH+sampleConfigPath, 'utf8'));
-	const randomSecret = crypto.randomBytes(16).toString('base64');
-	config.auth.cookie.secret = randomSecret;
-	return config;
+	return JSON.parse(fs.readFileSync(APP_PATH+sampleConfigPath, 'utf8'));
 };
 
 /**
