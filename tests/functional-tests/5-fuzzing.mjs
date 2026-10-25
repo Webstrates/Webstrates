@@ -19,7 +19,7 @@ import util from '../util.js';
 // must stay clean of phantom attributes after the prototype-pollution attempts.
 //
 // Notable regressions locked in here (all process-killing or corrupting on unfixed code):
-//  - p-215: a document action without a collection passed validation and killed the process.
+//  - a document action without a collection passed validation and killed the process.
 //  - signals: subscribing with a nodeId that collides with an Object.prototype property
 //    (`__proto__`, `toString`, ...) throws inside a retry timer on disconnect — an
 //    unauthenticated, one-message process kill.

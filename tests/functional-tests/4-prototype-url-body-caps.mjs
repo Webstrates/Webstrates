@@ -26,7 +26,7 @@ const makeZip = (entries) => new Promise((resolve, reject) => {
 	archive.finalize();
 });
 
-describe('HTTP API: /new?prototypeUrl= caps fetched bodies (P-101 gzip bomb)', function() {
+describe('HTTP API: /new?prototypeUrl= caps fetched bodies (gzip bomb)', function() {
 	this.timeout(30000);
 
 	// Served inside every successfully fetched body, so the controls prove the

@@ -1,4 +1,3 @@
-// Regression tests for the model-membership audit: the
 // DOM, the PathTree and the JsonML document model must agree about *which*
 // nodes and attributes are part of the model. The gates that decide membership
 // live in three places (corePathTree's transience check, coreJsonML.fromHTML,

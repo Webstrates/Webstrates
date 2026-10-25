@@ -180,7 +180,7 @@ describe('Access tokens', function() {
 		// Positive control: the listing still works for regular users …
 		assert.property(tokens, readerToken, 'user could not list own token');
 		assert.propertyVal(tokens[readerToken], 'username', 'tokensreader');
-		// … but must not disclose other users' tokens (P-203).
+		// … but must not disclose other users' tokens.
 		assert.notProperty(tokens, adminToken, 'read-only user could see the admin\'s token. ' +
 			'?tokens must only list tokens created by the requesting user (matching username ' +
 			'and provider).');

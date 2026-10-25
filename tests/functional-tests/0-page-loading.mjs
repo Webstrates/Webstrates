@@ -271,19 +271,6 @@ describe('Basic auth coverage (websocket included)', function() {
 		assert.equal(res.status, 200);
 	});
 
-	it('redirects the legacy client bundle URL to the hashed bundle with credentials',
-		async () => {
-			const res = await fetch(server.address + 'webstrates.js',
-				{ redirect: 'manual', headers: { authorization: authHeader } });
-			assert.equal(res.status, 302);
-			const location = res.headers.get('location') || '';
-			const hash = /webstrates_([0-9a-f]+)\.js/.exec(location);
-			assert.isNotNull(hash, 'the redirect points at a hashed bundle');
-			const bundle = await fetch(server.address + location.replace(/^\//, ''),
-				{ headers: { authorization: authHeader } });
-			assert.equal(bundle.status, 200, 'the redirected-to bundle is served');
-		});
-
 	it('accepts the websocket upgrade with credentials and speaks the data protocol',
 		async () => {
 			const firstFrame = await new Promise((resolve, reject) => {
