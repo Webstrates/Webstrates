@@ -107,7 +107,7 @@ describe('Signal streams', function () {
 
 	after(async () => {
 		await pageA.setCacheEnabled(false);
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 		await browser.close();
 	});
 

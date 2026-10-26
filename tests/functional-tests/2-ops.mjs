@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Ops', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -22,19 +22,24 @@ describe('Ops', function() {
 	});
 
 	after(async () => {
-		await page.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 		await browser.close();
 	});
 
 	let ops;
 	it('only create op should be in webstrate.getOps()', async () => {
 		util.showLogs(page);
-		ops = await page.evaluate(() => new Promise((accept, reject) => {
-			window.webstrate.getOps(undefined, undefined, (err, ops) => {
-				if (err) return reject(err);
-				accept(ops);
-			});
-		}));
+		// The op may not be committed to the database the moment the page holds it, so
+		// poll the fetch until the create op shows up instead of reading it exactly once.
+		await util.waitFor(async () => {
+			ops = await page.evaluate(() => new Promise((accept, reject) => {
+				window.webstrate.getOps(undefined, undefined, (err, ops) => {
+					if (err) return reject(err);
+					accept(ops);
+				});
+			}));
+			return ops.length === 1;
+		});
 
 		assert.lengthOf(ops, 1);
 		assert.match(ops[0].src, /^[0-9a-f]{32}$/);
@@ -47,8 +52,19 @@ describe('Ops', function() {
 	it('ops in ?ops should match webstrate.getOps()', async () => {
 		await page.goto(url + '?ops', { waitUntil: 'domcontentloaded' });
 
-		const innerText = await page.evaluate(() =>
-			JSON.parse(document.querySelector('body').innerText));
+		// Both reads come from the same committed ops, but under load they can race the
+		// op commit (one side still seeing no ops), so poll until they agree on the
+		// op count; the deepEqual below remains the actual comparison.
+		let innerText;
+		await util.waitFor(async () => {
+			try {
+				innerText = await page.evaluate(() =>
+					JSON.parse(document.querySelector('body').innerText));
+			} catch {
+				return false;
+			}
+			return innerText.length === ops.length && ops.length > 0;
+		});
 
 		assert.deepEqual(innerText, ops);
 	});

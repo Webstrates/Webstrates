@@ -48,7 +48,7 @@ const deleteAssetHelper = async (page, fileName) => {
 }
 
 describe('Assets', function () {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateIdA = 'test-' + util.randomString();
 	const webstrateIdB = 'test-' + util.randomString();
@@ -139,8 +139,10 @@ describe('Assets', function () {
 			pageA.setCacheEnabled(false),
 			pageB.setCacheEnabled(false)
 		]);
-		await pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' });
-		await pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' });
+		await Promise.all([
+			util.deleteWebstrate(pageA, urlA),
+			util.deleteWebstrate(pageB, urlB)
+		]);
 		await Promise.all([
 			browserA.close(),
 			browserB.close()
@@ -238,6 +240,16 @@ describe('Assets', function () {
 
 		await uploadAssetHelper(pageB, testTextFile);
 
+		// Both pages' asset lists populate over their websockets and can lag
+		// networkidle2 - webstrate.assets is
+		// an empty object with no .find until the list has arrived.
+		assert.isTrue(await util.waitForFunction(pageA, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive on webstrate A');
+		assert.isTrue(await util.waitForFunction(pageB, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive on webstrate B');
+
 		const textFileAssetA = await pageA.evaluate(() => {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
 		});
@@ -251,6 +263,12 @@ describe('Assets', function () {
 	it('Assets should be able to be deleted', async () => {
 		await deleteAssetHelper(pageB, 'test.txt');
 
+		// The delete helper reloads the page, and the reloaded client's asset list
+		// arrives over the websocket potentially seconds after networkidle2
+		assert.isTrue(await util.waitForFunction(pageB, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive after the deletion');
+
 		const textFileAssetB = await pageB.evaluate(() => {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
 		});
@@ -260,6 +278,16 @@ describe('Assets', function () {
 
 	it('Assets with the same identifier should still be accessible after deletion on another webstrate', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		// networkidle2 fires before the
+		// websocket has delivered the asset list; until it lands, webstrate.assets is an
+		// empty object with no .find. Wait for the list to become an array before reading it.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load after the reload');
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive after the reload');
 
 		const textFileAssetA = await pageA.evaluate(() => {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
@@ -404,6 +432,16 @@ describe('Assets', function () {
 	it('Restoring an older version should restore assets to that version', async () => {
 		await deleteAssetHelper(pageA, 'test.txt');
 
+		// The delete helper ends by reloading the page. The asset list lags that reload's networkidle2 over the websocket:
+		// webstrate.assets is an empty object until the list arrives. Gate the read on the
+		// list having become an array, or the find()s below run on an empty object.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load after the delete');
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive after the delete');
+
 		const assetsBeforeRestore = await pageA.evaluate(() => window.webstrate.assets);
 
 		// The image and ZIP files should still be there, the CSV and text files should be deleted
@@ -419,6 +457,14 @@ describe('Assets', function () {
 		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 2);
 
 		const versionAfterRestore = await pageA.evaluate(() => window.webstrate.version);
+
+		// The restored asset list arrives over the websocket after the restore's populate,
+		// so it can lag the loaded gate above - wait for it to become an array
+		// before the reads below call .find on it.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && Array.isArray(window.webstrate.assets), 15),
+		'Timed out waiting for the asset list to arrive after the restore');
+
 		const assetsAfterRestore = await pageA.evaluate(() => window.webstrate.assets);
 
 		// The image and ZIP files should be deleted at the current version, the CSV file should still be deleted, the text file was restored
@@ -431,7 +477,7 @@ describe('Assets', function () {
 
 	it('Deleting an asset should require write permissions', async function() {
 		if (config.authType !== 'test') return this.skip();
-		this.timeout(20000);
+		this.timeout(30000);
 
 		// Log in so we can grant ourselves write access, while restricting anonymous users to
 		// read-only access.

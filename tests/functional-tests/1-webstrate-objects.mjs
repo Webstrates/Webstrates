@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Webstrate Object', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -23,7 +23,7 @@ describe('Webstrate Object', function() {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});

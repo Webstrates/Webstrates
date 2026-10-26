@@ -52,8 +52,8 @@ describe('Cookies', function() {
 		await pageA.setCacheEnabled(false);
 		await pageB.setCacheEnabled(false);
 		await Promise.all([
-			pageA.goto(urlA + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageA, urlA),
+			util.deleteWebstrate(pageB, urlB),
 		]);
 
 		await Promise.all([
@@ -223,6 +223,10 @@ describe('Cookies', function() {
 
 		await util.logInToAuth(pageC);
 		await pageC.goto(urlA, { waitUntil: 'networkidle2' });
+
+		// The user object is fetched after page load
+		await util.waitForFunction(pageC, () =>
+			window.webstrate && window.webstrate.user && window.webstrate.user.cookies, 10);
 
 		const hereCookies = await pageC.evaluate(async () => await window.webstrate.user.cookies.here.get());
 		assert.deepEqual(hereCookies, {

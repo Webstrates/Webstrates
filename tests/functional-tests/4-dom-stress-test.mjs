@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('DOM Stress Test', function() {
-	this.timeout(30000);
+	this.timeout(150000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -29,15 +29,16 @@ describe('DOM Stress Test', function() {
 			await pages[i].goto(url, { waitUntil: 'networkidle2' });
 		}
 
-		await Promise.all(pages.map(page =>
+		const loaded = await Promise.all(pages.map(page =>
 			util.waitForFunction(page, () =>
 				window.webstrate &&
 				window.webstrate.loaded &&
-				document.body)));
+				document.body, 10)));
+		assert.isTrue(loaded.every(isLoaded => isLoaded), 'pages should be loaded');
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await Promise.all([
 			browserA.close(),
@@ -59,8 +60,11 @@ describe('DOM Stress Test', function() {
 			await pageA.evaluate(() =>
 				document.body.setAttribute('contenteditable', ''));
 
-			await Promise.all(pages.map(page =>
-				util.waitForFunction(page, () => document.body.attributes.length > 0)));
+			// The attribute is committed as an op and broadcast to the other pages
+			const editable = await Promise.all(pages.map(page =>
+				util.waitForFunction(page, () => document.body.attributes.length > 0, 10)));
+			assert.isTrue(editable.every(isEditable => isEditable),
+				'contenteditable attribute should reach all pages');
 
 			for (let i=0; i < 1000; ++i) {
 				(async () => {
@@ -90,12 +94,25 @@ describe('DOM Stress Test', function() {
 
 			await util.sleep(.5);
 
-			let match = false;
+			// The 1000 fire-and-forget typings drain so first wait for every character to
+			// arrive on the reference page — the convergence window below then measures
+			// convergence, not the drain.
 			let now = Date.now() / 1000;
-			while (!match && (Date.now() / 1000) - now < 15) {
+			while ((Date.now() / 1000) - now < 60 &&
+				!(await pageA.evaluate(() => document.body.innerHTML.length === 1000))) {
+				await util.sleep(.1);
+			}
+
+			let match = false;
+			now = Date.now() / 1000;
+			// Convergence through the server takes as long as the slowest client on a
+			// busy machine, the polling itself yields
+			// between reads instead of competing with the pages for the CPU.
+			while (!match && (Date.now() / 1000) - now < 60) {
 				const innerHTMLs = await Promise.all(pages.map(page =>
 					page.evaluate(() => document.body.innerHTML)));
 				match = innerHTMLs[0].length === 1000 && util.allEquals(...innerHTMLs);
+				if (!match) await util.sleep(.1);
 			}
 
 			assert.isTrue(match);

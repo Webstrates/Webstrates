@@ -166,7 +166,7 @@ describe('Signal streams with more than two clients (#61)', function () {
 
 	after(async () => {
 		await pages[0].setCacheEnabled(false);
-		await pages[0].goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pages[0], url);
 		await browser.close();
 	});
 

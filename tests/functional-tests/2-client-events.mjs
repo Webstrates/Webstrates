@@ -7,7 +7,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Client Events', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 	//this.retries(3);
 
 	const webstrateId = 'test-' + util.randomString();
@@ -29,15 +29,17 @@ describe('Client Events', function() {
 			}
 		}
 
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
 
 	let firstClientId;
 	it('client list should initially contain only the first client itself', async () => {
-		// Wait for page to load.
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		// 'loaded' only fires once the websocket 'hello' message has been processed, and
+		// that is also what populates clientId and clients — so waiting for it
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 10));
 
 		firstClientId = await pageA.evaluate(() => window.webstrate.clientId);
 		const clientList = await pageA.evaluate(() => window.webstrate.clients);
@@ -46,7 +48,9 @@ describe('Client Events', function() {
 	});
 
 	it('clientJoin event should get triggered when another client joins', async () => {
-		pageA.evaluate(() => {
+		// The server delays the clientJoin broadcast until the joining client has loaded
+		// Awaiting registration also ensures it is in place before the join can echo.
+		await pageA.evaluate(() => {
 			window.webstrate.on('clientJoin', clientId => {
 				window.__test_joiningClientId = clientId;
 			});
@@ -55,23 +59,43 @@ describe('Client Events', function() {
 		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
-		const clientJoined = await util.waitForFunction(pageA, () => window.__test_joiningClientId);
+		const clientJoined = await util.waitForFunction(pageA,
+			() => window.__test_joiningClientId, 15);
 		assert.isTrue(clientJoined);
 	});
 
 	let secondClientId;
 	it('joining clientId should match second client\'s clientId', async () => {
-		const joiningClientId = await pageA.evaluate(() => window.__test_joiningClientId);
+		// Under parallel-runner CPU starvation the clientJoin echo can lag the join by
+		// many seconds, and pageB's populate can lag its networkidle2 — so wait for the
+		// event to have actually fired with a defined clientId, and for pageB to have
+		// loaded, before reading either id, instead of reading immediately.
+		assert.isTrue(await util.waitForFunction(pageA, () => window.__test_joiningClientId, 15),
+			'clientJoin event did not carry a joining clientId');
 
 		// Wait for page to load.
-		await util.waitForFunction(pageB, () => window.webstrate && window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(pageB,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for pageB to load');
 
+		const joiningClientId = await pageA.evaluate(() => window.__test_joiningClientId);
 		secondClientId = await pageB.evaluate(() => window.webstrate.clientId);
 
 		assert.equal(secondClientId, joiningClientId);
 	});
 
 	it('client list should contain both clients only after second client joins', async () => {
+		// The clientJoin echo that adds the second
+		// client to pageA's list, and pageB's own hello populate, can both lag the join
+		// by many seconds — wait for both lists to actually contain both clients before
+		// reading them; the assertions themselves stay strict about the final state.
+		await Promise.all([
+			util.waitForFunction(pageA,
+				() => window.webstrate && window.webstrate.clients.length === 2, 15),
+			util.waitForFunction(pageB,
+				() => window.webstrate && window.webstrate.clients.length === 2, 15)
+		]);
+
 		const clientListA = await pageA.evaluate(() => window.webstrate.clients);
 		const clientListB = await pageB.evaluate(() => window.webstrate.clients);
 
@@ -123,12 +147,16 @@ describe('Client Events', function() {
 
 		const pageC = await browser.newPage();
 		await pageC.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageC, () => window.webstrate && window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(pageC,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for pageC to load');
 		const thirdClientId = await pageC.evaluate(() => window.webstrate.clientId);
 
 		// Wait for pageC's join to register, so the part below is guaranteed to fire.
-		await util.waitForFunction(pageA, clientId => window.webstrate.clients.includes(clientId), 3,
-			thirdClientId);
+		assert.isTrue(await util.waitForFunction(pageA,
+			clientId => window.webstrate && window.webstrate.clients
+				&& window.webstrate.clients.includes(clientId), 15, thirdClientId),
+		'Timed out waiting for the third client to register');
 
 		await pageA.evaluate(clientId => {
 			window.webstrate.on('clientPart', partingClientId => {
@@ -209,7 +237,7 @@ describe('Client Events', function() {
 });
 
 describe('User Object Signaling', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const otherWebstrateId = 'test-' + util.randomString();
@@ -254,8 +282,8 @@ describe('User Object Signaling', function() {
 
 		await Promise.all([pageA.setCacheEnabled(false), pageB.setCacheEnabled(false)]);
 		await Promise.all([
-			pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(otherUrl + '?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageA, url),
+			util.deleteWebstrate(pageB, otherUrl),
 		]);
 
 		await browser.close();

@@ -27,7 +27,10 @@ describe('Authentication and Login', function() {
 	it('user object should be anonymous before logging in', async () => {
 		await pageA.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		// 'loaded' implies the websocket 'hello' message has been processed, which is what
+		// merges userId/username/provider into the user object
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.propertyVal(userObject, 'userId', 'anonymous:');
@@ -74,7 +77,10 @@ describe('Authentication and Login', function() {
 
 	let userObject;
 	it('user object should exist', async function () {
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		// 'loaded' implies the websocket 'hello' message has been processed, which is what
+		// merges userId/username/provider into the user object 
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.exists(userObject);
@@ -106,7 +112,10 @@ describe('Authentication and Login', function() {
 		pageB = await browser.newPage();
 		await pageB.goto(config.server_address + 'frontpage/');
 
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		// 'loaded' implies the websocket 'hello' message has been processed, which is what
+		// merges userId/username/provider into the user object
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.exists(userObject);
@@ -125,7 +134,10 @@ describe('Authentication and Login', function() {
 		const url = await pageA.url();
 		assert.equal(url, util.cleanServerAddress + 'frontpage/');
 
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		// 'loaded' implies the websocket 'hello' message has been processed, which is what
+		// merges userId/username/provider into the user object
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
 		userObject = await pageA.evaluate(() => window.webstrate.user);
 
 		assert.propertyVal(userObject, 'userId', 'anonymous:');

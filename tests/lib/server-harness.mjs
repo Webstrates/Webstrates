@@ -255,8 +255,15 @@ const startServer = async ({ label = `server-${servers.length + 1}`, port, confi
 process.on('exit', () => {
 	servers.forEach((server) => server.child.kill('SIGKILL'));
 });
-process.on('SIGINT', async () => { await stopAll(); process.exit(130); });
-process.on('SIGTERM', async () => { await stopAll(); process.exit(143); });
+// The test runner (tests/lib/run-tests.mjs) owns the complete shutdown sequence on
+// signals — tear down mocha, stop the servers, reap orphaned chromium, drop the test
+// database — and pre-empts these handlers via WEBSTRATES_HARNESS_NO_SIGNAL_HANDLERS:
+// a process.exit here would kill the runner before its reaper ever runs. Every other
+// importing process (spec files in mocha workers) keeps the crash-safety handlers.
+if (!process.env.WEBSTRATES_HARNESS_NO_SIGNAL_HANDLERS) {
+	process.on('SIGINT', async () => { await stopAll(); process.exit(130); });
+	process.on('SIGTERM', async () => { await stopAll(); process.exit(143); });
+}
 
 export default { startServer, stopAll };
 export { startServer, stopAll };

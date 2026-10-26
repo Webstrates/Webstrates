@@ -11,7 +11,7 @@
     "start": "npm run build && node webstrates.js",
     "build": "NODE_ENV='production' webpack --mode production",
     "watch": "webpack -w",
-    "test": "node tests/lib/run-tests.mjs --bail tests/unit-tests tests/functional-tests",
+    "test": "node tests/lib/run-tests.mjs --bail --parallel --jobs 8 tests/unit-tests tests/functional-tests",
     "test-all": "node tests/lib/run-tests.mjs tests/unit-tests tests/functional-tests"
   },
   "homepage": "https://www.webstrates.net/",

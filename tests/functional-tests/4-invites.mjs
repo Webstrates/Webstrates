@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Invites', function () {
-	this.timeout(10000);
+	this.timeout(60000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -42,7 +42,7 @@ describe('Invites', function () {
 
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await pageA.setCacheEnabled(false);
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await Promise.all([
 			browserA.close(),
@@ -56,11 +56,16 @@ describe('Invites', function () {
 
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 
+		// The websocket populate lags networkidle2; the
+		// version getter below only works once the document has arrived.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
+
 		// The data-auth write is an operation like any other: pageA.evaluate resolves before
 		// the server has committed the op, so a request from pageB sent right away can still
 		// win the race and be served under the old (default, anonymous) permissions. Capture
 		// the version before the write and wait for the bump — the client only sees the new
-		// version once the server has committed the op and echoed it back.
+		// version once the server has committed the op and echoed it back. 
 		const version = await pageA.evaluate(() => window.webstrate.version);
 		await pageA.evaluate(() => {
 			document.documentElement.setAttribute('data-auth',
@@ -72,7 +77,7 @@ describe('Invites', function () {
 			);
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
-			(v) => window.webstrate.version > v, 5, version),
+			(v) => window.webstrate && window.webstrate.version > v, 25, version),
 			'data-auth operation did not commit in time');
 	});
 
@@ -116,9 +121,18 @@ describe('Invites', function () {
 
 		await pageB.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
 
+		// The invitation from the earlier test carries a two-second maxAge for the
+		// expiry tests below — under the parallel runner's CPU starvation this page's
+		// navigation alone can outlive it, and every invite action first purges
+		// expired keys server-side. Accept a fresh, long-lived invitation instead;
+		// the expiry tests keep their own short-lived one.
+		const acceptInvitation = await pageA.evaluate(async () => {
+			return await window.webstrate.user.invites.create({ permissions: 'r' });
+		});
+
 		const invitePermission = await pageB.evaluate(async (key, webstrateId) => {
 			return await window.webstrate.user.invites.accept(key, webstrateId);
-		}, currentInvitation.key, webstrateId);
+		}, acceptInvitation.key, webstrateId);
 
 		assert.equal(invitePermission, 'r', 'Invitation was not accepted or returned unexpected permissions');
 
@@ -155,9 +169,13 @@ describe('Invites', function () {
 			return await window.webstrate.user.invites.create({ permissions: 'w' });
 		});
 
-		const mergedPermissions = await pageB.evaluate(async (key) => {
-			return await window.webstrate.user.invites.accept(key);
-		}, currentInvitation.key);
+		// Pass the webstrateId explicitly: accept() otherwise defaults to the
+		// webstrate of the page it runs on, and if the earlier accept test failed
+		// before its final navigation, pageB would still sit on the frontpage and
+		// silently invite-accept into the wrong webstrate.
+		const mergedPermissions = await pageB.evaluate(async (key, webstrateId) => {
+			return await window.webstrate.user.invites.accept(key, webstrateId);
+		}, currentInvitation.key, webstrateId);
 
 		assert.equal(mergedPermissions, 'rw', 'User B should have both read and write permissions after accepting the invitation');
 	});
@@ -208,7 +226,7 @@ describe('Invites', function () {
 			);
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
-			(v) => window.webstrate.version > v, 5, version),
+			(v) => window.webstrate && window.webstrate.version > v, 25, version),
 			'data-auth operation did not commit in time');
 
 		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`, { waitUntil: 'networkidle2' });
@@ -252,7 +270,7 @@ describe('Invites', function () {
 			);
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
-			(v) => window.webstrate.version > v, 5, version),
+			(v) => window.webstrate && window.webstrate.version > v, 25, version),
 			'data-auth operation did not commit in time');
 
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
@@ -276,6 +294,8 @@ describe('Invites', function () {
 
 	it('An invite sent by a user which now has lost admin permission becomes invalid', async function () {
 		if (config.authType !== 'test') return this.skip();
+		// Covers the stale-snapshot recovery re-gotos below under contention.
+		this.timeout(45000);
 
 		// Remove admin permissions from User A. Wait for the write to commit before pageB
 		// connects — the expected error below requires the server to already see user A
@@ -298,10 +318,27 @@ describe('Invites', function () {
 			);
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
-			(v) => window.webstrate.version > v, 5, version),
+			(v) => window.webstrate && window.webstrate.version > v, 25, version),
 			'data-auth operation did not commit in time');
 
+		// pageB's reload can be served a snapshot cache entry that predates the
+		// permissions writes, and the assertions below read the data-auth attribute
+		// from pageB's document — a page that ingested a stale entry can sit out the
+		// catch-up ops for a long time.
+		// pageA's live version is what pageB must catch up with: re-goto until it has.
+		const versionNow = await pageA.evaluate(() => window.webstrate.version);
+		let gotos = 0;
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
+		while (!(await util.waitForFunction(pageB,
+			(v) => window.webstrate && window.webstrate.loaded && window.webstrate.version >= v,
+			5, versionNow)) && gotos < 2) {
+			gotos++;
+			util.warn('invites: pageB not current (version ' +
+				(await pageB.evaluate(() =>
+					window.webstrate && window.webstrate.loaded ? window.webstrate.version : 'not loaded')) +
+				', expected ' + versionNow + ') — reloading');
+			await pageB.goto(url, { waitUntil: 'networkidle2' });
+		}
 
 		let error;
 		try {
@@ -374,9 +411,10 @@ describe('Invites', function () {
 	};
 
 	// The data-auth write below is an operation like any other: poll until the server
-	// actually enforces the admin permissions it grants before the tests below rely on them.
+	// actually enforces the admin permissions it grants before the tests below rely on
+	// them.
 	const awaitAdminPermissions = async (page) => {
-		const deadline = Date.now() + 5000;
+		const deadline = Date.now() + 15000;
 		while (true) {
 			const reply = await rawInviteRequest(page, 'getInvites', null);
 			if (!reply.error) return;

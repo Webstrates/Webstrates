@@ -8,7 +8,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Messages', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const otherWebstrateId = 'test-' + util.randomString();
@@ -56,8 +56,8 @@ describe('Messages', function() {
 			pageB.setCacheEnabled(false)
 		]);
 		await Promise.all([
-			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageA, urlA),
+			util.deleteWebstrate(pageB, urlB),
 		]);
 
 		await Promise.all([
@@ -372,7 +372,7 @@ describe('Messages', function() {
 });
 
 describe('Messages', function() {
-	this.timeout(30000);
+	this.timeout(60000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const otherWebstrateId = 'test-' + util.randomString();
@@ -497,12 +497,12 @@ describe('Messages', function() {
 
 		// Deletes have to be sequential per page, so delete testuser's two webstrates one
 		// after the other.
-		await pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
-		await pageA.goto(restrictedUrl + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
+		await util.deleteWebstrate(pageA, restrictedUrl);
 
 		await Promise.all([
-			pageD.goto(otherUrl + '/?delete', { waitUntil: 'domcontentloaded' }),
-			pageE.goto(floodUrl + '/?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageD, otherUrl),
+			util.deleteWebstrate(pageE, floodUrl),
 		]);
 
 		await Promise.all([

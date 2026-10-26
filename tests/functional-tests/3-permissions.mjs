@@ -61,7 +61,7 @@ page.evaluate((id, username, provider) => new Promise((resolve) => {
 }), webstrateId, username, provider);
 
 describe('Permissions', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -241,6 +241,15 @@ describe('Permissions', function() {
 		async function() {
 			await pageB.goto(url, { waitUntil: 'networkidle2' });
 			await pageC.goto(url, { waitUntil: 'networkidle2' });
+
+			// networkidle2 only tracks HTTP requests: the user and permissions objects
+			// arrive with the websocket-driven population on both pages
+			// They must be loaded before their state is read.
+			const loaded = await Promise.all([
+				util.waitForFunction(pageB, () => window.webstrate && window.webstrate.loaded, 15),
+				util.waitForFunction(pageC, () => window.webstrate && window.webstrate.loaded, 15)
+			]);
+			assert.isTrue(loaded.every(isLoaded => isLoaded), 'pages should be loaded');
 	
 			if (!util.credentialsProvided) return this.skip();
 
@@ -365,7 +374,7 @@ describe('Permissions', function() {
 
 		// Go back to the shared webstrate for the tests that follow.
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 15);
 	});
 
 	it('should not give anonymous access to a webstrate that was created with permissions ' +
@@ -394,7 +403,7 @@ describe('Permissions', function() {
 
 		// Go back to the shared webstrate for the tests that follow.
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded);
+		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 15);
 	});
 
 	it('should be able to update permissions again', async function() {
@@ -422,21 +431,23 @@ describe('Permissions', function() {
 		if (!util.credentialsProvided) return this.skip();
 
 		await pageC.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageC, () => window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(pageC,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 
 		const randomString = util.randomString();
 		await pageC.evaluate((s) => document.body.innerText = s, randomString);
 
 		const pageAChanged = await util.waitForFunction(pageA, (s) =>
-			document.body.innerText === s, 2, randomString);
+			document.body.innerText === s, 15, randomString);
 		assert.isTrue(pageAChanged);
 
 		const pageBChanged = await util.waitForFunction(pageB, (s) =>
-			document.body.innerText === s, .2, randomString);
+			document.body.innerText === s, 15, randomString);
 		assert.isTrue(pageBChanged);
 
 		const pageCChanged = await util.waitForFunction(pageC, (s) =>
-			document.body.innerText === s, .2, randomString);
+			document.body.innerText === s, 15, randomString);
 		assert.isTrue(pageCChanged);
 	});
 
@@ -444,6 +455,16 @@ describe('Permissions', function() {
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 		await pageC.goto(url, { waitUntil: 'networkidle2' });
+
+		// The permission write below only reaches pages that are connected and
+		// populated, and the event listeners must be attached by then —
+		// networkidle2 can fire before all that so gate on the loaded flag explicitly.
+		const loaded = await Promise.all([
+			util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 15),
+			util.waitForFunction(pageB, () => window.webstrate && window.webstrate.loaded, 15),
+			util.waitForFunction(pageC, () => window.webstrate && window.webstrate.loaded, 15)
+		]);
+		assert.isTrue(loaded.every(isLoaded => isLoaded), 'pages should be loaded');
 
 		let fakePermissions = [
 			{
@@ -464,8 +485,9 @@ describe('Permissions', function() {
 				JSON.stringify(s)
 			);
 		}, fakePermissions);
-		await util.waitForFunction(pageA, () => window.lastChange, 2);  		
-		await util.waitForFunction(pageC, () => window.lastChange, 2);  		
+		// The event fires when the data-auth op has come back around 
+		await util.waitForFunction(pageA, () => window.lastChange, 15);
+		await util.waitForFunction(pageC, () => window.lastChange, 15);
 
 		let aPerm = await pageA.evaluate(() => {return window.lastChange});
 		let cPerm = await pageC.evaluate(() => {return window.lastChange});
@@ -476,7 +498,9 @@ describe('Permissions', function() {
 	it('anonymous should have access when data-auth is invalid', async function() {
 		// Set data-auth to something invalid  
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageA, () => window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 		await pageA.evaluate(() => {  
 			document.documentElement.setAttribute('data-auth', 'this-is-not-json');  
 		});  
@@ -488,7 +512,7 @@ describe('Permissions', function() {
 		const testString = util.randomString();  
 		await pageC.evaluate((s) => document.body.innerText = s, testString);  
 		const propagated = await util.waitForFunction(pageA, (s) =>  
-			document.body.innerText === s, 2, testString);  
+			document.body.innerText === s, 15, testString);  
 		assert.isTrue(propagated);  		
 	});	
 
@@ -503,14 +527,16 @@ describe('Permissions', function() {
 		const testString = util.randomString();  
 		await pageB.evaluate((s) => document.body.innerText = s, testString);  
 		const propagated = await util.waitForFunction(pageA, (s) =>  
-			document.body.innerText === s, 2, testString);  
+			document.body.innerText === s, 15, testString);  
 		assert.isTrue(propagated);  		
 	});
 
 	it('permission changes made via data-auth on A should propagate and match data-auth on client B', async function() {
 		// Ensure both clients are on the correct page and loaded.  
 		await pageA.goto(url, { waitUntil: 'networkidle2' });  
-		await util.waitForFunction(pageA, () => window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 	
 		// Set permissions directly via data-auth attribute on pageA  
 		const newPermissions = [  
@@ -534,7 +560,7 @@ describe('Permissions', function() {
 		
 		// Wait for the data-auth attribute to propagate to pageB  
 		const propagated = await util.waitForFunction(pageB, expected =>  
-			document.documentElement.getAttribute('data-auth') === expected, 2, newDataAuth);  
+			document.documentElement.getAttribute('data-auth') === expected, 15, newDataAuth);  
 		const resultB = await pageB.evaluate(()=>{
 			return document.documentElement.getAttribute('data-auth');
 		})

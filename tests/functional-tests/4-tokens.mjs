@@ -86,11 +86,7 @@ describe('Access tokens', function() {
 			// Clean up after ourselves (requires write permissions, i.e. the admin).
 			// Avoid puppeteer's goto hang on redirects to cached documents.
 			await pageAdmin.setCacheEnabled(false);
-			const response = await pageAdmin.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
-			if (!response || response.status() !== 200) {
-				util.warn('Unable to clean up after ourselves, left webstrate', webstrateId,
-					'on server');
-			}
+			await util.deleteWebstrate(pageAdmin, url);
 			await browser.close();
 		}
 	});
@@ -99,7 +95,9 @@ describe('Access tokens', function() {
 		if (config.authType !== 'test') return this.skip();
 
 		await pageAdmin.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageAdmin, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(pageAdmin,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 
 		await pageAdmin.evaluate(() => {
 			window.permissionsChangedEvent = null;

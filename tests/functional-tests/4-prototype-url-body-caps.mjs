@@ -65,7 +65,8 @@ describe('HTTP API: /new?prototypeUrl= caps fetched bodies (gzip bomb)', functio
 		assert.equal(response.status, 404, `No webstrate should have been created for ${id}`);
 	};
 
-	before(async () => {
+	before(async function () {
+		this.timeout(90000);
 		ownServer = await harness.startServer({
 			label: 'prototype-url-body-caps',
 			config: {

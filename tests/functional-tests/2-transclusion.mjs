@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Transclusion', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const webstrateIdInner = webstrateId + '-inner';
@@ -33,8 +33,8 @@ describe('Transclusion', function() {
 			pageB.setCacheEnabled(false)
 		]);
 		await Promise.all([
-			pageA.goto(url + '/?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlInner + '/?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageA, url),
+			util.deleteWebstrate(pageB, urlInner),
 		]);
 
 		await browser.close();
@@ -60,8 +60,9 @@ describe('Transclusion', function() {
 			document.body.appendChild(iframe);
 		}, cleanUrlInner);
 
+		// The transcluded event fires once the iframe's webstrate has populated
 		const transcludedEventGetsTriggered = await util.waitForFunction(pageA,
-			() => window.__test_transcluded);
+			() => window.__test_transcluded, 10);
 
 		assert.isTrue(transcludedEventGetsTriggered);
 	});

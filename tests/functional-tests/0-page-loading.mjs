@@ -33,6 +33,9 @@ describe('Page Loading', function() {
 	});	
 
 	it('webstrate object becomes available', async () => {
+		// The client script boot that defines window.webstrate gates every later
+		// test in this suite, and under the parallel runner's CPU starvation it can
+		// far exceed the 2s default budget.
 		const webstrateObjectAvailable = await util.waitForFunction(pageA, () => {
 			if (!window.webstrate) return false;
 
@@ -45,8 +48,11 @@ describe('Page Loading', function() {
 		assert.isTrue(webstrateObjectAvailable);
 	});
 
-	it('loaded event gets triggered', async () => {
-		const pageLoadedVariableSet = await util.waitForFunction(pageA, () => window.__test_pageLoaded);
+	it('loaded event gets triggered', async function() {
+		this.timeout(20000);
+		// The loaded event fires once the websocket-driven population has completed
+		const pageLoadedVariableSet = await util.waitForFunction(pageA,
+			() => window.__test_pageLoaded, 15);
 		assert.isTrue(pageLoadedVariableSet);
 	});
 
@@ -56,7 +62,8 @@ describe('Page Loading', function() {
 	});
 
 	it('webstrate.loaded gets set to true', async () => {
-		const loadedIsTruthy = await util.waitForFunction(pageA, () => window.webstrate.loaded);
+		const loadedIsTruthy = await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded);
 		assert.isTrue(loadedIsTruthy);
 	});
 
@@ -161,7 +168,9 @@ describe('Client version reload', function() {
 		browser = await puppeteer.launch();
 		const page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'domcontentloaded' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 
 		// Pretend the page is running a different build and force a websocket reconnect: the
 		// client must notice the mismatch with the server's announced version, abort the

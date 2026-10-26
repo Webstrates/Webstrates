@@ -32,7 +32,7 @@ describe('Model membership (DOM <-> PathTree <-> JsonML, issue #117 audit)', fun
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 		await browser.close();
 	});
 

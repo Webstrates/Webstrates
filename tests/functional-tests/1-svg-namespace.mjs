@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('SVG Namespace', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const SVG_NAMESPACE = 'http://www.w3.org/2000/svg';
 	const XHTML_NAMESPACE = 'http://www.w3.org/1999/xhtml';
@@ -25,7 +25,7 @@ describe('SVG Namespace', function() {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
@@ -59,6 +59,13 @@ describe('SVG Namespace', function() {
 
 	it('svg element namespace should be "' + SVG_NAMESPACE + '" after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		// The reloaded page populates over the websocket after load, so the svg can
+		// still be absent when networkidle2 resolves on a busy machine — wait for it.
+		const svgExists = await util.waitForFunction(pageA, () =>
+			document.querySelector('svg'), 15);
+		assert.isTrue(svgExists, 'svg element exists after reload on page A');
+
 		const namespace = await pageA.evaluate(() => document.querySelector('svg').namespaceURI);
 		assert.equal(namespace, SVG_NAMESPACE, 'proper svg namespace after reload on page A');
 	});
@@ -88,6 +95,12 @@ describe('SVG Namespace', function() {
 
 	it('rect element namespace should be "' + SVG_NAMESPACE + '" after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		// As above: wait for the population to re-apply the rect before reading it.
+		const rectExists = await util.waitForFunction(pageA, () =>
+			document.querySelector('rect'), 15);
+		assert.isTrue(rectExists, 'rect element exists after reload on page A');
+
 		const namespace = await pageA.evaluate(() => document.querySelector('rect').namespaceURI);
 		assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
 	});
@@ -133,6 +146,12 @@ describe('SVG Namespace', function() {
 	it('foreignObject element namespace should be "' + SVG_NAMESPACE + '" after reload',
 		async () => {
 			await pageA.reload({ waitUntil: 'networkidle2' });
+
+			// The reloaded page must be populated before its elements can be queried;
+			// populate lags networkidle2
+			assert.isTrue(await util.waitForFunction(pageA,
+				() => window.webstrate && window.webstrate.loaded, 15));
+
 			const namespace = await pageA.evaluate(() =>
 				document.querySelector('svg > foreignObject').namespaceURI);
 			assert.equal(namespace, SVG_NAMESPACE, 'proper rect namespace after reload on page A');
@@ -140,6 +159,12 @@ describe('SVG Namespace', function() {
 
 	it('p element namespace should be "' + XHTML_NAMESPACE + '" after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		// The reloaded page must be populated before its elements can be queried;
+		// populate lags networkidle2
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
+
 		const namespace = await pageA.evaluate(() =>
 			document.querySelector('svg > foreignObject > p').namespaceURI);
 		assert.equal(namespace, XHTML_NAMESPACE, 'proper rect namespace after reload on page A');

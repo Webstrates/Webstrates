@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('DOM Manipulation with dataSaved', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateIdA = 'test-' + util.randomString();
 	const webstrateIdB = 'test-' + util.randomString();
@@ -53,8 +53,8 @@ describe('DOM Manipulation with dataSaved', function() {
 			pageB.setCacheEnabled(false)
 		]);
 		await Promise.all([
-			pageA.goto(urlA + '/?delete', { waitUntil: 'domcontentloaded' }),
-			pageB.goto(urlB + '/?delete', { waitUntil: 'domcontentloaded' })
+			util.deleteWebstrate(pageA, urlA),
+			util.deleteWebstrate(pageB, urlB),
 		]);
 
 		await browser.close();
@@ -72,6 +72,14 @@ describe('DOM Manipulation with dataSaved', function() {
 
 		await pageA.waitForNavigation({ waitUntil: 'networkidle2' });
 
+		// The reloaded page starts as the static client shell and only receives the
+		// document over the websocket afterwards — networkidle2 tracks HTTP requests,
+		// so under the emulated network conditions above it can resolve while the
+		// shell is still showing. Wait for the webstrate to load before reading.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load after the reload');
+
 		const bodyLength = await pageA.evaluate(() => document.body.innerHTML.length);
 		assert.equal(bodyLength, 200);
 	});
@@ -88,6 +96,13 @@ describe('DOM Manipulation with dataSaved', function() {
 		});
 
 		await pageB.waitForNavigation({ waitUntil: 'networkidle2' });
+
+		// Same as above: the reload races the save, and what the loaded page shows is
+		// exactly what the server kept — reading earlier would measure the loading
+		// shell rather than the document.
+		assert.isTrue(await util.waitForFunction(pageB,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load after the reload');
 
 		const bodyLength = await pageB.evaluate(() => document.body.innerHTML.length);
 		assert.isBelow(bodyLength, 200);

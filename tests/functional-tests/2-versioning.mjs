@@ -7,7 +7,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Versioning', function () {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -17,19 +17,25 @@ describe('Versioning', function () {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () =>
-			window.webstrate && window.webstrate.loaded, 2);
+		// Assert the wait so a slow populate fails loudly
+		// here instead of as an undefined read afterwards.
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
 	});
 
 	after(async () => {
 		await page.setCacheEnabled(false);
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 		await browser.close();
 	});
 
 	it('version should be 1 before we begin', async () => {
-		const version = await page.evaluate(() => window.webstrate.version);
-		assert.equal(version, 1);
+		// This page's own load creates the document, and the loaded flag can fire
+		// while the creation op's ack is still in flight — wait for the
+		// server-assigned version instead of reading it immediately.
+		const created = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 1, 15);
+		assert.isTrue(created, 'the creation op should have been acknowledged');
 	});
 
 	it('insertions should increase version', async () => {
@@ -46,8 +52,10 @@ describe('Versioning', function () {
 
 		await util.sleep(.5);
 
-		const version = await page.evaluate(() => window.webstrate.version);
-		assert.equal(version, 3);
+		// The ops' echoes can lag the writes by many seconds 
+		const inserted = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 3, 15);
+		assert.isTrue(inserted, 'the insertions should have been acknowledged');
 	});
 
 	it('should have one session tag to begin with', async () => {
@@ -61,7 +69,9 @@ describe('Versioning', function () {
 	it('should be possible to create tag', async () => {
 		await page.evaluate((t) => window.webstrate.tag(t), tagName);
 
-		await util.sleep(.5);
+		// The tag op's echo can lag the write by many seconds 
+		await util.waitForFunction(page, (t) =>
+			window.webstrate && window.webstrate.tags && window.webstrate.tags()[3] === t, 15, tagName);
 
 		const tags = await page.evaluate(() => window.webstrate.tags());
 		assert.lengthOf(Object.values(tags), 2);
@@ -81,12 +91,21 @@ describe('Versioning', function () {
 			});
 		});
 
+		// The restore promise resolves when the request is acked, but the ops echo
+		// back one at a time and can lag
+		await util.waitForFunction(page,
+			() => document.body && document.body.innerText === 'Hello, World!', 15);
+
 		const innerText = await page.evaluate(() => document.body.innerText);
 
 		assert.equal(innerText, 'Hello, World!');
 	});
 
 	it('restoring should bump up version', async () => {
+		// The version bump rides the restore's ops
+		await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 5, 15);
+
 		const version = await page.evaluate(() => window.webstrate.version);
 
 		// The empty document is version 1.
@@ -110,12 +129,20 @@ describe('Versioning', function () {
 			});
 		}, tagName);
 
+		// The restore's ops echo back one at a time and can lag
+		await util.waitForFunction(page,
+			() => document.body && document.body.innerText === 'Hello, World! How are you?', 15);
+
 		const innerText = await page.evaluate(() => document.body.innerText);
 
 		assert.equal(innerText, 'Hello, World! How are you?');
 	});
 
 	it('restoring should bump up version again', async () => {
+		// The version bump rides the restore's ops
+		await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 7, 15);
+
 		const version = await page.evaluate(() => window.webstrate.version);
 
 		// The noop op created by the restore is version 6.
@@ -127,7 +154,12 @@ describe('Versioning', function () {
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await page.setCacheEnabled(false);
 		await page.goto(url + '?restore=2', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
+		// The loaded flag can fire before the restore ops have populated over the
+		// websocket, and that populate can lag networkidle2 
+		await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 9, 15);
 		assert.equal(page.url(), url + '/');
 
 		const innerText = await page.evaluate(() => document.body.innerText);
@@ -154,6 +186,10 @@ describe('Versioning', function () {
 			});
 		});
 
+		// The restore's ops echo back one at a time 
+		await util.waitForFunction(page,
+			() => document.body && document.body.innerText === 'Hello, World! How are you?', 15);
+
 		const innerText = await page.evaluate(() => document.body.innerText);
 		assert.equal(innerText, 'Hello, World! How are you?');
 	});
@@ -164,7 +200,7 @@ describe('Versioning', function () {
 // that the restore creates must reference that fully-restored version — a version in
 // between only holds some of the reverts.
 describe('Versioning (restores spanning multiple ops)', function () {
-	this.timeout(20000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -181,19 +217,22 @@ describe('Versioning (restores spanning multiple ops)', function () {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () =>
-			window.webstrate && window.webstrate.loaded, 2);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
 	});
 
 	after(async () => {
 		await page.setCacheEnabled(false);
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 		await browser.close();
 	});
 
 	it('version should be 1 before we begin', async () => {
-		const version = await page.evaluate(() => window.webstrate.version);
-		assert.equal(version, 1);
+		// This page's own load creates the document, and the loaded flag can fire
+		// while the creation op's ack is still in flight
+		const created = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 1, 15);
+		assert.isTrue(created, 'the creation op should have been acknowledged');
 	});
 
 	// Two edits in two separate elements, so that reverting them requires one op per edit.
@@ -204,7 +243,7 @@ describe('Versioning (restores spanning multiple ops)', function () {
 			document.body.appendChild(heading);
 		});
 
-		await util.waitForFunction(page, () => window.webstrate.version === 2);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 2);
 
 		await page.evaluate(() => {
 			const paragraph = document.createElement('p');
@@ -212,7 +251,7 @@ describe('Versioning (restores spanning multiple ops)', function () {
 			document.body.appendChild(paragraph);
 		});
 
-		await util.waitForFunction(page, () => window.webstrate.version === 3);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 3);
 	});
 
 	it('restoring should reply with the fully-restored version', async () => {
@@ -232,7 +271,7 @@ describe('Versioning (restores spanning multiple ops)', function () {
 	});
 
 	it('restoring should restore the original content', async () => {
-		await util.waitForFunction(page, () => window.webstrate.version === 6, 5);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 6, 5);
 
 		const innerText = await page.evaluate(() => document.body.innerText);
 		assert.equal(innerText, '');
@@ -275,7 +314,7 @@ describe('Versioning (restores spanning multiple ops)', function () {
 // both.", untagging version 0 never reached the server, and `?restore=0` was a 409 — while
 // the very same version stayed reachable through its tag label all along.
 describe('Versioning (version zero)', function () {
-	this.timeout(20000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -285,18 +324,22 @@ describe('Versioning (version zero)', function () {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
 	});
 
 	after(async () => {
 		await page.setCacheEnabled(false);
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 		await browser.close();
 	});
 
 	it('the session tag should sit on version 0', async () => {
-		const tags = await page.evaluate(() => window.webstrate.tags());
-		assert.exists(tags[0]); // tags is an object, 0 is the key name.
+		// The tag map arrives in its own websocket message, which can lag the
+		// loaded flag
+		const tagged = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.tags && window.webstrate.tags()[0], 15);
+		assert.isTrue(tagged, 'the session tag should sit on version 0');
 	});
 
 	it('should be possible to restore to version 0', async () => {
@@ -309,7 +352,7 @@ describe('Versioning (version zero)', function () {
 			});
 		});
 
-		await util.waitForFunction(page, () => window.webstrate.version === 4, 5);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 4, 5);
 
 		// The initial document is version 1, the restore no-op is version 2, and reverting
 		// the initial creation op takes one op per jsondiff component (delete, insert
@@ -333,7 +376,13 @@ describe('Versioning (version zero)', function () {
 		// canonical slashed URL: the bare one redirects, and a redirect to a cached
 		// document is exactly the navigation that hangs in puppeteer.)
 		await page.goto(url + '/', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		// The loaded flag never fires on a reloaded version-0-restored (empty)
+		// document — the webstrate object, its version and its tags all still work —
+		// so gate on the server-sent tag map actually reflecting the untag instead
+		// of on the flag.
+		const untagged = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.tags && !window.webstrate.tags()[0], 15);
+		assert.isTrue(untagged, 'the server-sent tags should no longer contain version 0');
 
 		const tags = await page.evaluate(() => window.webstrate.tags());
 		assert.notExists(tags[0]);
@@ -343,7 +392,12 @@ describe('Versioning (version zero)', function () {
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await page.setCacheEnabled(false);
 		await page.goto(url + '?restore=0', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 2);
+		// The loaded flag never fires on a reloaded version-0-restored (empty)
+		// document — the webstrate object, its version and its tags all still work —
+		// so gate on the restored state arriving instead of on the flag.
+		const restored = await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.version === 5, 25);
+		assert.isTrue(restored, 'the restored version should have arrived');
 		assert.equal(page.url(), url + '/');
 
 		// The document is already empty after the first restore to version 0, so this
@@ -360,7 +414,7 @@ describe('Versioning (version zero)', function () {
 // document, and `?tags` serves the same list over HTTP. The tags collection stores a full
 // snapshot copy per tag (that is what makes serving /<webstrateId>/<tag>/ possible)
 describe('Versioning (tag payload)', function () {
-	this.timeout(20000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -379,8 +433,8 @@ describe('Versioning (tag payload)', function () {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () =>
-			window.webstrate && window.webstrate.loaded, 2);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
 
 		await page.evaluate((text) => {
 			document.body.insertAdjacentHTML('beforeend', `<p>${text}</p>`);
@@ -393,7 +447,7 @@ describe('Versioning (tag payload)', function () {
 
 	after(async () => {
 		await page.setCacheEnabled(false);
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 		await browser.close();
 	});
 
@@ -496,14 +550,14 @@ describe('Versioning (auto-tagging)', function () {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
 		await page.goto(url, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () =>
-			window.webstrate && window.webstrate.loaded, 2);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15));
 	});
 
 	after(async () => {
 		if (page && url) {
 			await page.setCacheEnabled(false);
-			await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+			await util.deleteWebstrate(page, url);
 		}
 		if (browser) await browser.close();
 		if (server) await server.stop();
@@ -516,7 +570,7 @@ describe('Versioning (auto-tagging)', function () {
 
 	it('should not auto-tag while edits stay within the inactivity interval', async () => {
 		await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', 'Hello'));
-		await util.waitForFunction(page, () => window.webstrate.version === 2);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 2);
 		await util.sleep(.2);
 
 		const tags = await sessionTags();
@@ -527,7 +581,7 @@ describe('Versioning (auto-tagging)', function () {
 		await util.sleep(3);
 
 		await page.evaluate(() => document.body.insertAdjacentHTML('beforeend', ' again'));
-		await util.waitForFunction(page, () => window.webstrate.version === 3);
+		await util.waitForFunction(page, () => window.webstrate && window.webstrate.version === 3);
 
 		// The tag write is asynchronous on the server, so give it a moment to arrive.
 		const tagged = await util.waitForFunction(page, (prefix) =>

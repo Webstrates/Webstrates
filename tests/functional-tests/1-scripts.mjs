@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Script Insertion and Execution', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -22,10 +22,20 @@ describe('Script Insertion and Execution', function() {
 		pageB = await browser.newPage();
 		//pageB.on('console', (...args) => console.log(...args));
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
+
+		// Scripts present in the document run when a page populates, so both pages
+		// must be fully loaded before any script is inserted — under load, networkidle2
+		// can resolve while population is still in flight, and a script committed in
+		// that window would execute on the other page as part of its population.
+		const loaded = await Promise.all([
+			util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 10),
+			util.waitForFunction(pageB, () => window.webstrate && window.webstrate.loaded, 10)
+		]);
+		assert.isTrue(loaded.every(isLoaded => isLoaded), 'pages should be loaded');
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});

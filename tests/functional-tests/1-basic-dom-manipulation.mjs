@@ -27,7 +27,7 @@ const createWebstrateOnRawSocket = (page, webstrateId, data) =>
 	}), webstrateId, data);
 
 describe('Basic DOM Manipulation', function() {
-	this.timeout(10000);
+	this.timeout(60000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -46,7 +46,7 @@ describe('Basic DOM Manipulation', function() {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
@@ -66,8 +66,10 @@ describe('Basic DOM Manipulation', function() {
 			document.body.innerHTML = 'Hello, world!';
 		});
 
+		// The op echo syncing the write to pageA can lag it by many seconds when the
+		// parallel runner starves the CPU, so allow 25s instead of the 2s default.
 		const bodyContainsHelloWorld = await util.waitForFunction(pageA,
-			() => {return document.body.innerHTML === 'Hello, world!';});
+			() => {return document.body.innerHTML === 'Hello, world!';}, 25);
 		assert.isTrue(bodyContainsHelloWorld);
 	});
 
@@ -105,6 +107,11 @@ describe('Basic DOM Manipulation', function() {
 	it('select element with selected attribute should be selected after reload', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
 
+		// The reloaded page must be populated before its elements can be queried;
+		// populate lags networkidle2
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
+
 		const selectedOption = await pageA.evaluate(() =>
 			document.querySelector('select').selectedOptions[0].getAttribute('value'));
 		const shouldBeSelectedOption = await pageA.evaluate(() =>
@@ -115,6 +122,11 @@ describe('Basic DOM Manipulation', function() {
 
 	it('creating attribute name with " should replace it with _', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
+
+		// The reloaded page must be populated before writing to it, or the write is
+		// lost
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
 
 		await pageA.evaluate(() => {
 			document.body.innerHTML = '<div foo"="bar"></div>';
@@ -196,10 +208,8 @@ describe('Basic DOM Manipulation', function() {
 		assert.equal(await pageA.title(), 'Copied title');
 		assert.equal(await pageA.evaluate(() => document.body.innerText.trim()), 'Copy me');
 
-		await pageA.goto(config.server_address + sourceId + '/?delete',
-			{ waitUntil: 'domcontentloaded' });
-		await pageA.goto(config.server_address + destinationId + '/?delete',
-			{ waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, config.server_address + sourceId);
+		await util.deleteWebstrate(pageA, config.server_address + destinationId);
 	});
 
 	it('copying into a non-empty document whose body element has no attribute object ' +
@@ -224,10 +234,8 @@ describe('Basic DOM Manipulation', function() {
 		const responseBody = await pageA.evaluate(() => document.body.innerText);
 		assert.include(responseBody, 'Webstrate already exists');
 
-		await pageA.goto(config.server_address + sourceId + '/?delete',
-			{ waitUntil: 'domcontentloaded' });
-		await pageA.goto(config.server_address + destinationId + '/?delete',
-			{ waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, config.server_address + sourceId);
+		await util.deleteWebstrate(pageA, config.server_address + destinationId);
 	});
 
 	it('removing attributes and elements from an empty webstrate should keep it empty',

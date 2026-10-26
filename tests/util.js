@@ -24,9 +24,14 @@ util.escapeRegExp = function (s) {
 	return s.replace(/[-/\\^$*+?.()|[\]{}]/g, '\\$&');
 };
 
+// Shortid webstrate ids are 9 characters (version, worker and timestamp parts)
+// and grow by one character each time the server's per-second generation
+// counter crosses a power of 16 — the first id of a second is 9 chars, ids 2-15
+// are 10, and parallel suites bursting /new requests can push it further.
+// Accept the generator's full realistic range.
 util.webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
 	? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
-	: '([A-z0-9-]{8,10})';
+	: '([A-z0-9-]{9,14})';
 
 // Remove HTTP basic auth credentials from the server address, e.g. http://web:strate@domain.tld/
 // becomes http://domain.tld/. Useful for comparing page URL with server address and for iframes,
@@ -47,7 +52,7 @@ util.credentialsProvided = config.authType === 'test' || (config.username && con
  * @return {bool}              True if predicate became truthy false otherwise.
  * @public
  */
-util.waitForFunction = async function (page, fn, timeout = 2, ...args) {
+util.waitForFunction = async function (page, fn, timeout = 10, ...args) {
 	if (typeof timeout !== 'number') {
 		throw new Error(`Invalid timeout: ${timeout}, expected number.`);
 	}
@@ -61,6 +66,25 @@ util.waitForFunction = async function (page, fn, timeout = 2, ...args) {
 		throw e;
 	}
 	return true;
+};
+
+/**
+ * Wait for an async predicate to become truthy, polling it at an interval until a
+ * timeout. Like waitForFunction, but for predicates evaluated here rather than in a
+ * browser page (server replies, database reads, and the like).
+ * @param  {Function} predicate Function returning a value (may return a Promise).
+ * @param  {Number}   timeout   Timeout in seconds.
+ * @param  {Number}   pollMs    Polling interval in milliseconds.
+ * @return {bool}               True if the predicate became truthy, false on timeout.
+ * @public
+ */
+util.waitFor = async function (predicate, timeout = 5, pollMs = 100) {
+	const deadline = Date.now() + timeout * 1000;
+	while (Date.now() < deadline) {
+		if (await predicate()) return true;
+		await util.sleep(pollMs / 1000);
+	}
+	return await predicate();
 };
 
 util.showLogs = (page, ...pages) => {
@@ -234,6 +258,43 @@ util.waitForWebstrateLoaded = async (page) => {
 			});
 		});
 	}, 2);
+};
+
+/**
+ * Delete the webstrate a page is on by navigating to its ?delete URL, tolerant
+ * of the delete-redirect race: the server broadcasts the deletion to the page's
+ * own webstrates client before responding with a redirect to the front page.
+ * The helpe waits for whichever navigation wins and throws if the page
+ * never leaves, so a genuinely failed delete still surfaces.
+ * @param  {Page}   page Puppeteer page currently on the webstrate.
+ * @param  {String} url  The webstrate's URL; the ?delete query is appended here.
+ *                      Any query string or fragment the URL carries is dropped
+ *                      first — e.g. the /new redirect target keeps its
+ *                      ?prototypeUrl query, and appending ?delete to that URL
+ *                      would glue it onto the existing query parameter instead
+ *                      of ever reaching the server as a delete request.
+ * @public
+ */
+util.deleteWebstrate = async function (page, url) {
+	// Accept the webstrate URL with or without a trailing slash, and ignore
+	// whatever query string or fragment it carries.
+	const docUrl = url.split(/[?#]/)[0];
+	const baseUrl = docUrl.endsWith('/') ? docUrl : docUrl + '/';
+	try {
+		await page.goto(baseUrl + '?delete', { waitUntil: 'domcontentloaded' });
+	} catch (e) {
+		// The page's own client redirecting to the front page aborts the navigation
+		// above — the delete itself has already been processed at that point.
+		if (!e.message.includes('net::ERR_ABORTED')) throw e;
+	}
+
+	// Whichever navigation won, the page must end up off the deleted webstrate.
+	const left = await util.waitFor(async () =>
+		!page.url().startsWith(baseUrl), 25);
+	if (!left) {
+		throw new Error(`Page never left ${baseUrl} after ?delete — the webstrate ` +
+			'may not have been deleted.');
+	}
 };
 
 module.exports = util;

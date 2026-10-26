@@ -153,14 +153,28 @@ describe('Rate limiting', function() {
 
 		const flooder = await connect(address);
 		send(flooder, { a: 's', c: 'webstrates', d: webstrateId });
-		await nextMessage(flooder, message => message.a === 's');
+		await nextMessage(flooder, message => message.a === 's', 10);
 		send(flooder, { wa: 'subscribe', d: webstrateId, id: nodeId });
 		// Prove the subscription is in effect before flooding, with one signal round trip:
 		// the subscribe registration is asynchronous (it passes a permission check), and
 		// the burst below can be processed before that completes — its publishes then echo
 		// to nobody, and the disconnect races the first echo instead of following it.
-		send(flooder, { wa: 'publish', d: webstrateId, id: nodeId, m: 'warmup' });
-		await nextMessage(flooder, message => message.wa === 'publish' && message.m === 'warmup');
+		// A lost warmup echo means "not registered yet", not failure: keep probing until
+		// one round trip succeeds or the attempts run out. The probes stay far inside the
+		// flood's deliberate 3x overshoot of the signal limit.
+		// Initialize to null explicitly: after ten failed probes the variable must
+		// hold null (not undefined) for the assert below to catch the exhaustion —
+		// chai's isNotNull only rejects null.
+		let warmupEcho = null;
+		for (let attempt = 0; attempt < 10; attempt++) {
+			send(flooder, { wa: 'publish', d: webstrateId, id: nodeId, m: 'warmup' });
+			try {
+				warmupEcho = await nextMessage(flooder,
+					message => message.wa === 'publish' && message.m === 'warmup', 1);
+				break;
+			} catch { /* no echo yet — probe again */ }
+		}
+		assert.isNotNull(warmupEcho, 'signal subscription did not take effect (no warmup echo)');
 
 		// Publish until the server cuts the connection. The burst is sent in well under one
 		// intervalLength and overshoots the limit up to 3x, so it crosses the limit no matter

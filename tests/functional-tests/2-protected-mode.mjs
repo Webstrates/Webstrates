@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Protected Mode', function () {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -23,7 +23,7 @@ describe('Protected Mode', function () {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
@@ -48,7 +48,7 @@ describe('Protected Mode', function () {
 		assert.isTrue(attributeSetA);
 
 		const attributeSetB = await util.waitForFunction(pageB, () =>
-			document.documentElement.getAttribute('data-protected') === '');
+			document.documentElement.getAttribute('data-protected') === '', 20);
 		assert.isTrue(attributeSetB);
 	});
 
@@ -83,6 +83,15 @@ describe('Protected Mode', function () {
 	});
 
 	it('inserted transient div should not be visible on other client', async () => {
+		// A transient insert never becomes an op, so the div cannot reach pageB - but under
+		// parallel-runner CPU starvation pageB's populate can lag the reload's networkidle2
+		// by many seconds, and until it lands the body still holds the client.html loading
+		// shell (spinner, style and script elements), which reads as body children. Wait
+		// for the populated, empty body before checking for the div.
+		const bodyIsEmptyB = await util.waitForFunction(pageB, () =>
+			document.body.children.length === 0, 15);
+		assert.isTrue(bodyIsEmptyB, 'pageB should have populated with an empty body');
+
 		const bodyHasChildrenB = await util.waitForFunction(pageB, () =>
 			document.body.children.length > 0);
 		assert.isFalse(bodyHasChildrenB, 'transient div should not be visible on other client');
@@ -446,6 +455,17 @@ describe('Protected Mode', function () {
 			walk(document);
 			return { count, approved };
 		});
+
+		// The approved comment's op echo reaches clients live, but its server-side write
+		// lags. The reload's networkidle2 can fire before the websocket populate has applied the persisted
+		// document - so the comment is missing from the reloaded DOM when we count it.
+		// Poll until it has actually persisted before asserting.
+		const [persistedA, persistedB] = await Promise.all([
+			util.waitFor(async () => (await commentSummary(pageA)).approved, 15),
+			util.waitFor(async () => (await commentSummary(pageB)).approved, 15)
+		]);
+		assert.isTrue(persistedA, 'approved comment should be persisted on inserting client');
+		assert.isTrue(persistedB, 'approved comment should be persisted on other client');
 
 		const summaryA = await commentSummary(pageA);
 		assert.equal(summaryA.count, 1, 'only the approved comment should be persisted');

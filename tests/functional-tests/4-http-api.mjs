@@ -34,7 +34,7 @@ const uploadAssetByFetch = async (page, fileName, mimeType, base64Data) => {
 };
 
 describe('HTTP API', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId;
@@ -51,9 +51,12 @@ describe('HTTP API', function() {
 	});
 
 
+	// See util.webstrateIdRegex for the id length range: shortid ids grow by a
+	// character each time the server's per-second generation counter crosses a
+	// power of 16, which parallel suites bursting /new requests can trigger.
 	const webstrateIdRegex = (config.server && config.server.niceWebstrateIds)
 		? '([a-z]{2,13}-[a-z]{2,13}-\\d{1,3})'
-		: '([A-z0-9-]{8,10})';
+		: '([A-z0-9-]{9,14})';
 
 	it('/new redirects to random webstrateId matching ' + webstrateIdRegex, async () => {
 		pageB = await browser.newPage();
@@ -62,7 +65,7 @@ describe('HTTP API', function() {
 		const redirectedUrl = pageB.url();
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await pageA.setCacheEnabled(false);
-		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, redirectedUrl);
 		const regex = '^' + util.escapeRegExp(config.server_address) + webstrateIdRegex + '/$';
 		assert.match(redirectedUrl, new RegExp(regex));
 	});
@@ -84,13 +87,18 @@ describe('HTTP API', function() {
 		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL, { waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
-		// Avoid puppeteer's goto hang on redirects to cached documents.
-		await pageA.setCacheEnabled(false);
-		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
 		await pageB.waitForFunction(() => window.test, {
 			timeout: 10000, // Maximum time to wait in milliseconds (adjust as needed)
 			polling: 100 // How often to check the condition in milliseconds (default is requestAnimationFrame or 100ms)
 		});
+
+		// Cleanup. Delete only after the page has populated: the /new redirect target
+		// still carries the ?prototypeUrl query, so deleting through that URL relies
+		// on the delete helper dropping the query — and issuing the delete earlier
+		// would broadcast the deletion to pageB before the prototype content arrives.
+		// Avoid puppeteer's goto hang on redirects to cached documents.
+		await pageA.setCacheEnabled(false);
+		await util.deleteWebstrate(pageA, redirectedUrl);
 	});
 
 	it('/new?prototypeUrl=zipfile creates a valid webstrate', async () => {
@@ -140,7 +148,7 @@ describe('HTTP API', function() {
 		const redirectedUrl = pageB.url();
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await pageA.setCacheEnabled(false);
-		await pageA.goto(redirectedUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, redirectedUrl);
 
 		const jsonObject = JSON.parse(pageContent);
 		assert.propertyVal(jsonObject, 'subdirectory', true, 'Could not find the subdirectory property in test zip json in a subdir');
@@ -152,7 +160,21 @@ describe('HTTP API', function() {
 
 		pageA = await browser.newPage();
 		await pageA.goto(dirUrl, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(pageA, () => window.webstrate && window.webstrate.loaded, 5);
+		// Wait for the page to be actually loaded before uploading anything.
+		assert.isTrue(await util.waitForFunction(pageA,
+			() => window.webstrate && window.webstrate.loaded, 15));
+
+		// The webstrate exists server-side only once the page client's ShareDB create
+		// op has been committed, and that write can lag the client's loaded event:
+		// an upload posted in
+		// between is rejected ("Document doesn't exist.") and its reply carries no
+		// fileName. ?json answers 404 until the server has the document, so poll it
+		// from the test process before uploading.
+		await util.waitFor(async () => {
+			const response = await fetch(dirUrl + '/?json');
+			await response.text();
+			return response.status === 200;
+		}, 15);
 
 		const notAZipAsset = await uploadAssetByFetch(pageA, 'notazip.txt', 'text/plain', NOT_A_ZIP_FILE);
 		assert.equal(notAZipAsset.fileName, 'notazip.txt', 'Uploading the non-ZIP asset failed');
@@ -191,7 +213,7 @@ describe('HTTP API', function() {
 		// Cleanup
 		// Avoid puppeteer's goto hang on redirects to cached documents.
 		await pageA.setCacheEnabled(false);
-		await pageA.goto(dirUrl + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, dirUrl);
 	});
 
 });
@@ -334,7 +356,7 @@ describe('HTTP API: /new?prototypeUrl= refuses internal addresses', function() {
 // JSON list of URLs — receives Access-Control-Allow-* response headers on requests whose
 // Origin host matches the host of one of the listed URLs.
 describe('HTTP API: CORS headers (data-cors)', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	// The cross-origin requests below are plain GETs carrying an Origin header, and the
 	// origins can be arbitrary URLs: the server compares hosts only.
@@ -358,7 +380,7 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 
 	after(async () => {
 		await page.setCacheEnabled(false);
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
 
 		// Clean up the documents the raw-socket test created.
 		for (const createdId of createdWebstrateIds) {
@@ -383,12 +405,17 @@ describe('HTTP API: CORS headers (data-cors)', function() {
 			}
 		}, value);
 		const unescape = (stored) => stored.replace(/&quot;/g, '"').replace(/&amp;/g, '&');
-		const deadline = Date.now() + 5000;
+		const deadline = Date.now() + 15000;
 		while (Date.now() < deadline) {
-			const snapshot = await (await fetch(url + '?json')).json();
-			const stored = snapshot[1]['data-cors'];
-			const unescaped = stored === undefined ? null : unescape(stored);
-			if (unescaped === value) return;
+			// The ?json request can transiently be
+			// served an error page instead of the snapshot, so only act on a
+			// reply that actually parses — anything else just means "poll again".
+			const snapshot = await (await fetch(url + '?json')).json().catch(() => null);
+			if (snapshot !== null) {
+				const stored = snapshot[1]['data-cors'];
+				const unescaped = stored === undefined ? null : unescape(stored);
+				if (unescaped === value) return;
+			}
 			await util.sleep(0.25);
 		}
 		assert.fail(`data-cors change to ${JSON.stringify(value)} never reached the server snapshot`);

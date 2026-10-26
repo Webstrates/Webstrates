@@ -10,6 +10,13 @@ import path from 'path';
 import yauzl from 'yauzl';
 
 const uploadAssetHelper = async (page, testAsset, searchable = false) => {
+	// The helper also runs on freshly copied webstrates whose client may not have
+	// populated yet when networkidle2 fired — the upload API only exists once the
+	// page has loaded.
+	assert.isTrue(await util.waitForFunction(page,
+		() => window.webstrate && window.webstrate.loaded, 15),
+	'Timed out waiting for the webstrate to load before uploading');
+
 	const fileChooserPromise = page.waitForFileChooser();
 
 	await page.evaluate((searchable) => {
@@ -26,6 +33,12 @@ const uploadAssetHelper = async (page, testAsset, searchable = false) => {
 };
 
 const deleteAssetHelper = async (page, fileName) => {
+	// Mirror of the upload helper's gate: the delete API only exists on a
+	// populated page.
+	assert.isTrue(await util.waitForFunction(page,
+		() => window.webstrate && window.webstrate.loaded, 15),
+	'Timed out waiting for the webstrate to load before deleting');
+
 	await page.evaluate(async (fileName) => {
 		window.testAssetDeleted = false;
 		window.webstrate.deleteAsset(fileName, () => {
@@ -42,11 +55,11 @@ const deleteAssetHelper = async (page, fileName) => {
 // some of the webstrates we test are expected to have no assets at all.
 const getAssets = async (page) => {
 	assert.isTrue(await util.waitForFunction(page,
-		() => window.webstrate && window.webstrate.loaded, 5),
+		() => window.webstrate && window.webstrate.loaded, 15),
 	'Timed out waiting for the webstrate to load');
 
 	assert.isTrue(await util.waitForFunction(page,
-		() => Array.isArray(window.webstrate.assets), 5),
+		() => window.webstrate && Array.isArray(window.webstrate.assets), 15),
 	'Timed out waiting for the asset list to arrive from the server');
 
 	return await page.evaluate(() => window.webstrate.assets);
@@ -61,7 +74,7 @@ const getSyncedVersion = async (page) => {
 		(await (await fetch('?v')).json()).version);
 
 	assert.isTrue(await util.waitForFunction(page,
-		(v) => window.webstrate.version >= v, 5, serverVersion),
+		(v) => window.webstrate && window.webstrate.version >= v, 15, serverVersion),
 	`Timed out waiting for the client to reach version ${serverVersion}`);
 
 	return serverVersion;
@@ -74,10 +87,10 @@ const bumpVersion = async (page) => {
 		document.body.insertAdjacentHTML('beforeend', '<p>' + Math.random() + '</p>'));
 
 	assert.isTrue(await util.waitForFunction(page,
-		(v) => window.webstrate.version > v, 5, versionBefore),
+		(v) => window.webstrate && window.webstrate.version > v, 15, versionBefore),
 	'Timed out waiting for the document version to be bumped');
 
-	return await page.evaluate(() => window.webstrate.version);
+	return await page.evaluate(() => window.webstrate && window.webstrate.version);
 };
 
 const tagHelper = async (page, label, version) => {
@@ -87,7 +100,8 @@ const tagHelper = async (page, label, version) => {
 	assert.isNotOk(error, `Tagging version ${version} failed: ${error}`);
 
 	assert.isTrue(await util.waitForFunction(page,
-		(v, l) => window.webstrate.tags()[v] === l, 5, version, label),
+		(v, l) => window.webstrate && window.webstrate.tags &&
+			window.webstrate.tags()[v] === l, 15, version, label),
 	`Tag ${label} never showed up at version ${version}`);
 };
 
@@ -157,16 +171,18 @@ describe('Asset copying', function () {
 		fs.writeFileSync(keptFile, keptFileContent);
 
 		await page.goto(url + '/', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 	});
 
 	after(async () => {
 		await page.setCacheEnabled(false);
 		for (const copyUrl of copyUrls) {
-			await page.goto(copyUrl + '?delete', { waitUntil: 'domcontentloaded' });
+			await util.deleteWebstrate(page, copyUrl);
 		}
-		await page.goto(url + '/?delete', { waitUntil: 'domcontentloaded' });
-		await page.goto(emptyUrl + '/?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(page, url);
+		await util.deleteWebstrate(page, emptyUrl);
 
 		await browser.close();
 
@@ -179,6 +195,17 @@ describe('Asset copying', function () {
 	it('should be possible to tag a version and then delete an asset afterwards', async () => {
 		await uploadAssetHelper(page, deletedFile);
 		await uploadAssetHelper(page, keptFile);
+
+		// The second upload's registration can lag
+		// its callback by many seconds — and a
+		// tag only captures the assets whose records have landed on the server. Wait
+		// for both assets to be registered before tagging, so the tag captures both
+		// and not just the registration that happened to arrive first.
+		assert.isTrue(await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets) &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-test.txt') &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-keep.txt'), 25),
+		'Timed out waiting for both assets to be registered before tagging');
 
 		// Bump the version, so the tag doesn't sit on the same version as the uploads, then tag.
 		await bumpVersion(page);
@@ -214,9 +241,26 @@ describe('Asset copying', function () {
 	it('copying a tagged version should keep assets that were alive at that tag', async () => {
 		await page.goto(`${url}/${tagName}/?copy`, { waitUntil: 'networkidle2' });
 
+		// The server's redirect to the new copy can land well after networkidle2, 
+		// so poll until the browser has
+		// actually arrived at the copy instead of reading the URL straight away.
+		const copyUrlRegex = new RegExp('^' + util.escapeRegExp(config.server_address) +
+			util.webstrateIdRegex + '/$');
+		assert.isTrue(await util.waitFor(() => copyUrlRegex.test(page.url()), 25),
+			'Copying should redirect to a new webstrate');
 		tagCopyUrl = page.url();
 		assertIsCopyUrl(tagCopyUrl);
 		copyUrls.push(tagCopyUrl);
+
+		// The copied webstrate's asset records only become visible to the copy's client
+		// some time after the copy action: the populate carrying them over the websocket
+		// can lag networkidle2. Wait
+		// for both copied assets to be listed before reading the copy's asset list.
+		assert.isTrue(await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets) &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-test.txt') &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-keep.txt'), 15),
+		'Timed out waiting for the copied assets to arrive in the copy');
 
 		const assets = await getAssets(page);
 		assert.equal(await page.evaluate(() => window.webstrate.version), 1,
@@ -235,11 +279,23 @@ describe('Asset copying', function () {
 
 	it('assets copied from a tag should stay servable as the copy is edited', async () => {
 		await page.goto(tagCopyUrl, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the copy to load');
 
 		while (await page.evaluate(() => window.webstrate.version) <= deletedAtVersion) {
 			await bumpVersion(page);
 		}
+
+		// The copy's asset records are written on the server some time after the copy
+		// action, and until they have landed the asset URL serves a 404. Poll the asset
+		// URL until it answers 200, so the navigation below asserts that the asset
+		// stays servable, not that the copy's records have arrived.
+		await util.waitFor(async () => {
+			const response = await fetch(tagCopyUrl + 'copy-test.txt');
+			await response.text();
+			return response.status === 200;
+		}, 15);
 
 		const response = await page.goto(tagCopyUrl + 'copy-test.txt', { waitUntil: 'networkidle2' });
 		assert.equal(response.status(), 200, 'The copied asset should still be servable from the copy');
@@ -249,7 +305,9 @@ describe('Asset copying', function () {
 
 	it("a copy's version 0 assets should be servable at version 0, not the newest upload", async () => {
 		await page.goto(tagCopyUrl, { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the copy to load');
 
 		// Copies reset every copied asset to version 0 (see AssetManager.copyAssets), so
 		// re-uploading an asset in the copy leaves two records under the same name: the
@@ -275,6 +333,12 @@ describe('Asset copying', function () {
 	it('copying at HEAD should not carry over deleted assets', async () => {
 		await page.goto(url + '?copy', { waitUntil: 'networkidle2' });
 
+		// Same redirect race as the tag copy above: poll until the browser has
+		// actually arrived at the copy before reading the URL.
+		const copyUrlRegex = new RegExp('^' + util.escapeRegExp(config.server_address) +
+			util.webstrateIdRegex + '/$');
+		assert.isTrue(await util.waitFor(() => copyUrlRegex.test(page.url()), 25),
+			'Copying should redirect to a new webstrate');
 		const headCopyUrl = page.url();
 		assertIsCopyUrl(headCopyUrl);
 		copyUrls.push(headCopyUrl);
@@ -295,7 +359,25 @@ describe('Asset copying', function () {
 
 	it('downloading a tagged version should archive the assets from that version', async () => {
 		await page.goto(url + '/', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
+
+		// The archives are computed from the tag and the asset records as the server
+		// holds them; the client's view of both populates over the websocket and can
+		// lag networkidle2. Wait
+		// for the archive inputs — the tag at the tagged version and both asset
+		// records — to be in place before downloading, so the archives are requested
+		// only once the state they are built from exists.
+		assert.isTrue(await util.waitForFunction(page,
+			(v, l) => window.webstrate && window.webstrate.loaded &&
+				window.webstrate.tags()[v] === l, 15, tagVersion, tagName),
+		`Timed out waiting for tag ${tagName} to be at version ${tagVersion}`);
+		assert.isTrue(await util.waitForFunction(page, () =>
+			window.webstrate && window.webstrate.loaded && Array.isArray(window.webstrate.assets) &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-test.txt') &&
+			window.webstrate.assets.some(asset => asset.fileName === 'copy-keep.txt'), 15),
+		'Timed out waiting for both assets to be listed before archiving');
 
 		const taggedEntries = await listArchiveEntries(
 			await downloadArchive(page, `${url}/${tagName}?dl`));
@@ -313,7 +395,9 @@ describe('Asset copying', function () {
 
 	it('copying a webstrate whose only asset has been deleted should still work', async () => {
 		await page.goto(emptyUrl + '/', { waitUntil: 'networkidle2' });
-		await util.waitForFunction(page, () => window.webstrate && window.webstrate.loaded, 5);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load');
 
 		await uploadAssetHelper(page, deletedFile);
 		await bumpVersion(page);
@@ -322,6 +406,12 @@ describe('Asset copying', function () {
 		const response = await page.goto(emptyUrl + '?copy', { waitUntil: 'networkidle2' });
 		assert.equal(response.status(), 200, 'Copying should not fail when all assets are deleted');
 
+		// Same redirect race as the copies above: poll until the browser has
+		// actually arrived at the copy before reading the URL.
+		const copyUrlRegex = new RegExp('^' + util.escapeRegExp(config.server_address) +
+			util.webstrateIdRegex + '/$');
+		assert.isTrue(await util.waitFor(() => copyUrlRegex.test(page.url()), 25),
+			'Copying should redirect to a new webstrate');
 		assertIsCopyUrl(page.url());
 		copyUrls.push(page.url());
 

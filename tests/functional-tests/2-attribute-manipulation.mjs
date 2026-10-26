@@ -6,7 +6,7 @@ import config from '../config.js';
 import util from '../util.js';
 
 describe('Attribute Manipulation', function() {
-	this.timeout(10000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -119,7 +119,7 @@ describe('Attribute Manipulation', function() {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
@@ -168,7 +168,7 @@ describe('Attribute Manipulation', function() {
 
 			const attributeGetsSetB = await util.waitForFunction(pageB, (key, value) =>
 				document.body.getAttribute(key) === value,
-			undefined, key, value);
+			15, key, value);
 
 			let attA = await pageA.evaluate((key)=>{
 				return document.body.getAttribute(key);
@@ -240,7 +240,7 @@ describe('Attribute Manipulation', function() {
 // under the name as written — so the attribute was deemed transient and never synced to
 // other clients
 describe('Attribute Manipulation in Protected Mode', function() {
-	this.timeout(15000);
+	this.timeout(30000);
 
 	const webstrateId = 'test-' + util.randomString();
 	const url = config.server_address + webstrateId + '/';
@@ -276,7 +276,7 @@ describe('Attribute Manipulation in Protected Mode', function() {
 	});
 
 	after(async () => {
-		await pageA.goto(url + '?delete', { waitUntil: 'domcontentloaded' });
+		await util.deleteWebstrate(pageA, url);
 
 		await browser.close();
 	});
