@@ -378,7 +378,7 @@ module.exports.getDocumentVersion = async function(webstrateId) {
 	try {
 		return Number(doc._v);
 	} catch (err){
-		console.error("Error in getDocumentVersion:", err, doc);
+		console.error('Error in getDocumentVersion:', err, doc);
 		throw err;
 	}
 };

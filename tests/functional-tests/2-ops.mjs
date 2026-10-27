@@ -13,7 +13,7 @@ describe('Ops', function() {
 	before(async () => {
 		browser = await puppeteer.launch();
 		page = await browser.newPage();
-		page.on('console', (msg) => console.log("Page: "+msg.text()));
+		page.on('console', (msg) => console.log('Page: '+msg.text()));
 		await page.goto(url, { waitUntil: 'networkidle2' });
 		await util.waitForFunction(page, () =>
 			window.webstrate && window.webstrate.loaded, 2);

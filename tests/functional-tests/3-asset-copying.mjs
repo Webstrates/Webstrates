@@ -329,7 +329,7 @@ describe('Asset copying', function () {
 			'The content of the copied asset does not match the original');
 	});
 
-	it("a copy's version 0 assets should be servable at version 0, not the newest upload",
+	it('a copy\'s version 0 assets should be servable at version 0, not the newest upload',
 		async () => {
 			await page.goto(tagCopyUrl, { waitUntil: 'networkidle2' });
 			assert.isTrue(await util.waitForFunction(page,

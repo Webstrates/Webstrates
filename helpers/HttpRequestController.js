@@ -459,14 +459,14 @@ const getZipStructure = async (fileName) => new Promise((accept, reject) => {
  */
 module.exports.requestHandler = async function(req, res) {
 	// assetName (+ assetPath)
-	if ("asset" in req.params) {
+	if ('asset' in req.params) {
 		req.params.assetName = req.params.asset;
-		if (req.params.extension) req.params.assetName += "." + req.params.extension;
-		if (req.params.assetPath) req.params.assetPath = req.params.assetPath.join("/");
+		if (req.params.extension) req.params.assetName += '.' + req.params.extension;
+		if (req.params.assetPath) req.params.assetPath = req.params.assetPath.join('/');
 	}
 
 	// version (number) or tag (string)
-	if ("versionOrTag" in req.params) {
+	if ('versionOrTag' in req.params) {
 		if (/^-?\d+$/.test(req.params.versionOrTag)) {
 			req.params.version = Number(req.params.versionOrTag);
 		} else {
@@ -474,7 +474,7 @@ module.exports.requestHandler = async function(req, res) {
 		}
 	}
 
-	if ("assetOrVersionOrTag" in req.params) {
+	if ('assetOrVersionOrTag' in req.params) {
 		if (req.params.assetOrVersionOrTag.includes('.')) {
 			// If assetOrVersionOrTag contains a dot it is an asset
 			req.params.assetName = req.params.assetOrVersionOrTag;

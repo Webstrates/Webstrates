@@ -23,7 +23,7 @@ const agent = share.connect();
 const insertSessionLog = async (log) => {
 	for (let attempts = 10; attempts > 0; attempts--){
 		try {
-			if (!db.sessionLog) throw new Error("DB not ready yet");
+			if (!db.sessionLog) throw new Error('DB not ready yet');
 			await db.sessionLog.insertOne(log);
 			return;
 		} catch (err){
@@ -173,7 +173,7 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).
 	if (!req.agent.user) return next();
-	if (req.data?.a === "hs") {
+	if (req.data?.a === 'hs') {
 		return next();
 	}
 

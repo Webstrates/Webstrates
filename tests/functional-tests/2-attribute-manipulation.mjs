@@ -20,7 +20,7 @@ describe('Attribute Manipulation', function() {
 		pageB = await browser.newPage();
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
-		pageA.on("console", async (msg)=>{
+		pageA.on('console', async (msg)=>{
 			const msgType = msg.type();
 			const msgText = msg.text();
 
@@ -68,7 +68,7 @@ describe('Attribute Manipulation', function() {
 				}
 			}
 		})
-		pageB.on("console", async (msg)=>{
+		pageB.on('console', async (msg)=>{
 			const msgType = msg.type();
 			const msgText = msg.text();
 
@@ -144,13 +144,13 @@ describe('Attribute Manipulation', function() {
 			title: 'long attribute with quotes in value',
 			key: 'quotesInAttributeLong',
 			value: util.randomString(3) + '"' + util.randomString(4) +
-				"----------------------------------------------------------------------------------------"
+				'----------------------------------------------------------------------------------------'
 		},		
 		{
 			title: 'long attribute with ampersand in value',
 			key: 'AMPERSAND_LONG_ATTRIBUTE',
 			value: util.randomString(3) + '&' + util.randomString(4) +
-				"----------------------------------------------------------------------------------------"
+				'----------------------------------------------------------------------------------------'
 		},		
 		{
 			title: 'attribute with periods',
@@ -187,15 +187,15 @@ describe('Attribute Manipulation', function() {
 	const prependTests = [
 		{
 			insertType: 'letter a',
-			insertValue: "a"
+			insertValue: 'a'
 		},	
 		{
 			insertType: 'ampersand',
-			insertValue: "&"
+			insertValue: '&'
 		},			
 		{
 			insertType: 'double quotes',
-			insertValue: "\""
+			insertValue: '"'
 		},			
 		{
 			insertType: 'small random string',
@@ -209,7 +209,7 @@ describe('Attribute Manipulation', function() {
 
 	prependTests.forEach(({insertType, insertValue})=>{
 		tests.forEach(({ title, key, value }) => {
-			it('should be possible to prepend ' + insertType + " to " + title, async () => {
+			it('should be possible to prepend ' + insertType + ' to ' + title, async () => {
 				let combinedValue = insertValue + value;
 				await pageB.evaluate((key, value) => document.body.setAttribute(key, value),
 					key, combinedValue);

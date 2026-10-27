@@ -25,9 +25,9 @@ describe('Messages', function() {
 
 		pageA = await browserA.newPage();
 		if (util.credentialsProvided) {
-			console.log("Logging in...");
+			console.log('Logging in...');
 			await util.logInToAuth(pageA);
-			console.log("Logged in...");
+			console.log('Logged in...');
 		}
 		pageB = await browserA.newPage();
 		pageC = await browserB.newPage();
@@ -45,7 +45,7 @@ describe('Messages', function() {
 		]);
 
 		let userObject = await pageA.evaluate(() => window.webstrate.user);
-		userId = userObject.username +":" + config.authType;
+		userId = userObject.username +':' + config.authType;
 	});
 
 	after(async () => {

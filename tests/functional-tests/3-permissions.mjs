@@ -72,9 +72,9 @@ describe('Permissions', function() {
 
 		pageA = await browserA.newPage();
 		if (util.credentialsProvided) {
-			console.log("Logging in...");
+			console.log('Logging in...');
 			await util.logInToAuth(pageA);
-			console.log("Logged in...");
+			console.log('Logged in...');
 		}
 		pageB = await browserA.newPage();
 		pageC = await browserB.newPage();
@@ -267,7 +267,7 @@ describe('Permissions', function() {
 					provider: '',
 					permissions: 'r'
 				}
-			], "User in another tab in the same browser did not match");
+			], 'User in another tab in the same browser did not match');
 			assert.deepEqual(remotePermissions, [
 				{
 					username: tabUser.username,
@@ -279,7 +279,7 @@ describe('Permissions', function() {
 					provider: '',
 					permissions: 'r'
 				}
-			], "Anonymous in another browser did not match");			
+			], 'Anonymous in another browser did not match');			
 		});
 
 	it('webstrate.user.permissions should remain unchanged for user', async function() {
@@ -466,18 +466,18 @@ describe('Permissions', function() {
 
 		let fakePermissions = [
 			{
-				username: "anonymous",
-				provider: "",
+				username: 'anonymous',
+				provider: '',
 				permissions: 'rw'
 			}, 
 			{
-				username: "eventuser",
-				provider: "fake",
+				username: 'eventuser',
+				provider: 'fake',
 				permissions: 'rw'
 			}, 
 		];
-		await pageC.evaluate(()=>{webstrate.on("permissionsChanged", (e)=>{window.lastChange = e});});
-		await pageA.evaluate(()=>{webstrate.on("permissionsChanged", (e)=>{window.lastChange = e});});
+		await pageC.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e});});
+		await pageA.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e});});
 		await pageC.evaluate((s) => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify(s)

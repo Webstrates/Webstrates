@@ -99,8 +99,8 @@ exports.onmessage = async (ws, req, data, next) => {
 		case 'cookieUpdate': {
 			const responseObj = { wa: 'reply', token: data.token };
 			try {
-				if (user.userId === 'anonymous:') throw new Error("Must be logged in to set user cookies");
-				if (!data.update) throw new Error("Must be provide update info");
+				if (user.userId === 'anonymous:') throw new Error('Must be logged in to set user cookies');
+				if (!data.update) throw new Error('Must be provide update info');
 				await clientManager.updateCookie(user.userId, webstrateId,
 					data.update.key, data.update.value);
 				responseObj.reply = true;;
@@ -113,7 +113,7 @@ exports.onmessage = async (ws, req, data, next) => {
 			const responseObj = { wa: 'reply', token: data.token };
 			try {
 				if (user.userId === 'anonymous:') throw new Error(
-					"Must be logged in to fetch user cookies");
+					'Must be logged in to fetch user cookies');
 				responseObj.reply = await clientManager.fetchCookie(user.userId, webstrateId, data.cookie);
 			} catch (err){
 				responseObj.error = err.message;

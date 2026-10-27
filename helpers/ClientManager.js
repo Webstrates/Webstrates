@@ -611,7 +611,7 @@ module.exports.announceNewAsset = function(webstrateId, asset) {
  * @public
  */
 module.exports.updateCookie = async function(userId, webstrateId, key, value) {
-	if (!key) throw new Error("Must provide a cookie name key");
+	if (!key) throw new Error('Must provide a cookie name key');
 
 	var updateObj = {
 		wa: 'cookieUpdate',

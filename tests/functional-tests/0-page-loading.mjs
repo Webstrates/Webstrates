@@ -17,7 +17,7 @@ describe('Page Loading', function() {
 		await browser.close();
 	});
 
-	it('should connect and create a webstrate using /'+webstrateId+" within 1 sec", async () => {
+	it('should connect and create a webstrate using /'+webstrateId+' within 1 sec', async () => {
 		browser = await puppeteer.launch();
 		pageA = await browser.newPage();
 		let gotoSuccess = true;

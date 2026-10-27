@@ -23,9 +23,9 @@ describe('Cookies', function() {
 
 		pageA = await browserA.newPage();
 		if (util.credentialsProvided) {
-			console.log("Logging in...");
+			console.log('Logging in...');
 			await util.logInToAuth(pageA);
-			console.log("Logged in...");
+			console.log('Logged in...');
 		}
 		pageB = await browserA.newPage();
 		pageC = await browserB.newPage();

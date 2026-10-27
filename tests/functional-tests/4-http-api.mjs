@@ -79,10 +79,10 @@ describe('HTTP API', function() {
 	});
 
 	it('/new?prototypeUrl=htmlfile creates a valid webstrate', async () => {
-		let testURL = "https://webstrate.projects.cavi.au.dk/testcases/test.html";
+		let testURL = 'https://webstrate.projects.cavi.au.dk/testcases/test.html';
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL,
+		await pageB.goto(config.server_address + 'new?prototypeUrl='+testURL,
 			{ waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
@@ -102,10 +102,10 @@ describe('HTTP API', function() {
 	});
 
 	it('/new?prototypeUrl=zipfile creates a valid webstrate', async () => {
-		let testURL = "https://webstrate.projects.cavi.au.dk/testcases/test.zip";
+		let testURL = 'https://webstrate.projects.cavi.au.dk/testcases/test.zip';
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + "new?prototypeUrl=" + testURL,
+		await pageB.goto(config.server_address + 'new?prototypeUrl=' + testURL,
 			{ waitUntil: 'domcontentloaded' });
 
 		await pageB.waitForFunction(() => window.test, {
@@ -124,7 +124,7 @@ describe('HTTP API', function() {
 	});
 
 	it('ZIP files serve their content (base)', async () => {
-		let assetURL = pageB.url()+"test.zip/json_test.json";
+		let assetURL = pageB.url()+'test.zip/json_test.json';
 		console.log(assetURL);
 
 		pageA = await browser.newPage();
@@ -139,7 +139,7 @@ describe('HTTP API', function() {
 	});
 
 	it('ZIP files serve their content (subdir)', async () => {
-		let assetURL = pageB.url() + "test.zip/directory/json_test2.json";
+		let assetURL = pageB.url() + 'test.zip/directory/json_test2.json';
 
 		pageA = await browser.newPage();
 		await pageA.goto(assetURL, { waitUntil: 'domcontentloaded' });

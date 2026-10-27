@@ -1,5 +1,5 @@
-const js = require("@eslint/js");
-const globals = require("globals");
+const js = require('@eslint/js');
+const globals = require('globals');
 
 module.exports = [
 	// Standalone `ignores` block — the ONLY way to exclude files from linting
@@ -21,16 +21,16 @@ module.exports = [
 	{
 		// languageOptions replaces 'env' and 'parserOptions'
 		languageOptions: {
-			ecmaVersion: "latest",
-			sourceType: "commonjs",
+			ecmaVersion: 'latest',
+			sourceType: 'commonjs',
 
 			globals: {
 				...globals.browser,   // Equivalent to env.browser = true
 				...globals.node,      // Equivalent to env.node = true
 				...globals.commonjs,  // Equivalent to env.commonjs = true
-				"config": true,
-				"serverConfig": true,
-				"APP_PATH": true
+				'config': true,
+				'serverConfig': true,
+				'APP_PATH': true
 			}
 		},
 
@@ -58,7 +58,7 @@ module.exports = [
 			// Only warn when escaping unnecessary characters in a regex (default is error).
 			'no-useless-escape': ['warn'],
 
-			'no-irregular-whitespace': ['warn', { "skipRegExps": true }],
+			'no-irregular-whitespace': ['warn', { 'skipRegExps': true }],
 
 			// Only warn when unreachable code exists (default is error).
 			'no-unreachable': ['warn'],
@@ -77,7 +77,7 @@ module.exports = [
 		// "commonjs" they all died at the first `import` and were never linted.
 		files: ['**/*.mjs'],
 		languageOptions: {
-			sourceType: "module",
+			sourceType: 'module',
 			globals: {
 				...globals.browser,   // puppeteer page.evaluate() runs in browser context
 				...globals.node,

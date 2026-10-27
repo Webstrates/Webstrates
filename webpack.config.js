@@ -111,8 +111,8 @@ const config = {
 	},
 	resolve: {
 		fallback: {
-			"util": false,
-			"setimmediate": require.resolve("setimmediate")
+			'util': false,
+			'setimmediate': require.resolve('setimmediate')
 		}, // webpack < 5 used to include polyfills for node.js core modules by default
 
 		// ShareDB's client pulls in its whole real-time presence subsystem

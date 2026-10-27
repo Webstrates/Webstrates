@@ -109,7 +109,8 @@ describe('Signal streams', function () {
 		await browser.close();
 	});
 
-	it("removing a 'signalStream' listener should remove that listener, not the first registered one",
+	// eslint-disable-next-line max-len
+	it('removing a \'signalStream\' listener should remove that listener, not the first registered one',
 		async () => {
 			await Promise.all([resetCalls(pageA), resetCalls(pageB)]);
 

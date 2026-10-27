@@ -96,7 +96,7 @@ exports.admin = {
 			'createdBy.provider': user.provider,
 		});
 		if (result.deletedCount !== 1) {
-			throw new Error("Unable to delete invite");
+			throw new Error('Unable to delete invite');
 		}
 		return result;
 	}
@@ -116,14 +116,14 @@ exports.invitee = {
 			key: key,
 		}, { projection: { _id: 0 } });
 		if (!invite) {
-			throw new Error("Invalid invitation key");
+			throw new Error('Invalid invitation key');
 		}
 
 		// Check if the inviting admin is still an admin
 		const inviterPermissions = await permissionManager.getUserPermissions(
 			invite.createdBy.username, invite.createdBy.provider, webstrateId);
 		if (!inviterPermissions.includes('a')) {
-			throw new Error("Inviter is no longer admin on the webstrate, invitation invalid");
+			throw new Error('Inviter is no longer admin on the webstrate, invitation invalid');
 		}
 
 		return invite;
@@ -153,7 +153,7 @@ exports.invitee = {
 exports.prepareAPIAccess = async (user)=>{
 	// Ensure user is logged in
 	if (!user || !user.provider) {
-		throw new Error("Must be logged in to handle invites");
+		throw new Error('Must be logged in to handle invites');
 	}
 	
 	// Clean old invite entries
@@ -198,7 +198,7 @@ exports.onmessage = async (ws, req, data, next) => {
 				result = await exports.invitee.acceptInvite(webstrateId, data.options.key, req.user);
 				break;
 			default:
-				throw new Error("Unknown action");
+				throw new Error('Unknown action');
 		}
 
 		return ws.send(JSON.stringify({ ...responseObj, reply: result}));
