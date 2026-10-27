@@ -25,21 +25,21 @@ describe('DOM Manipulation with dataSaved', function() {
 			util.warn('dataSaved() testing on localhost uses emulated ' +
 			'latency which may not be enough to catch all issues...');
 
-            // --- Simulate Network Latency and Throttling ---
-            const clientA = await pageA.createCDPSession();
-            const clientB = await pageB.createCDPSession();
-            await clientA.send('Network.enable');
-            await clientB.send('Network.enable');
-            const networkConditions = {
-                offline: false,
-                downloadThroughput: 500 * 1024 / 8, 
-                uploadThroughput: 250 * 1024 / 8,
-                latency: 200, 
-            };
-            await clientA.send('Network.emulateNetworkConditions', networkConditions);
-            await clientB.send('Network.emulateNetworkConditions', networkConditions);
+			// --- Simulate Network Latency and Throttling ---
+			const clientA = await pageA.createCDPSession();
+			const clientB = await pageB.createCDPSession();
+			await clientA.send('Network.enable');
+			await clientB.send('Network.enable');
+			const networkConditions = {
+				offline: false,
+				downloadThroughput: 500 * 1024 / 8, 
+				uploadThroughput: 250 * 1024 / 8,
+				latency: 200, 
+			};
+			await clientA.send('Network.emulateNetworkConditions', networkConditions);
+			await clientB.send('Network.emulateNetworkConditions', networkConditions);
 
-            util.warn(`Emulating network conditions for pageA and pageB:
+			util.warn(`Emulating network conditions for pageA and pageB:
                        Latency: ${networkConditions.latency}ms
                        Download: ${networkConditions.downloadThroughput * 8 / 1024} Kbps
                        Upload: ${networkConditions.uploadThroughput * 8 / 1024} Kbps`);

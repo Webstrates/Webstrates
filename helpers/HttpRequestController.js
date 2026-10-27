@@ -1103,7 +1103,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		return res.status(409).send(err);
 	}
 
-		if ('prototypeFile' in req.query) {
+	if ('prototypeFile' in req.query) {
 		const action = req.query.id ? `/new?id=${req.query.id}` : '/new';
 		return res.send(`
 			<form method="post" action="${action}" enctype="multipart/form-data">
@@ -1113,7 +1113,7 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		`);
 	}
 
-    if ('prototypeUrl' in req.query) {
+	if ('prototypeUrl' in req.query) {
 		// --- ?prototypeUrl guard ------------------------------------------------
 		//
 		// prototypeUrl lets a client make the server fetch a URL, so the fetch
@@ -1127,89 +1127,89 @@ module.exports.newWebstrateGetRequestHandler = async function(req, res) {
 		//      bytes (maxPrototypeUrlRawSize) and gzip/deflate-decoded bytes
 		//      (maxPrototypeUrlDecodedSize) — so a compressed response cannot
 		//      expand unbounded in memory.
-        try {
+		try {
 			// Fetch remote data (whitelist-checked on every redirect hop).
-            const response = await fetchPrototypeUrl(req.query.prototypeUrl);
-            const contentType = response.headers.get('content-type');
-            const contentDisposition = response.headers.get('content-disposition');
+			const response = await fetchPrototypeUrl(req.query.prototypeUrl);
+			const contentType = response.headers.get('content-type');
+			const contentDisposition = response.headers.get('content-disposition');
 
-            // Handle zip files
-            if (contentType === 'application/zip' ||
+			// Handle zip files
+			if (contentType === 'application/zip' ||
                 contentType === 'application/x-zip-compressed' ||
                 (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.zip$/i))) {
 
 				const arrayBuffer = await response.arrayBuffer();
-                const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Node.js Buffer
+				const buffer = Buffer.from(arrayBuffer); // Convert ArrayBuffer to Node.js Buffer
 
-                return tmp.file((err, filePath, fd, cleanUpCallback) => {
-                    if (err) {
-                        console.error(err);
-                        return res.status(409).send(String(err));
-                    }
-                    return fs.writeFile(filePath, buffer, async err => {
-                        if (err) {
-                            console.error(err);
-                        }
-                        const webstrateId = req.query.id || await generateWebstrateId(req);
-                        try {
-                            await createWebstrateFromZipFile(filePath, webstrateId, req);
-                            res.redirect(`/${webstrateId}/`);
-                        } catch (err) {
-                            console.error(err);
-                            res.status(409).send(String(err));
-                        }
-                        // Tell the tmp package to delete the temporary file it created.
-                        cleanUpCallback();
-                    });
-                });
-            }
+				return tmp.file((err, filePath, fd, cleanUpCallback) => {
+					if (err) {
+						console.error(err);
+						return res.status(409).send(String(err));
+					}
+					return fs.writeFile(filePath, buffer, async err => {
+						if (err) {
+							console.error(err);
+						}
+						const webstrateId = req.query.id || await generateWebstrateId(req);
+						try {
+							await createWebstrateFromZipFile(filePath, webstrateId, req);
+							res.redirect(`/${webstrateId}/`);
+						} catch (err) {
+							console.error(err);
+							res.status(409).send(String(err));
+						}
+						// Tell the tmp package to delete the temporary file it created.
+						cleanUpCallback();
+					});
+				});
+			}
 
-            // Handle HTML files
-            if ((contentType && contentType.startsWith('text/html')) ||
+			// Handle HTML files
+			if ((contentType && contentType.startsWith('text/html')) ||
                 (contentDisposition && contentDisposition.match(/(filename=\*?)(.*)\.html?$/i))) {
-                const body = await response.text();
-                const jsonml = htmlToJsonML(body);
-                const webstrateId = req.query.id || await generateWebstrateId(req);
-                try {
-                    await documentManager.createNewDocument({
-                        webstrateId: webstrateId,
-                        snapshot: {
-                            type: 'http://sharejs.org/types/JSONv0',
-                            data: jsonml
-                        }
-                    });
-                } catch (err) {
-                    console.error(err);
-                    return res.status(409).send(String(err));
-                }
+				const body = await response.text();
+				const jsonml = htmlToJsonML(body);
+				const webstrateId = req.query.id || await generateWebstrateId(req);
+				try {
+					await documentManager.createNewDocument({
+						webstrateId: webstrateId,
+						snapshot: {
+							type: 'http://sharejs.org/types/JSONv0',
+							data: jsonml
+						}
+					});
+				} catch (err) {
+					console.error(err);
+					return res.status(409).send(String(err));
+				}
 
-                delete req.query.prototypeUrl;
-                delete req.query.id;
-                return res.redirect(url.format({
-                    pathname: `/${webstrateId}/`,
-                    query: req.query
-                }));
-            }
+				delete req.query.prototypeUrl;
+				delete req.query.id;
+				return res.redirect(url.format({
+					pathname: `/${webstrateId}/`,
+					query: req.query
+				}));
+			}
 
-            res.status(405).send('Can only prototype from text/html or application/zip sources. ' +
+			res.status(405).send('Can only prototype from text/html or application/zip sources. ' +
                 'Received file with content-type: ' + contentType);
 
-        } catch (err) {
-            console.error(err);
-            return res.status(409).send(String(err));
-        }
-    }
+		} catch (err) {
+			console.error(err);
+			return res.status(409).send(String(err));
+		}
+	}
 
 	var defaultPermissions = permissionManager.getDefaultPermissions(req.user.username,
 		req.user.provider);
 
-			// If the user has no default write permissions, they're not allowed to create documents.
+	// If the user has no default write permissions, they're not allowed to create documents.
 	if (!permissionManager.canWrite(defaultPermissions)) {
 		return res.status(403).send('Write permissions are required to create a new document');
 	}
 
-		const webstrateId = await generateWebstrateId(req);
-		res.redirect(url.format({
+	const webstrateId = await generateWebstrateId(req);
+	res.redirect(url.format({
 		pathname: `/${webstrateId}/`,
 		query: req.query
 	}));

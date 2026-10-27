@@ -98,11 +98,11 @@ describe('Signal streams', function () {
 		await pageA.goto(url, { waitUntil: 'networkidle2' });
 		assert.isTrue(await util.waitForFunction(pageA,
 			() => window.webstrate && window.webstrate.loaded, 10),
-			'page A never finished loading');
+		'page A never finished loading');
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 		assert.isTrue(await util.waitForFunction(pageB,
 			() => window.webstrate && window.webstrate.loaded, 10),
-			'page B never finished loading');
+		'page B never finished loading');
 	});
 
 	after(async () => {
@@ -245,7 +245,7 @@ describe('Signal streams', function () {
 		// Wait for both the count and the connections 
 		await pageA.waitForFunction(() => window.__accepts.length >= 2 &&
 			window.__accepts.every((accept) => accept.stub.isConnected()),
-			{ polling: 100, timeout: 10000 });
+		{ polling: 100, timeout: 10000 });
 		const accepts = await pageA.evaluate(() => window.__accepts.map((accept) => ({
 			peer: accept.peer,
 			connected: accept.stub.isConnected()

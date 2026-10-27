@@ -110,13 +110,13 @@ if (config.basicAuth) {
 
 const wsInstance = expressWs(app, server);
 const middleware = [
-  require('./middleware/dosProtectionMiddleware.js'),
-  require('./middleware/versionMiddleware.js'),
-  require('./middleware/keepAliveMiddleware.js'),
-  require('./middleware/userHistory.js'),
-  require('./middleware/userInvites.js'),
-  require('./middleware/customActionHandlerMiddleware.js'),
-  require('./middleware/shareDbMiddleware.js'),
+	require('./middleware/dosProtectionMiddleware.js'),
+	require('./middleware/versionMiddleware.js'),
+	require('./middleware/keepAliveMiddleware.js'),
+	require('./middleware/userHistory.js'),
+	require('./middleware/userInvites.js'),
+	require('./middleware/customActionHandlerMiddleware.js'),
+	require('./middleware/shareDbMiddleware.js'),
 ];
 
 /**

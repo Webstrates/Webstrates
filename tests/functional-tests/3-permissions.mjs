@@ -32,33 +32,33 @@ const subscribeOnRawSocket = (page, webstrateId) => page.evaluate((id) => new Pr
 // client is logged in, the server drops the first message on a websocket, so we open with a
 // handshake we don't rely on and let the connection settle before submitting the create op.
 const createWebstrateOnRawSocket = (page, webstrateId, username, provider) =>
-page.evaluate((id, username, provider) => new Promise((resolve) => {
-	const data = ['html', { 'data-auth': JSON.stringify([{
-		username: username,
-		provider: provider,
-		permissions: 'rw'
-	}]) }, ['head', {}], ['body', {}]];
-	const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
-	const finish = (error) => {
-		try { socket.close(); } catch (e) {}
-		resolve(error || null);
-	};
-	setTimeout(() => finish('timeout'), 5000);
-	socket.onopen = () => {
-		socket.send(JSON.stringify({ a: 'hs', id: null, protocol: 1, protocolMinor: 2 }));
-		setTimeout(() => socket.send(JSON.stringify({
-			a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
-			create: { type: 'http://sharejs.org/types/JSONv0', data: data }
-		})), 200);
-	};
-	socket.onerror = () => finish('websocket error');
-	socket.onmessage = (event) => {
-		const message = JSON.parse(event.data);
-		if (message.wa || message.a === 'init' || message.a === 'hs') return;
-		finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
+	page.evaluate((id, username, provider) => new Promise((resolve) => {
+		const data = ['html', { 'data-auth': JSON.stringify([{
+			username: username,
+			provider: provider,
+			permissions: 'rw'
+		}]) }, ['head', {}], ['body', {}]];
+		const socket = new window.WebSocket(`ws://${window.location.host}/${id}/`);
+		const finish = (error) => {
+			try { socket.close(); } catch (e) {}
+			resolve(error || null);
+		};
+		setTimeout(() => finish('timeout'), 5000);
+		socket.onopen = () => {
+			socket.send(JSON.stringify({ a: 'hs', id: null, protocol: 1, protocolMinor: 2 }));
+			setTimeout(() => socket.send(JSON.stringify({
+				a: 'op', c: 'webstrates', d: id, v: 0, seq: 1, x: {},
+				create: { type: 'http://sharejs.org/types/JSONv0', data: data }
+			})), 200);
+		};
+		socket.onerror = () => finish('websocket error');
+		socket.onmessage = (event) => {
+			const message = JSON.parse(event.data);
+			if (message.wa || message.a === 'init' || message.a === 'hs') return;
+			finish(message.a === 'op' && !message.error ? null : 'Create failed: ' +
 			JSON.stringify(message));
-	};
-}), webstrateId, username, provider);
+		};
+	}), webstrateId, username, provider);
 
 describe('Permissions', function() {
 	this.timeout(30000);
@@ -282,7 +282,7 @@ describe('Permissions', function() {
 					permissions: 'r'
 				}
 			], "Anonymous in another browser did not match");			
-	});
+		});
 
 	it('webstrate.user.permissions should remain unchanged for user', async function() {
 		if (!util.credentialsProvided) return this.skip();

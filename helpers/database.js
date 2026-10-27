@@ -64,9 +64,9 @@ MongoClient.connect(global.config.db).then(client =>{
 
 
 }).catch(err => {
-        // This catch block WILL fire if there's a connection error or a timeout
-        console.error("[ERROR] MongoDB Connection Failed (or timed out):", err);
-        // Include the full error object for more details
-        console.error("[ERROR] Error details:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
-        throw err; // Re-throw to stop the application if connection is critical
-        });;
+	// This catch block WILL fire if there's a connection error or a timeout
+	console.error("[ERROR] MongoDB Connection Failed (or timed out):", err);
+	// Include the full error object for more details
+	console.error("[ERROR] Error details:", JSON.stringify(err, Object.getOwnPropertyNames(err), 2));
+	throw err; // Re-throw to stop the application if connection is critical
+});;

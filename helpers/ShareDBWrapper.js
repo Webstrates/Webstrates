@@ -172,145 +172,145 @@ share.use(['afterWrite'], (req, next) => {
 share.use(['query', 'submit', 'receive'], async function(req, next) {
 	// Same as above: If req.agent.user hasn't been set, it's the server acting, which we don't care
 	// about (in the sense that we don't want to check for permissions or anything).
-		if (!req.agent.user) return next();
-		if (req.data?.a === "hs") {
-		    return next();
-		}
+	if (!req.agent.user) return next();
+	if (req.data?.a === "hs") {
+		return next();
+	}
 
-		const socketId = req.agent.socketId;
-		let user = req.agent.user;
-		// The message shape varies by action; e.g. a bare {} message leaves both req.data.d
-		// and req.op unset
-		const webstrateId = req.id || (req.data && req.data.d) || (req.op && req.op.d);
-		if (!webstrateId) return next('Invalid message: no document id.');
+	const socketId = req.agent.socketId;
+	let user = req.agent.user;
+	// The message shape varies by action; e.g. a bare {} message leaves both req.data.d
+	// and req.op unset
+	const webstrateId = req.id || (req.data && req.data.d) || (req.op && req.op.d);
+	if (!webstrateId) return next('Invalid message: no document id.');
 
-		// We have already resolved the user from the token in the sessionMiddleware, but we have to do it here as well,
-		// because the webstrateId here may differ from the original req.params.webstrateId, and so may the permissions.
-		if (req.agent.req.params.webstrateId !== webstrateId) {
-			const token = req.agent.req.query.token;
-			user = permissionManager.getUserFromAccessToken(webstrateId, token);
+	// We have already resolved the user from the token in the sessionMiddleware, but we have to do it here as well,
+	// because the webstrateId here may differ from the original req.params.webstrateId, and so may the permissions.
+	if (req.agent.req.params.webstrateId !== webstrateId) {
+		const token = req.agent.req.query.token;
+		user = permissionManager.getUserFromAccessToken(webstrateId, token);
 
-			// The message names a webstrate other than the one the socket connected to, so the
-			// user can only be resolved through an access token for that webstrate. If no valid
-			// token exists, we have no user to check permissions against and must reject the
-			// request with an error reply rather than dereferencing an undefined user.
-			if (!user) {
-				return next('Forbidden');
-			}
-		}
-
-		// u = unsubscribe. Handled here, ahead of the permission check below, because
-		// unsubscribing must never require the very permission it gives up: a client whose
-		// permissions were revoked after subscribing must still be able to stop the ops
-		// streaming to it.
-		if (req.action === 'receive' && req.data?.a === 'u') {
-			clientManager.removeClientFromWebstrate(socketId, webstrateId);
-
-			// Hand the unsubscribe on to ShareDB, it tears down the server-side 
-			// subscription and replies
-			return next(); 
-		}
-
-		if (!config.disableSessionLog && !req.agent.sessionLogged) {
-			await insertSessionLog({
-				sessionId: req.agent.clientId,
-				userId: user.userId,
-				connectTime: req.agent.connectTime,
-				remoteAddress: req.agent.remoteAddress
-			});
-			req.agent.sessionLogged = true;
-		}
-
-		// If the user is creating a new document, it makes no sense to verify whether he has access to
-		// said document.
-		if (req.op && req.op.create) {
-		// But we should check whether the user has access to create documents.
-			if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
-				let err = 'Must be logged in to create a webstrate.';
-				if (Array.isArray(config.loggedInToCreateWebstrates)) {
-					const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
-					err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
-				}
-				return next(err);
-			}
-			return next();
-		}
-
-		const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
-			webstrateId);
-
-		// If the user doesn't have any permissions.
-		if (!permissions) {
+		// The message names a webstrate other than the one the socket connected to, so the
+		// user can only be resolved through an access token for that webstrate. If no valid
+		// token exists, we have no user to check permissions against and must reject the
+		// request with an error reply rather than dereferencing an undefined user.
+		if (!user) {
 			return next('Forbidden');
 		}
+	}
 
-		switch (req.action) {
-			case 'query': // Document request.
-				if (permissionManager.canRead(permissions)) {
-					return next();
-				}
-				break;
-			case 'submit': // Operation submission.
-				if (permissionManager.canWrite(permissions)) {
-					return next();
-				}
-				break;
-			case 'receive':
-				// Check if the incoming update is an op (and not a create op).
-				if (req.data.a === 'op' && Array.isArray(req.data.op)) {
+	// u = unsubscribe. Handled here, ahead of the permission check below, because
+	// unsubscribing must never require the very permission it gives up: a client whose
+	// permissions were revoked after subscribing must still be able to stop the ops
+	// streaming to it.
+	if (req.action === 'receive' && req.data?.a === 'u') {
+		clientManager.removeClientFromWebstrate(socketId, webstrateId);
+
+		// Hand the unsubscribe on to ShareDB, it tears down the server-side 
+		// subscription and replies
+		return next(); 
+	}
+
+	if (!config.disableSessionLog && !req.agent.sessionLogged) {
+		await insertSessionLog({
+			sessionId: req.agent.clientId,
+			userId: user.userId,
+			connectTime: req.agent.connectTime,
+			remoteAddress: req.agent.remoteAddress
+		});
+		req.agent.sessionLogged = true;
+	}
+
+	// If the user is creating a new document, it makes no sense to verify whether he has access to
+	// said document.
+	if (req.op && req.op.create) {
+		// But we should check whether the user has access to create documents.
+		if (!permissionManager.userIsAllowedToCreateWebstrate(user)) {
+			let err = 'Must be logged in to create a webstrate.';
+			if (Array.isArray(config.loggedInToCreateWebstrates)) {
+				const allowedProviders = config.loggedInToCreateWebstrates.join(' or ');
+				err =  `Must be logged in with ${allowedProviders} to create a webstrate.`;
+			}
+			return next(err);
+		}
+		return next();
+	}
+
+	const permissions = await permissionManager.getUserPermissions(user.username, user.provider,
+		webstrateId);
+
+	// If the user doesn't have any permissions.
+	if (!permissions) {
+		return next('Forbidden');
+	}
+
+	switch (req.action) {
+		case 'query': // Document request.
+			if (permissionManager.canRead(permissions)) {
+				return next();
+			}
+			break;
+		case 'submit': // Operation submission.
+			if (permissionManager.canWrite(permissions)) {
+				return next();
+			}
+			break;
+		case 'receive':
+			// Check if the incoming update is an op (and not a create op).
+			if (req.data.a === 'op' && Array.isArray(req.data.op)) {
 				// If the permissions have changed, invalidate the permissions cache and expire
 				// all access tokens.
-					if (changesPermissions(req.data.op)) {
+				if (changesPermissions(req.data.op)) {
 					// If a non-admin attempts to modify the permissions in a document with an admin, we throw
 					// an error.
-						if (!permissions.includes('a') &&
+					if (!permissions.includes('a') &&
 							await permissionManager.webstrateHasAdmin(webstrateId)) {
-							return next('Forbidden, admin permission required');
-						}
-
-						permissionManager.invalidateCachedPermissions(webstrateId);
-						permissionManager.expireAllAccessTokens(webstrateId);
+						return next('Forbidden, admin permission required');
 					}
-				}
 
-				// Anything but a subscribe request.
-				if (req.data.a !== 's') {
-					return next();
+					permissionManager.invalidateCachedPermissions(webstrateId);
+					permissionManager.expireAllAccessTokens(webstrateId);
 				}
+			}
 
-				// Initial document request (s = subscribe).
-				if (req.data.a === 's' && permissionManager.canRead(permissions)) {
+			// Anything but a subscribe request.
+			if (req.data.a !== 's') {
+				return next();
+			}
+
+			// Initial document request (s = subscribe).
+			if (req.data.a === 's' && permissionManager.canRead(permissions)) {
 				// Add client and send "hello" message including client list.
-					clientManager.addClientToWebstrate(socketId, user.userId, webstrateId);
+				clientManager.addClientToWebstrate(socketId, user.userId, webstrateId);
 
-					// Send list of tags to clients if any.
-					documentManager.getTags(webstrateId, function(err, tags) {
-						if (err) console.error(err);
-						if (tags) {
-							clientManager.sendToClient(socketId, {
-								wa: 'tags', d: webstrateId, tags
-							});
-						}
-					});
-
-					// Send list of assets to clients if any.
-					assetManager.getAssets(webstrateId).then((assets)=>{
+				// Send list of tags to clients if any.
+				documentManager.getTags(webstrateId, function(err, tags) {
+					if (err) console.error(err);
+					if (tags) {
 						clientManager.sendToClient(socketId, {
-							wa: 'assets', d: webstrateId, assets
+							wa: 'tags', d: webstrateId, tags
 						});
-					}).catch(err=>{
-						console.error(err);
+					}
+				});
+
+				// Send list of assets to clients if any.
+				assetManager.getAssets(webstrateId).then((assets)=>{
+					clientManager.sendToClient(socketId, {
+						wa: 'assets', d: webstrateId, assets
 					});
+				}).catch(err=>{
+					console.error(err);
+				});
 
-					// No reason to lock up the execution by waiting for the tags and assets to be loaded;
-					// they will be sent when they arrive, so we just return now.
-					return next();
-				}
-				break;
-		}
+				// No reason to lock up the execution by waiting for the tags and assets to be loaded;
+				// they will be sent when they arrive, so we just return now.
+				return next();
+			}
+			break;
+	}
 
-		return next('Forbidden, insufficient permissions');
-	});
+	return next('Forbidden, insufficient permissions');
+});
 
 module.exports.submit = async (webstrateId, op) => {
 	await new Promise((resolve, reject) => {

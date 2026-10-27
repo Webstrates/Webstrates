@@ -156,7 +156,7 @@ describe('Signal streams with more than two clients (#61)', function () {
 			await page.goto(url, { waitUntil: 'networkidle2' });
 			assert.isTrue(await util.waitForFunction(page,
 				() => window.webstrate && window.webstrate.loaded, 10),
-				`page ${i} never finished loading`);
+			`page ${i} never finished loading`);
 		}
 
 		for (const page of pages) {
@@ -272,7 +272,7 @@ describe('Signal streams with more than two clients (#61)', function () {
 			const mesh = await getMesh(page);
 			assert.isTrue(mesh.conns.every((conn) =>
 				conn.peer === departed || conn.connected),
-				'connections between the survivors should have survived the departure');
+			'connections between the survivors should have survived the departure');
 		}
 	});
 });

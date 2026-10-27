@@ -36,7 +36,7 @@ module.exports.deserializeUser = function(userId, next) {
 		delete user.createdAt;
 		next(null, user);
 	}).catch(err=>{
-	    console.error(err);
-	    next && next(err);
+		console.error(err);
+		next && next(err);
 	});
 };

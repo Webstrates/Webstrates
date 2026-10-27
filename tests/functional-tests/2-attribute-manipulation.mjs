@@ -25,95 +25,95 @@ describe('Attribute Manipulation', function() {
 		pageA.on("console", async (msg)=>{
 			const msgType = msg.type();
 			const msgText = msg.text();
-		  
+
 			console.log(`PAGE A CONSOLE [${msgType.toUpperCase()}]: ${msgText}`);
-		  
+
 			if (msgType === 'error') {
-			  const args = msg.args();
-			  if (args.length > 0) {
-				try {
-				  const firstArg = args[0];
-		  
-				  // Check if the first argument is likely an Error object
-				  // We evaluate a function in the page context to get message and stack
-				  const errorDetails = await firstArg.evaluate(obj => {
-					// Check if it's an instance of Error or has error-like properties
-					if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
-					  return {
-						message: obj.message,
-						stack: obj.stack,
-						name: obj.name,
-						// Add any other properties you might be interested in
-					  };
+				const args = msg.args();
+				if (args.length > 0) {
+					try {
+						const firstArg = args[0];
+
+						// Check if the first argument is likely an Error object
+						// We evaluate a function in the page context to get message and stack
+						const errorDetails = await firstArg.evaluate(obj => {
+							// Check if it's an instance of Error or has error-like properties
+							if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
+								return {
+									message: obj.message,
+									stack: obj.stack,
+									name: obj.name,
+									// Add any other properties you might be interested in
+								};
+							}
+							// Fallback if it's not an error object (e.g., just a string or number)
+							return obj;
+						});
+
+						if (errorDetails && typeof errorDetails === 'object' && 'message' in errorDetails) {
+							console.error('  Resolved Error Details:');
+							console.error('    Message:', errorDetails.message);
+							console.error('    Stack:', errorDetails.stack);
+							if (errorDetails.name) {
+								console.error('    Name:', errorDetails.name);
+							}
+						} else {
+							// If it wasn't an Error object after all, just log its resolved value
+							const resolvedArgs = await Promise.all(args.map(arg => arg.jsonValue()));
+							console.error('  Resolved Console Arguments:', resolvedArgs);
+						}
+
+					} catch (e) {
+						console.error('  Error processing console error arguments:', e);
 					}
-					// Fallback if it's not an error object (e.g., just a string or number)
-					return obj;
-				  });
-		  
-				  if (errorDetails && typeof errorDetails === 'object' && 'message' in errorDetails) {
-					console.error('  Resolved Error Details:');
-					console.error('    Message:', errorDetails.message);
-					console.error('    Stack:', errorDetails.stack);
-					if (errorDetails.name) {
-					  console.error('    Name:', errorDetails.name);
-					}
-				  } else {
-					// If it wasn't an Error object after all, just log its resolved value
-					const resolvedArgs = await Promise.all(args.map(arg => arg.jsonValue()));
-					console.error('  Resolved Console Arguments:', resolvedArgs);
-				  }
-		  
-				} catch (e) {
-				  console.error('  Error processing console error arguments:', e);
 				}
-			  }
 			}
 		})
 		pageB.on("console", async (msg)=>{
 			const msgType = msg.type();
 			const msgText = msg.text();
-		  
+
 			console.log(`PAGE B CONSOLE [${msgType.toUpperCase()}]: ${msgText}`);
-		  
+
 			if (msgType === 'error') {
-			  const args = msg.args();
-			  if (args.length > 0) {
-				try {
-				  const firstArg = args[0];
-		  
-				  // Check if the first argument is likely an Error object
-				  // We evaluate a function in the page context to get message and stack
-				  const errorDetails = await firstArg.evaluate(obj => {
-					// Check if it's an instance of Error or has error-like properties
-					if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
-					  return {
-						message: obj.message,
-						stack: obj.stack,
-						name: obj.name,
-						// Add any other properties you might be interested in
-					  };
+				const args = msg.args();
+				if (args.length > 0) {
+					try {
+						const firstArg = args[0];
+
+						// Check if the first argument is likely an Error object
+						// We evaluate a function in the page context to get message and stack
+						const errorDetails = await firstArg.evaluate(obj => {
+							// Check if it's an instance of Error or has error-like properties
+							if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
+								return {
+									message: obj.message,
+									stack: obj.stack,
+									name: obj.name,
+									// Add any other properties you might be interested in
+								};
+							}
+							// Fallback if it's not an error object (e.g., just a string or number)
+							return obj;
+						});
+
+						if (errorDetails && typeof errorDetails === 'object' && 'message' in errorDetails) {
+							console.error('  Resolved Error Details:');
+							console.error('    Message:', errorDetails.message);
+							console.error('    Stack:', errorDetails.stack);
+							if (errorDetails.name) {
+								console.error('    Name:', errorDetails.name);
+							}
+						} else {
+							// If it wasn't an Error object after all, just log its resolved value
+							const resolvedArgs = await Promise.all(args.map(arg => arg.jsonValue()));
+							console.error('  Resolved Console Arguments:', resolvedArgs);
+						}
+
+					} catch (e) {
+						console.error('  Error processing console error arguments:', e);
 					}
-					// Fallback if it's not an error object (e.g., just a string or number)
-					return obj;
-				  });
-		  
-				  if (errorDetails && typeof errorDetails === 'object' && 'message' in errorDetails) {
-					console.error('  Resolved Error Details:');
-					console.error('    Message:', errorDetails.message);
-					console.error('    Stack:', errorDetails.stack);
-					if (errorDetails.name) {
-					  console.error('    Name:', errorDetails.name);
-					}
-				  } else {
-					// If it wasn't an Error object after all, just log its resolved value
-					const resolvedArgs = await Promise.all(args.map(arg => arg.jsonValue()));
-					console.error('  Resolved Console Arguments:', resolvedArgs);
-				  }
-		  
-				} catch (e) {
-				  console.error('  Error processing console error arguments:', e);
 				}
-			  }
 			}
 		})
 	});

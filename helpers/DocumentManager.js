@@ -459,7 +459,7 @@ module.exports.getTags = function(webstrateId, next) {
 			});
 			next(null, tags);
 		}).catch(err=>{
-		    next && next(err);
+			next && next(err);
 		});
 };
 
@@ -533,7 +533,7 @@ module.exports.untagDocument = function(webstrateId, { version, tag }, next) {
 		}
 		next && next();
 	}).catch(err=>{
-	    next && next(err);
+		next && next(err);
 	});
 };
 
@@ -577,9 +577,9 @@ async function transformDocumentToVersion({ webstrateId, snapshot, version }) {
  */
 function getTagBeforeVersion(webstrateId, version, next) {
 	db.tags.find({ webstrateId, v: { $lte: version } }, { projection: { _id: 0 } }).sort({ v : -1 }).limit(1).toArray().then(tags=>{
-	    return next && next(null, tags[0]);
+		return next && next(null, tags[0]);
 	}).catch(err=>{
-	    return next && next(err);
+		return next && next(err);
 	});
 }
 

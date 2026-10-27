@@ -78,7 +78,7 @@ describe('Invites', function () {
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
 			(v) => window.webstrate && window.webstrate.version > v, 25, version),
-			'data-auth operation did not commit in time');
+		'data-auth operation did not commit in time');
 	});
 
 	it('User B should not have access to the webstrate', async function () {
@@ -227,7 +227,7 @@ describe('Invites', function () {
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
 			(v) => window.webstrate && window.webstrate.version > v, 25, version),
-			'data-auth operation did not commit in time');
+		'data-auth operation did not commit in time');
 
 		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`, { waitUntil: 'networkidle2' });
 		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invite via HTTP API');
@@ -271,7 +271,7 @@ describe('Invites', function () {
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
 			(v) => window.webstrate && window.webstrate.version > v, 25, version),
-			'data-auth operation did not commit in time');
+		'data-auth operation did not commit in time');
 
 		await pageB.goto(url, { waitUntil: 'networkidle2' });
 
@@ -319,7 +319,7 @@ describe('Invites', function () {
 		});
 		assert.isTrue(await util.waitForFunction(pageA,
 			(v) => window.webstrate && window.webstrate.version > v, 25, version),
-			'data-auth operation did not commit in time');
+		'data-auth operation did not commit in time');
 
 		// pageB's reload can be served a snapshot cache entry that predates the
 		// permissions writes, and the assertions below read the data-auth attribute
