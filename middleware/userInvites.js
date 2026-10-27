@@ -13,14 +13,17 @@ exports.admin = {
      * @throws {Error} If the user does not have admin permissions.
      */
 	checkIsAdmin: async (webstrateId, user) => {
-		const currentUserPermissions = await permissionManager.getUserPermissions(user.username, user.provider, webstrateId);
+		const currentUserPermissions = await permissionManager.getUserPermissions(
+			user.username, user.provider, webstrateId);
 		if (!currentUserPermissions.includes('a')) {
+		// eslint-disable-next-line max-len
 			throw new Error(`Need admin permissions to manage invites. User only has ${currentUserPermissions} on ${webstrateId}.`);
 		}
 	},
 
 	/**
-     * Creates a new invite key for the given webstrate with specified permissions and maximum lifetime.
+     * Creates a new invite key for the given webstrate with specified permissions and
+     * maximum lifetime.
      * @param {string} webstrateId The ID of the webstrate.
      * @param {object} [options] Options: permissions (defaults to read-only) and maxAge in
      *     seconds (defaults to one week, capped at the one-month limit).

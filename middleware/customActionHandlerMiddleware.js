@@ -112,7 +112,8 @@ exports.onmessage = async (ws, req, data, next) => {
 		case 'cookieFetch': {
 			const responseObj = { wa: 'reply', token: data.token };
 			try {
-				if (user.userId === 'anonymous:') throw new Error("Must be logged in to fetch user cookies");
+				if (user.userId === 'anonymous:') throw new Error(
+					"Must be logged in to fetch user cookies");
 				responseObj.reply = await clientManager.fetchCookie(user.userId, webstrateId, data.cookie);
 			} catch (err){
 				responseObj.error = err.message;
@@ -268,7 +269,8 @@ exports.onmessage = async (ws, req, data, next) => {
 			if (hasVersion !== hasTag) {
 				const source = `${user.userId} (${req.remoteAddress})`;
 				try {
-					let newVersion = await documentManager.restoreDocument({ webstrateId, tag, version }, source);
+					let newVersion = await documentManager.restoreDocument(
+						{ webstrateId, tag, version }, source);
 
 					// Also restore assets, so the restored version shows the old assets, not the new ones.
 					await assetManager.restoreAssets({ webstrateId, version, tag, newVersion });

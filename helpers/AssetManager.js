@@ -66,7 +66,8 @@ module.exports.assetUploadHandler = async function(req, res) {
 		}
 		
 		try {
-			let assetRecords = await module.exports.addAssets(req.params.webstrateId, req.files, searchables, source);
+			let assetRecords = await module.exports.addAssets(req.params.webstrateId, req.files,
+				searchables, source);
 			res.json(assetRecords.length === 1 ? assetRecords[0] : assetRecords);
 		} catch (err){
 			console.error(err);
@@ -304,7 +305,8 @@ module.exports.restoreAssets = async function ({ webstrateId, version, tag, newV
 			// If the asset isn't deleted now, but was deleted then, we need to mark it as deleted.
 			assetsToMarkDeleted.push(assetName);
 		} else if (!isDeletedNow && !wasDeletedThen && assetThen.fileHash != assetNow.fileHash) {
-			// If the asset exists at both versions, but the file hash is different, we need to restore it.
+			// If the asset exists at both versions, but the file hash is different, we need
+			// to restore it.
 			assetsToRestore[assetName] = Object.assign({}, assetThen);
 		}
 	}
@@ -471,7 +473,8 @@ module.exports.addAsset = async function(webstrateId, asset, searchable, source)
 		}
 	}
 
-	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded', asset.filename + ' ' + source);
+	await util.promisify(documentManager.sendNoOp)(webstrateId, 'assetAdded',
+		asset.filename + ' ' + source);
 	const version = await documentManager.getDocumentVersion(webstrateId);
 	await db.assets.insertOne({
 		webstrateId,

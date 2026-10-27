@@ -341,7 +341,8 @@ describe('Compressed snapshot cache (compressedSnapshots)', function () {
 				}
 				// If any op-to-op gap exceeded 250 ms, the 300 ms debounce could
 				// have fired mid-burst on its own — the asserts below would then
-				// misattribute a quiet-window build to the staleness bound. The op round-trips themselves can
+				// misattribute a quiet-window build to the staleness bound. The op round-trips
+				// themselves can
 				// stretch past the window — a property of the machine, not of the
 				// cache — so skip rather than report a bogus failure.
 				if (maxGap > 250) {

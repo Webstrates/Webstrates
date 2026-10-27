@@ -37,16 +37,17 @@ describe('Copying', function() {
 
 	let redirectedUrl;
 	const randomBody = util.randomString();
-	it('?copy should redirect user to new random webstrateId matching ' + util.webstrateIdRegex, async () => {
-		await page.goto(url + '?copy', { waitUntil: 'networkidle2' });
+	it('?copy should redirect user to new random webstrateId matching ' + util.webstrateIdRegex,
+		async () => {
+			await page.goto(url + '?copy', { waitUntil: 'networkidle2' });
 
-		// networkidle2 can resolve while the ?copy redirect is still in flight on a busy
-		// machine — poll until the URL has actually landed on the new webstrate.
-		const regex = '^' + util.escapeRegExp(config.server_address) + util.webstrateIdRegex + '/$';
-		await util.waitFor(() => new RegExp(regex).test(page.url()), 15);
-		redirectedUrl = page.url();
-		assert.match(redirectedUrl, new RegExp(regex));
-	});
+			// networkidle2 can resolve while the ?copy redirect is still in flight on a busy
+			// machine — poll until the URL has actually landed on the new webstrate.
+			const regex = '^' + util.escapeRegExp(config.server_address) + util.webstrateIdRegex + '/$';
+			await util.waitFor(() => new RegExp(regex).test(page.url()), 15);
+			redirectedUrl = page.url();
+			assert.match(redirectedUrl, new RegExp(regex));
+		});
     
 	it('body of new webstrate should match body of old webstrate', async () => {
 		// The copy's body syncs through the server - wait for it 

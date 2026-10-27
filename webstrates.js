@@ -226,7 +226,8 @@ if (config.auth) {
 		}
 	}));
 
-	// Work around passport >0.5.3 open issue needing session.regenerate which is not provided by client-sessions
+	// Work around passport >0.5.3 open issue needing session.regenerate which is not
+	// provided by client-sessions
 	// https://github.com/jaredhanson/passport/issues/904
 	app.use(function (request, response, next) {
 		if (request.session && !request.session.regenerate) {
@@ -249,7 +250,9 @@ if (config.auth) {
 		let PassportStrategy, passportInstance;
 
 		if (key === 'test') {
-			console.warn('The test auth provider is only for testing purposes and should not be used in production.');
+			console.warn(
+				'The test auth provider is only for testing purposes and should not be used in production.'
+			);
 			PassportStrategy = require('passport-local').Strategy;
 			passportInstance = new PassportStrategy({
 				usernameField: 'username',

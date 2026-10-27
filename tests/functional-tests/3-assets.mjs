@@ -10,9 +10,11 @@ import fs from 'fs';
 import path from 'path';
 import { ZipArchive } from 'archiver';
 
+// eslint-disable-next-line max-len
 const IMAGE_DATA = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFzGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4KPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNS41LjAiPgogPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgeG1sbnM6ZXhpZj0iaHR0cDovL25zLmFkb2JlLmNvbS9leGlmLzEuMC8iCiAgICB4bWxuczpwaG90b3Nob3A9Imh0dHA6Ly9ucy5hZG9iZS5jb20vcGhvdG9zaG9wLzEuMC8iCiAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYvMS4wLyIKICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIKICAgIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIgogICAgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIKICAgZXhpZjpDb2xvclNwYWNlPSIxIgogICBleGlmOlBpeGVsWERpbWVuc2lvbj0iMzIiCiAgIGV4aWY6UGl4ZWxZRGltZW5zaW9uPSIzMiIKICAgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIKICAgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIgogICB0aWZmOkltYWdlTGVuZ3RoPSIzMiIKICAgdGlmZjpJbWFnZVdpZHRoPSIzMiIKICAgdGlmZjpSZXNvbHV0aW9uVW5pdD0iMiIKICAgdGlmZjpYUmVzb2x1dGlvbj0iNzIvMSIKICAgdGlmZjpZUmVzb2x1dGlvbj0iNzIvMSIKICAgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNS0w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`;
 
-const uploadAssetHelper = async (page, testAsset, searchable = false, { expectFailure = false } = {}) => {
+const uploadAssetHelper =
+	async (page, testAsset, searchable = false, { expectFailure = false } = {}) => {
 	// The upload API only exists on a loaded page, and the server rejects uploads to
 	// webstrates whose document has not made it to the database yet: a fresh webstrate's
 	// document is created by the client over the websocket, which a page gated on
@@ -20,45 +22,45 @@ const uploadAssetHelper = async (page, testAsset, searchable = false, { expectFa
 	// acknowledged every op the client has submitted — the document creation included — so
 	// the document is durably in place when it resolves. The wait is bounded: a server that
 	// never acknowledges the creation should fail the test with a reason, not hang it.
-	assert.isTrue(await util.waitForFunction(page,
-		() => window.webstrate && window.webstrate.loaded, 15),
-	'Timed out waiting for the webstrate to load before uploading');
-	await Promise.race([
-		page.evaluate(() => window.webstrate.dataSaved()),
-		util.sleep(15).then(() => {
-			throw new Error('Timed out waiting for the webstrate document to be acknowledged');
-		})
-	]);
+		assert.isTrue(await util.waitForFunction(page,
+			() => window.webstrate && window.webstrate.loaded, 15),
+		'Timed out waiting for the webstrate to load before uploading');
+		await Promise.race([
+			page.evaluate(() => window.webstrate.dataSaved()),
+			util.sleep(15).then(() => {
+				throw new Error('Timed out waiting for the webstrate document to be acknowledged');
+			})
+		]);
 
-	const fileChooserPromise = page.waitForFileChooser();
+		const fileChooserPromise = page.waitForFileChooser();
 
-	// The uploadAsset callback is error-first: it also fires when the server rejects the
-	// upload, passing the server's error. Record the error instead of a bare flag, so a
-	// rejected upload fails the test with its actual reason rather than surfacing later
-	// as a missing asset.
-	await page.evaluate((searchable) => {
-		window.testAssetUploaded = false;
-		window.webstrate.uploadAsset((err) => {
-			window.testAssetUploaded = err ? String(err) : true;
-		}, { searchable });
-	}, searchable);
+		// The uploadAsset callback is error-first: it also fires when the server rejects the
+		// upload, passing the server's error. Record the error instead of a bare flag, so a
+		// rejected upload fails the test with its actual reason rather than surfacing later
+		// as a missing asset.
+		await page.evaluate((searchable) => {
+			window.testAssetUploaded = false;
+			window.webstrate.uploadAsset((err) => {
+				window.testAssetUploaded = err ? String(err) : true;
+			}, { searchable });
+		}, searchable);
 
-	const fileChooser = await fileChooserPromise;
-	await fileChooser.accept([testAsset]);
+		const fileChooser = await fileChooserPromise;
+		await fileChooser.accept([testAsset]);
 
-	// Poll on a fixed interval rather than the default (requestAnimationFrame), which never
-	// fires in background tabs — i.e. whenever a page shares its browser with other pages.
-	await page.waitForFunction(() => {
-		return window.testAssetUploaded !== false;
-	}, { timeout: 5000, polling: 100 });
+		// Poll on a fixed interval rather than the default (requestAnimationFrame), which never
+		// fires in background tabs — i.e. whenever a page shares its browser with other pages.
+		await page.waitForFunction(() => {
+			return window.testAssetUploaded !== false;
+		}, { timeout: 5000, polling: 100 });
 
-	const outcome = await page.evaluate(() => window.testAssetUploaded);
-	if (!expectFailure) {
-		assert.isTrue(outcome, `Uploading the asset failed: ${outcome}`);
+		const outcome = await page.evaluate(() => window.testAssetUploaded);
+		if (!expectFailure) {
+			assert.isTrue(outcome, `Uploading the asset failed: ${outcome}`);
+		}
+
+		return outcome;
 	}
-
-	return outcome;
-}
 
 const deleteAssetHelper = async (page, fileName) => {
 	await page.evaluate(async (fileName) => {
@@ -110,7 +112,8 @@ describe('Assets', function () {
 
 		// Create a simple CSV file for searchable assets
 		testCsvFile = path.join(testDir, 'test.csv');
-		fs.writeFileSync(testCsvFile, 'name,age,city\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago');
+		fs.writeFileSync(testCsvFile,
+			'name,age,city\nJohn,25,New York\nJane,30,Los Angeles\nBob,35,Chicago');
 
 		// Create a CSV file with more rows than the default search limit (10), so that the
 		// total number of matching records and the number of records on a page differ.
@@ -187,25 +190,31 @@ describe('Assets', function () {
 		assert.equal(assets.length, 1, 'No assets found after upload');
 		assert.equal(assets[0].fileName, 'test.txt', 'Uploaded asset file name does not match');
 		assert.equal(assets[0].mimeType, 'text/plain', 'Uploaded asset file type does not match');
-		assert.hasAllKeys(assets[0], ['v', 'fileName', 'fileSize', 'mimeType', 'identifier', 'fileHash'], 'Uploaded asset does not have all expected properties');
+		assert.hasAllKeys(assets[0],
+			['v', 'fileName', 'fileSize', 'mimeType', 'identifier', 'fileHash'],
+			'Uploaded asset does not have all expected properties');
 
 		// Initial version is 1, after uploading an asset it should be 2
 		const version = await pageA.evaluate(() => window.webstrate.version);
 		assert.equal(version, 2);
 	});
 	
-	it('Assets without an extension and only numbers as the name should not be uploadable', async () => {
-		const outcome = await uploadAssetHelper(pageA, testNumericFile, false, { expectFailure: true });
+	it('Assets without an extension and only numbers as the name should not be uploadable',
+		async () => {
+			const outcome = await uploadAssetHelper(pageA, testNumericFile, false,
+				{ expectFailure: true });
 
-		assert.equal(outcome, 'File name cannot be only numbers.',
-			'Uploading a file with only numbers as its name should be rejected with a descriptive error');
+			assert.equal(outcome, 'File name cannot be only numbers.',
+				// eslint-disable-next-line max-len
+				'Uploading a file with only numbers as its name should be rejected with a descriptive error');
 
-		const assets = await pageA.evaluate(async () => {
-			return await window.webstrate.assets;
+			const assets = await pageA.evaluate(async () => {
+				return await window.webstrate.assets;
+			});
+
+			assert.equal(assets.length, 1,
+				'Asset without an extension and only numbers as the name should not be uploadable');
 		});
-
-		assert.equal(assets.length, 1, 'Asset without an extension and only numbers as the name should not be uploadable');
-	});
 
 	it('Assets should be accessible from their URL', async () => {
 		await pageA.goto(urlA + '/test.txt', { waitUntil: 'networkidle2' });
@@ -213,7 +222,8 @@ describe('Assets', function () {
 		const content = await pageA.evaluate(() => {
 			return document.body.textContent;
 		});
-		assert.equal(content, textFileContent, 'Content of the asset does not match the expected content');
+		assert.equal(content, textFileContent,
+			'Content of the asset does not match the expected content');
 	});
 
 	it('Assets should not be accessible at version 0, where none exist yet', async () => {
@@ -231,9 +241,12 @@ describe('Assets', function () {
 			};
 		}, urlA);
 
-		assert.equal(versioned.atUploadStatus, 200, 'Asset should be accessible at the version it was uploaded at');
-		assert.equal(versioned.atUploadBody, textFileContent, 'Asset at its upload version does not match the expected content');
-		assert.equal(versioned.atZeroStatus, 404, 'Version 0 should not serve the asset (nothing exists at version 0 yet)');
+		assert.equal(versioned.atUploadStatus, 200,
+			'Asset should be accessible at the version it was uploaded at');
+		assert.equal(versioned.atUploadBody, textFileContent,
+			'Asset at its upload version does not match the expected content');
+		assert.equal(versioned.atZeroStatus, 404,
+			'Version 0 should not serve the asset (nothing exists at version 0 yet)');
 		assert.isNull(versioned.atZeroBody, 'Version 0 should not have served anything');
 	});
 
@@ -256,14 +269,21 @@ describe('Assets', function () {
 		const assetsHTTPAPI = JSON.parse(content).sort((a, b) => a.v - b.v);
 
 		assert.deepEqual(assetsAPI, assetsHTTPAPI, 'Assets from API and HTTP API do not match');
-		assert.equal(assetsAPI.length, 4, 'The number of assets in the list does not match the number of uploaded assets');
+		assert.equal(assetsAPI.length, 4,
+			'The number of assets in the list does not match the number of uploaded assets');
 
-		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.txt'), 'List of assets does not include the text file');
-		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv'), 'List of assets does not include the CSV file');
-		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.png'), 'List of assets does not include the image file');
-		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.zip'), 'List of assets does not include the ZIP file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.txt'),
+			'List of assets does not include the text file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv'),
+			'List of assets does not include the CSV file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.png'),
+			'List of assets does not include the image file');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.zip'),
+			'List of assets does not include the ZIP file');
 
-		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv' && asset.searchable === true), 'Searchable CSV file is not marked as searchable');
+		assert.isTrue(assetsAPI.some(asset => asset.fileName === 'test.csv' &&
+			asset.searchable === true),
+		'Searchable CSV file is not marked as searchable');
 	});
 
 	it('The same asset should have the same identifier across different webstrates', async () => {
@@ -288,7 +308,8 @@ describe('Assets', function () {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
 		});
 
-		assert.equal(textFileAssetA.identifier, textFileAssetB.identifier, 'The identifiers of the same asset in different webstrates do not match');
+		assert.equal(textFileAssetA.identifier, textFileAssetB.identifier,
+			'The identifiers of the same asset in different webstrates do not match');
 	});
 
 	it('Assets should be able to be deleted', async () => {
@@ -307,6 +328,7 @@ describe('Assets', function () {
 		assert.isNumber(textFileAssetB.deletedAt, 'Asset was not deleted successfully');
 	});
 
+	// eslint-disable-next-line max-len
 	it('Assets with the same identifier should still be accessible after deletion on another webstrate', async () => {
 		await pageA.reload({ waitUntil: 'networkidle2' });
 
@@ -324,7 +346,8 @@ describe('Assets', function () {
 			return window.webstrate.assets.find(asset => asset.fileName === 'test.txt');
 		});
 
-		assert.isDefined(textFileAssetA, 'Asset should still be defined on webstrate A after deletion on webstrate B');
+		assert.isDefined(textFileAssetA,
+			'Asset should still be defined on webstrate A after deletion on webstrate B');
 	});
 
 	it('Files within ZIP archives should be listable using the HTTP API', async () => {
@@ -337,9 +360,12 @@ describe('Assets', function () {
 		try {
 			const assetsList = JSON.parse(content);
 			assert.isArray(assetsList, 'Content of the ZIP archive should be a JSON array');
-			assert.include(assetsList, 'test.txt', 'Content of the ZIP archive does not contain the expected file');
-			assert.include(assetsList, 'test.csv', 'Content of the ZIP archive does not contain the expected file');
-			assert.include(assetsList, 'test.png', 'Content of the ZIP archive does not contain the expected file');
+			assert.include(assetsList, 'test.txt',
+				'Content of the ZIP archive does not contain the expected file');
+			assert.include(assetsList, 'test.csv',
+				'Content of the ZIP archive does not contain the expected file');
+			assert.include(assetsList, 'test.png',
+				'Content of the ZIP archive does not contain the expected file');
 		} catch (error) {
 			assert.fail('Content of the ZIP archive is not a valid JSON array: ' + error.message);
 		}
@@ -351,7 +377,8 @@ describe('Assets', function () {
 		const content = await pageA.evaluate(() => {
 			return document.body.textContent;
 		});
-		assert.equal(content, textFileContent, 'Content of the file within ZIP archive does not match the expected content');
+		assert.equal(content, textFileContent,
+			'Content of the file within ZIP archive does not match the expected content');
 	});
 
 	it('Searchable CSV assets should be searchable', async () => {
@@ -378,6 +405,7 @@ describe('Assets', function () {
 		}, 'Search result does not match expected data');
 	});
 
+	// eslint-disable-next-line max-len
 	it('Searching a searchable CSV asset should return the total number of matching records, not just the page', async () => {
 		await uploadAssetHelper(pageA, testNumbersCsvFile, true);
 
@@ -393,10 +421,13 @@ describe('Assets', function () {
 			});
 		});
 
-		assert.isUndefined(firstPage.err, 'Searching with more matches than the limit should not throw an error');
+		assert.isUndefined(firstPage.err,
+			'Searching with more matches than the limit should not throw an error');
 		assert.isArray(firstPage.result, 'Search result should be an array');
-		assert.equal(firstPage.result.length, 10, 'The first page should hold the default limit of 10 records');
-		assert.equal(firstPage.count, 15, 'The count should be the total number of matching records (15), not the page size');
+		assert.equal(firstPage.result.length, 10,
+			'The first page should hold the default limit of 10 records');
+		assert.equal(firstPage.count, 15,
+			'The count should be the total number of matching records (15), not the page size');
 
 		// Explicit limit and skip page through the same matches without changing the count.
 		const lastPage = await pageA.evaluate(() => {
@@ -411,9 +442,12 @@ describe('Assets', function () {
 
 		assert.isUndefined(lastPage.err, 'Searching with limit and skip should not throw an error');
 		assert.isArray(lastPage.result, 'Search result should be an array');
-		assert.equal(lastPage.result.length, 5, 'The last page should hold the 5 records left after skipping 10');
-		assert.deepEqual(lastPage.result.map(row => row.n), [11, 12, 13, 14, 15], 'The last page should hold the records the skip left over');
-		assert.equal(lastPage.count, 15, 'The count should still be the total number of matching records (15)');
+		assert.equal(lastPage.result.length, 5,
+			'The last page should hold the 5 records left after skipping 10');
+		assert.deepEqual(lastPage.result.map(row => row.n), [11, 12, 13, 14, 15],
+			'The last page should hold the records the skip left over');
+		assert.equal(lastPage.count, 15,
+			'The count should still be the total number of matching records (15)');
 	});
 
 	it('An empty searchable CSV should upload and be searchable with no results', async () => {
@@ -454,7 +488,8 @@ describe('Assets', function () {
 		});
 
 		assert.isDefined(err, 'Searching for a deleted asset should throw an error');
-		assert.equal(err, 'Asset not found', 'Error message does not match expected error for deleted asset');
+		assert.equal(err, 'Asset not found',
+			'Error message does not match expected error for deleted asset');
 		assert.isArray(result, 'Search result should be an array');
 		assert.equal(result.length, 0, 'Search result should be empty for deleted asset');
 		assert.equal(count, 0, 'Search count should be 0 for deleted asset');
@@ -463,7 +498,8 @@ describe('Assets', function () {
 	it('Restoring an older version should restore assets to that version', async () => {
 		await deleteAssetHelper(pageA, 'test.txt');
 
-		// The delete helper ends by reloading the page. The asset list lags that reload's networkidle2 over the websocket:
+		// The delete helper ends by reloading the page. The asset list lags that reload's networkidle2
+		// over the websocket:
 		// webstrate.assets is an empty object until the list arrives. Gate the read on the
 		// list having become an array, or the find()s below run on an empty object.
 		assert.isTrue(await util.waitForFunction(pageA,
@@ -476,10 +512,14 @@ describe('Assets', function () {
 		const assetsBeforeRestore = await pageA.evaluate(() => window.webstrate.assets);
 
 		// The image and ZIP files should still be there, the CSV and text files should be deleted
-		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.png').deletedAt, undefined, 'Image asset should not be deleted before restore');
-		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.zip').deletedAt, undefined, 'ZIP asset should not be deleted before restore');
-		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt, 'CSV asset should be deleted before restore');
-		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.txt').deletedAt, 'Text asset should be deleted before restore');
+		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.png').deletedAt, undefined,
+			'Image asset should not be deleted before restore');
+		assert.equal(assetsBeforeRestore.find(a => a.fileName === 'test.zip').deletedAt, undefined,
+			'ZIP asset should not be deleted before restore');
+		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt,
+			'CSV asset should be deleted before restore');
+		assert.isNumber(assetsBeforeRestore.find(a => a.fileName === 'test.txt').deletedAt,
+			'Text asset should be deleted before restore');
 
 		// Restore to version 2 where only the text file was there
 		// Avoid puppeteer's goto hang on redirects to cached documents.
@@ -498,12 +538,21 @@ describe('Assets', function () {
 
 		const assetsAfterRestore = await pageA.evaluate(() => window.webstrate.assets);
 
-		// The image and ZIP files should be deleted at the current version, the CSV file should still be deleted, the text file was restored
-		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.png').deletedAt, versionAfterRestore, 'Image asset should be deleted after restore at current version');
-		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.zip').deletedAt, versionAfterRestore, 'ZIP asset should be deleted after restore at current version');
-		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.csv').deletedAt, assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt, 'CSV asset deletedAt should be unchanged after restore');
-		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).deletedAt, undefined, 'Text asset should not be deleted after restore');
-		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' && a.v === versionAfterRestore).restoredFrom, 2, 'Text asset should have a restoredFrom property pointing to version 2');
+		// The image and ZIP files should be deleted at the current version, the CSV file should still
+		// be deleted, the text file was restored
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.png').deletedAt,
+			versionAfterRestore, 'Image asset should be deleted after restore at current version');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.zip').deletedAt,
+			versionAfterRestore, 'ZIP asset should be deleted after restore at current version');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.csv').deletedAt,
+			assetsBeforeRestore.find(a => a.fileName === 'test.csv').deletedAt,
+			'CSV asset deletedAt should be unchanged after restore');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' &&
+			a.v === versionAfterRestore).deletedAt, undefined,
+		'Text asset should not be deleted after restore');
+		assert.equal(assetsAfterRestore.find(a => a.fileName === 'test.txt' &&
+			a.v === versionAfterRestore).restoredFrom, 2,
+		'Text asset should have a restoredFrom property pointing to version 2');
 	});
 
 	it('Deleting an asset should require write permissions', async function() {
@@ -986,7 +1035,8 @@ const makeZip = (entries) => new Promise((resolve, reject) => {
 const importZip = (zip, webstrateId) => {
 	const form = new FormData();
 	form.append('file', new Blob([zip]), 'import.zip');
-	return fetch(`${config.server_address}new?apiCall&id=${webstrateId}`, { method: 'POST', body: form });
+	return fetch(`${config.server_address}new?apiCall&id=${webstrateId}`,
+		{ method: 'POST', body: form });
 };
 
 describe('ZIP import', function () {
@@ -1017,22 +1067,23 @@ describe('ZIP import', function () {
 			'The imported webstrate should contain the index.html document');
 	});
 
-	it('ZIP files expanding beyond the uncompressed size limit should be rejected (zip bombs)', async () => {
-		const webstrateId = 'test-' + util.randomString();
-		// 300 MB of zeros deflates to ~1.3 MB — a ~230:1 zip bomb in a small archive.
-		const zip = await makeZip([
-			['bomb.bin', Buffer.alloc(300 * 1024 * 1024)],
-			['index.html', '<html><body>zip bomb test</body></html>']
-		]);
+	it('ZIP files expanding beyond the uncompressed size limit should be rejected (zip bombs)',
+		async () => {
+			const webstrateId = 'test-' + util.randomString();
+			// 300 MB of zeros deflates to ~1.3 MB — a ~230:1 zip bomb in a small archive.
+			const zip = await makeZip([
+				['bomb.bin', Buffer.alloc(300 * 1024 * 1024)],
+				['index.html', '<html><body>zip bomb test</body></html>']
+			]);
 
-		const response = await importZip(zip, webstrateId);
-		assert.equal(response.status, 409, 'Importing a zip bomb should be rejected');
-		assert.include((await response.json()).error, 'uncompressed size',
-			'The rejection should explain the uncompressed size limit');
+			const response = await importZip(zip, webstrateId);
+			assert.equal(response.status, 409, 'Importing a zip bomb should be rejected');
+			assert.include((await response.json()).error, 'uncompressed size',
+				'The rejection should explain the uncompressed size limit');
 
-		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
-		assert.equal(docResponse.status, 404, 'No webstrate should be created from a zip bomb');
-	});
+			const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
+			assert.equal(docResponse.status, 404, 'No webstrate should be created from a zip bomb');
+		});
 
 	it('ZIP files containing too many entries should be rejected', async () => {
 		const webstrateId = 'test-' + util.randomString();
@@ -1043,11 +1094,13 @@ describe('ZIP import', function () {
 		]));
 
 		const response = await importZip(zip, webstrateId);
-		assert.equal(response.status, 409, 'Importing an archive with too many entries should be rejected');
+		assert.equal(response.status, 409,
+			'Importing an archive with too many entries should be rejected');
 		assert.include((await response.json()).error, 'too many entries',
 			'The rejection should explain the entry limit');
 
 		const docResponse = await fetch(`${config.server_address}${webstrateId}/?json`);
-		assert.equal(docResponse.status, 404, 'No webstrate should be created from an archive with too many entries');
+		assert.equal(docResponse.status, 404,
+			'No webstrate should be created from an archive with too many entries');
 	});
 });

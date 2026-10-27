@@ -88,31 +88,34 @@ describe('Invites', function () {
 		assert.equal(result.status(), 403);
 	});
 
-	it('Creating an invitation with a time limit of 2 seconds should be available immediately', async function () {
-		if (config.authType !== 'test') return this.skip();
+	it('Creating an invitation with a time limit of 2 seconds should be available immediately',
+		async function () {
+			if (config.authType !== 'test') return this.skip();
 
-		currentInvitation = await pageA.evaluate(async () => {
-			return await window.webstrate.user.invites.create({
-				permissions: 'r',
-				maxAge: '2'
+			currentInvitation = await pageA.evaluate(async () => {
+				return await window.webstrate.user.invites.create({
+					permissions: 'r',
+					maxAge: '2'
+				});
 			});
-		});
 
-		assert.exists(currentInvitation, 'No invitation generated');
-		assert.exists(currentInvitation.key, 'Invitation is missing a key');
-	});
+			assert.exists(currentInvitation, 'No invitation generated');
+			assert.exists(currentInvitation.key, 'Invitation is missing a key');
+		});
 
 	it('Valid invitation should be in list of currently active invitations', async function () {
 		if (config.authType !== 'test') return this.skip();
 
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Invitation not in invites.get() list');
+		assert.exists(invitations.find(i => i.key === currentInvitation.key),
+			'Invitation not in invites.get() list');
 	});
 
 	it('Valid invitation should pass the validity check and return data', async function () {
 		if (config.authType !== 'test') return this.skip();
 
-		const checkedInvitation = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
+		const checkedInvitation = await pageA.evaluate(
+			(key) => window.webstrate.user.invites.check(key), currentInvitation.key);
 		assert.exists(checkedInvitation, 'Valid invitation did not pass check(...)');
 	});
 
@@ -134,10 +137,12 @@ describe('Invites', function () {
 			return await window.webstrate.user.invites.accept(key, webstrateId);
 		}, acceptInvitation.key, webstrateId);
 
-		assert.equal(invitePermission, 'r', 'Invitation was not accepted or returned unexpected permissions');
+		assert.equal(invitePermission, 'r',
+			'Invitation was not accepted or returned unexpected permissions');
 
 		const result = await pageB.goto(url, { waitUntil: 'networkidle2' });
-		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invitation');
+		assert.equal(result.status(), 200,
+			'User B could not access the webstrate after accepting the invitation');
 	});
 
 	it('Expired invitation should not be in list of currently active invitations', async function () {
@@ -147,7 +152,8 @@ describe('Invites', function () {
 		await new Promise((resolve) => { setTimeout(resolve, 2000) });
 
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-		assert.notExists(invitations.find(i => i.key === currentInvitation.key), 'Invitation expired but still in invites.get() list');
+		assert.notExists(invitations.find(i => i.key === currentInvitation.key),
+			'Invitation expired but still in invites.get() list');
 	});
 
 	it('Expired invitation should fail validity check', async function () {
@@ -155,7 +161,8 @@ describe('Invites', function () {
 
 		let error;
 		try {
-			value = await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
+			value = await pageA.evaluate((key) => window.webstrate.user.invites.check(key),
+				currentInvitation.key);
 		} catch (ex) {
 			error = ex;
 		}
@@ -177,14 +184,16 @@ describe('Invites', function () {
 			return await window.webstrate.user.invites.accept(key, webstrateId);
 		}, currentInvitation.key, webstrateId);
 
-		assert.equal(mergedPermissions, 'rw', 'User B should have both read and write permissions after accepting the invitation');
+		assert.equal(mergedPermissions, 'rw',
+			'User B should have both read and write permissions after accepting the invitation');
 	});
 
 	it('User A should be able to remove an invitation', async function () {
 		if (config.authType !== 'test') return this.skip();
 
 		let invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Created invitation not found in list');
+		assert.exists(invitations.find(i => i.key === currentInvitation.key),
+			'Created invitation not found in list');
 
 		const removeResult = await pageA.evaluate(async (key) => {
 			return await window.webstrate.user.invites.remove(key);
@@ -192,11 +201,13 @@ describe('Invites', function () {
 		assert.equal(removeResult.deletedCount, 1, 'Remove operation should return a result');
 
 		invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-		assert.notExists(invitations.find(i => i.key === currentInvitation.key), 'Removed invitation still appears in list');
+		assert.notExists(invitations.find(i => i.key === currentInvitation.key),
+			'Removed invitation still appears in list');
 
 		let error;
 		try {
-			await pageA.evaluate((key) => window.webstrate.user.invites.check(key), currentInvitation.key);
+			await pageA.evaluate((key) => window.webstrate.user.invites.check(key),
+				currentInvitation.key);
 		} catch (ex) {
 			error = ex;
 		}
@@ -229,16 +240,21 @@ describe('Invites', function () {
 			(v) => window.webstrate && window.webstrate.version > v, 25, version),
 		'data-auth operation did not commit in time');
 
-		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`, { waitUntil: 'networkidle2' });
-		assert.equal(result.status(), 200, 'User B could not access the webstrate after accepting the invite via HTTP API');
+		const result = await pageB.goto(`${url}?acceptInvite=${invite.key}`,
+			{ waitUntil: 'networkidle2' });
+		assert.equal(result.status(), 200,
+			'User B could not access the webstrate after accepting the invite via HTTP API');
 
 		const permissions = await pageA.evaluate(() => {
 			return document.documentElement.getAttribute('data-auth');
 		});
 
-		const userBAuth = JSON.parse(permissions).find(user => user.username === 'testuserB' && user.provider === 'test');
-		assert.exists(userBAuth, 'User B should be in the data-auth attribute after accepting the invite');
-		assert.equal(userBAuth.permissions, 'r', 'User B should have read permissions after accepting the invite');
+		const userBAuth = JSON.parse(permissions)
+			.find(user => user.username === 'testuserB' && user.provider === 'test');
+		assert.exists(userBAuth,
+			'User B should be in the data-auth attribute after accepting the invite');
+		assert.equal(userBAuth.permissions, 'r',
+			'User B should have read permissions after accepting the invite');
 
 	});
 
@@ -289,78 +305,83 @@ describe('Invites', function () {
 
 		// Verify the invitation still exists
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
-		assert.exists(invitations.find(i => i.key === currentInvitation.key), 'Invitation should still exist after failed removal attempt');
+		assert.exists(invitations.find(i => i.key === currentInvitation.key),
+			'Invitation should still exist after failed removal attempt');
 	});
 
-	it('An invite sent by a user which now has lost admin permission becomes invalid', async function () {
-		if (config.authType !== 'test') return this.skip();
-		// Covers the stale-snapshot recovery re-gotos below under contention.
-		this.timeout(45000);
+	it('An invite sent by a user which now has lost admin permission becomes invalid',
+		async function () {
+			if (config.authType !== 'test') return this.skip();
+			// Covers the stale-snapshot recovery re-gotos below under contention.
+			this.timeout(45000);
 
-		// Remove admin permissions from User A. Wait for the write to commit before pageB
-		// connects — the expected error below requires the server to already see user A
-		// without admin permissions when the invite is accepted (see the comment above).
-		const version = await pageA.evaluate(() => window.webstrate.version);
-		await pageA.evaluate(() => {
-			document.documentElement.setAttribute('data-auth',
-				JSON.stringify([
-					{
-						username: 'testuserA',
-						provider: 'test',
-						permissions: 'wr'
-					},
-					{
-						username: 'testuserB',
-						provider: 'test',
-						permissions: 'r'
-					}
-				])
-			);
-		});
-		assert.isTrue(await util.waitForFunction(pageA,
-			(v) => window.webstrate && window.webstrate.version > v, 25, version),
-		'data-auth operation did not commit in time');
+			// Remove admin permissions from User A. Wait for the write to commit before pageB
+			// connects — the expected error below requires the server to already see user A
+			// without admin permissions when the invite is accepted (see the comment above).
+			const version = await pageA.evaluate(() => window.webstrate.version);
+			await pageA.evaluate(() => {
+				document.documentElement.setAttribute('data-auth',
+					JSON.stringify([
+						{
+							username: 'testuserA',
+							provider: 'test',
+							permissions: 'wr'
+						},
+						{
+							username: 'testuserB',
+							provider: 'test',
+							permissions: 'r'
+						}
+					])
+				);
+			});
+			assert.isTrue(await util.waitForFunction(pageA,
+				(v) => window.webstrate && window.webstrate.version > v, 25, version),
+			'data-auth operation did not commit in time');
 
-		// pageB's reload can be served a snapshot cache entry that predates the
-		// permissions writes, and the assertions below read the data-auth attribute
-		// from pageB's document — a page that ingested a stale entry can sit out the
-		// catch-up ops for a long time.
-		// pageA's live version is what pageB must catch up with: re-goto until it has.
-		const versionNow = await pageA.evaluate(() => window.webstrate.version);
-		let gotos = 0;
-		await pageB.goto(url, { waitUntil: 'networkidle2' });
-		while (!(await util.waitForFunction(pageB,
-			(v) => window.webstrate && window.webstrate.loaded && window.webstrate.version >= v,
-			5, versionNow)) && gotos < 2) {
-			gotos++;
-			util.warn('invites: pageB not current (version ' +
+			// pageB's reload can be served a snapshot cache entry that predates the
+			// permissions writes, and the assertions below read the data-auth attribute
+			// from pageB's document — a page that ingested a stale entry can sit out the
+			// catch-up ops for a long time.
+			// pageA's live version is what pageB must catch up with: re-goto until it has.
+			const versionNow = await pageA.evaluate(() => window.webstrate.version);
+			let gotos = 0;
+			await pageB.goto(url, { waitUntil: 'networkidle2' });
+			while (!(await util.waitForFunction(pageB,
+				(v) => window.webstrate && window.webstrate.loaded && window.webstrate.version >= v,
+				5, versionNow)) && gotos < 2) {
+				gotos++;
+				util.warn('invites: pageB not current (version ' +
 				(await pageB.evaluate(() =>
 					window.webstrate && window.webstrate.loaded ? window.webstrate.version : 'not loaded')) +
 				', expected ' + versionNow + ') — reloading');
-			await pageB.goto(url, { waitUntil: 'networkidle2' });
-		}
+				await pageB.goto(url, { waitUntil: 'networkidle2' });
+			}
 
-		let error;
-		try {
-			await pageB.evaluate(async (key) => {
-				return await window.webstrate.user.invites.accept(key);
-			}, currentInvitation.key);
-		} catch (ex) {
-			error = ex;
-		}
+			let error;
+			try {
+				await pageB.evaluate(async (key) => {
+					return await window.webstrate.user.invites.accept(key);
+				}, currentInvitation.key);
+			} catch (ex) {
+				error = ex;
+			}
 
-		expect(error).to.be.an('Error');
-		expect(error.message).to.include('Inviter is no longer admin on the webstrate, invitation invalid');
+			expect(error).to.be.an('Error');
+			expect(error.message).to.include(
+				'Inviter is no longer admin on the webstrate, invitation invalid');
 
-		// Check that no new permissions were granted by getting the data-auth attribute
-		const permissions = await pageB.evaluate(() => {
-			return document.documentElement.getAttribute('data-auth');
+			// Check that no new permissions were granted by getting the data-auth attribute
+			const permissions = await pageB.evaluate(() => {
+				return document.documentElement.getAttribute('data-auth');
+			});
+
+			const userBAuth = JSON.parse(permissions)
+				.find(user => user.username === 'testuserB' && user.provider === 'test');
+			assert.exists(userBAuth, 'User B should still be in the data-auth attribute');
+			assert.equal(userBAuth.permissions, 'r',
+				'User B should not have gained any new permissions after the invite was accepted');
 		});
-
-		const userBAuth = JSON.parse(permissions).find(user => user.username === 'testuserB' && user.provider === 'test');
-		assert.exists(userBAuth, 'User B should still be in the data-auth attribute');
-		assert.equal(userBAuth.permissions, 'r', 'User B should not have gained any new permissions after the invite was accepted');
-	});
 
 	it('Invite API should be available for logged-in users only', async function () {
 		await pageC.goto(config.server_address + 'frontpage/', { waitUntil: 'networkidle2' });
@@ -450,6 +471,7 @@ describe('Invites', function () {
 		await awaitAdminPermissions(pageA);
 	});
 
+	// eslint-disable-next-line max-len
 	it('Creating an invite without an options field yields a working invite with the default lifetime and permissions', async function () {
 		if (config.authType !== 'test') return this.skip();
 
@@ -457,7 +479,8 @@ describe('Invites', function () {
 
 		assert.isUndefined(reply.error, 'createInvite without an options field failed: ' + reply.error);
 		assert.match(reply.reply.key, /^[0-9a-f]{64}$/, 'invite is missing its key');
-		assert.equal(reply.reply.permissions, 'r', 'invite without options should default to read permissions');
+		assert.equal(reply.reply.permissions, 'r',
+			'invite without options should default to read permissions');
 
 		// The default lifetime is the one-week default the client library applies, too.
 		assert.isNotNull(reply.reply.expiresAt, 'invite without options has no expiry');
@@ -468,44 +491,49 @@ describe('Invites', function () {
 		assert.isUndefined(check.error, 'invite created without options is not usable: ' + check.error);
 	});
 
-	it('Creating an invite with an empty options object yields a usable invite instead of a dead one', async function () {
-		if (config.authType !== 'test') return this.skip();
+	it('Creating an invite with an empty options object yields a usable invite instead of a dead one',
+		async function () {
+			if (config.authType !== 'test') return this.skip();
 
-		const reply = await rawInviteRequest(pageA, 'createInvite', {});
+			const reply = await rawInviteRequest(pageA, 'createInvite', {});
 
-		assert.isUndefined(reply.error, 'createInvite with empty options failed: ' + reply.error);
-		assert.equal(reply.reply.permissions, 'r', 'invite with empty options should default to read permissions');
-		assert.isNotNull(reply.reply.expiresAt, 'invite with empty options has no expiry');
-		assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
-			Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000, 'default expiry should be one week out');
-
-		// The expired-invite sweep runs before every invite action, so an invite whose
-		// expiry was not a real date is born already swept away. Its key must survive one
-		// more API call to prove the invite was actually usable.
-		const check = await rawInviteRequest(pageA, 'checkInvite', { key: reply.reply.key });
-		assert.isUndefined(check.error, 'invite created with empty options is dead on arrival: ' + check.error);
-		assert.equal(check.reply.key, reply.reply.key);
-	});
-
-	it('maxAge values that are not positive numbers fall back to the default lifetime', async function () {
-		if (config.authType !== 'test') return this.skip();
-
-		for (const maxAge of ['not-a-number', 0, -3600, null]) {
-			const reply = await rawInviteRequest(pageA, 'createInvite', { maxAge, permissions: 'r' });
-			assert.isUndefined(reply.error,
-				'createInvite with maxAge ' + JSON.stringify(maxAge) + ' failed: ' + reply.error);
-			assert.isNotNull(reply.reply.expiresAt,
-				'maxAge ' + JSON.stringify(maxAge) + ' produced no expiry');
+			assert.isUndefined(reply.error, 'createInvite with empty options failed: ' + reply.error);
+			assert.equal(reply.reply.permissions, 'r',
+				'invite with empty options should default to read permissions');
+			assert.isNotNull(reply.reply.expiresAt, 'invite with empty options has no expiry');
 			assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
-				Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000,
-				'maxAge ' + JSON.stringify(maxAge) + ' should fall back to the one-week default');
-		}
-	});
+				Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000, 'default expiry should be one week out');
+
+			// The expired-invite sweep runs before every invite action, so an invite whose
+			// expiry was not a real date is born already swept away. Its key must survive one
+			// more API call to prove the invite was actually usable.
+			const check = await rawInviteRequest(pageA, 'checkInvite', { key: reply.reply.key });
+			assert.isUndefined(check.error,
+				'invite created with empty options is dead on arrival: ' + check.error);
+			assert.equal(check.reply.key, reply.reply.key);
+		});
+
+	it('maxAge values that are not positive numbers fall back to the default lifetime',
+		async function () {
+			if (config.authType !== 'test') return this.skip();
+
+			for (const maxAge of ['not-a-number', 0, -3600, null]) {
+				const reply = await rawInviteRequest(pageA, 'createInvite', { maxAge, permissions: 'r' });
+				assert.isUndefined(reply.error,
+					'createInvite with maxAge ' + JSON.stringify(maxAge) + ' failed: ' + reply.error);
+				assert.isNotNull(reply.reply.expiresAt,
+					'maxAge ' + JSON.stringify(maxAge) + ' produced no expiry');
+				assert.closeTo(new Date(reply.reply.expiresAt).getTime(),
+					Date.now() + 7 * 24 * 3600 * 1000, 60 * 1000,
+					'maxAge ' + JSON.stringify(maxAge) + ' should fall back to the one-week default');
+			}
+		});
 
 	it('maxAge above the one-month limit is clamped to it', async function () {
 		if (config.authType !== 'test') return this.skip();
 
-		const reply = await rawInviteRequest(pageA, 'createInvite', { maxAge: 3600 * 24 * 365, permissions: 'r' });
+		const reply = await rawInviteRequest(pageA, 'createInvite',
+			{ maxAge: 3600 * 24 * 365, permissions: 'r' });
 
 		assert.isUndefined(reply.error, 'createInvite with a years-long maxAge failed: ' + reply.error);
 		assert.closeTo(new Date(reply.reply.expiresAt).getTime(),

@@ -33,7 +33,8 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 	// and call createNewdocument again with it.
 	if (!snapshot) {
 		snapshot = await module.exports.getDocument({ webstrateId: prototypeId, version, tag });
-		return await module.exports.createNewDocument({ webstrateId, prototypeId, version, tag, snapshot });
+		return await module.exports.createNewDocument(
+			{ webstrateId, prototypeId, version, tag, snapshot });
 	}
 
 	// If the document already exists and is empty, we just delete it, so unused documents won't take
@@ -46,10 +47,13 @@ module.exports.createNewDocument = async function({ webstrateId, prototypeId, ve
 
 	// Let ShareDB handle the creation of the document.
 	try {
-		await ShareDbWrapper.submit(webstrateId, { v: 0, create: { type: snapshot.type, data: snapshot.data } });
+		await ShareDbWrapper.submit(webstrateId,
+			{ v: 0, create: { type: snapshot.type, data: snapshot.data } });
 	} catch (err){
-		if (err.message == 'Document was created remotely') throw new Error('Webstrate already exists.', { cause: err });
-		if (err.message === 'Missing create type') throw new Error('Prototype webstrate doesn\'t exist.', { cause: err });
+		if (err.message == 'Document was created remotely') throw new Error(
+			'Webstrate already exists.', { cause: err });
+		if (err.message === 'Missing create type') throw new Error(
+			'Prototype webstrate doesn\'t exist.', { cause: err });
 		throw err;
 	}
 
@@ -320,7 +324,8 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 	let currentVersion = await module.exports.getDocument({ webstrateId, version: 'head' })
 	var ops = jsondiff(currentVersion.data, oldVersion.data);
 	if (ops.length === 0) {
-		return await module.exports.tagDocument(webstrateId, currentVersion.v, tag + ' (restored at '+new Date()+')');
+		return await module.exports.tagDocument(webstrateId, currentVersion.v,
+			tag + ' (restored at '+new Date()+')');
 	} else {
 		await util.promisify(module.exports.submitOps)(webstrateId, ops, source);
 		// submitOps consumes the ops array (it shift()s each op off as it submits them), so
@@ -328,7 +333,8 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 		// it. Instead, read the document's actual head after the restore ops have landed. This
 		// also tags the correct version if other ops are submitted concurrently.
 		var newVersion = await module.exports.getDocumentVersion(webstrateId);
-		return await module.exports.tagDocument(webstrateId, newVersion, tag + ' (restored at '+new Date()+')');
+		return await module.exports.tagDocument(webstrateId, newVersion,
+			tag + ' (restored at '+new Date()+')');
 	}
 };
 
@@ -490,7 +496,8 @@ module.exports.tagDocument = async function(webstrateId, version, label) {
 		// All labels and versions have to be unique, so this is how we enforce that. First, try to
 		// set the label for a specific version. Due to our collection's uniqueness constraint, this
 		// will fail if the label already exists.
-		await db.tags.updateOne({ webstrateId, v: version }, { $set: { label, data, type } }, { upsert: true });
+		await db.tags.updateOne({ webstrateId, v: version },
+			{ $set: { label, data, type } }, { upsert: true });
 	} catch (err) {
 		// Now we can't just update the label, because a label for the version may also exist.
 		// Therefore, we delete anything with the label or version, and then insert it again.
@@ -559,7 +566,8 @@ async function transformDocumentToVersion({ webstrateId, snapshot, version }) {
 
 	// If after we've applied all updates, we haven't reached the desired version, the user must
 	// be requesting a version that doesn't exist yet.
-	if (version !== snapshot.v) throw new Error(`Version ${version} requested, but newest version is ${snapshot.v}.`);
+	if (version !== snapshot.v) throw new Error(
+		`Version ${version} requested, but newest version is ${snapshot.v}.`);
 
 	return snapshot;
 }
@@ -576,11 +584,12 @@ async function transformDocumentToVersion({ webstrateId, snapshot, version }) {
  * @private
  */
 function getTagBeforeVersion(webstrateId, version, next) {
-	db.tags.find({ webstrateId, v: { $lte: version } }, { projection: { _id: 0 } }).sort({ v : -1 }).limit(1).toArray().then(tags=>{
-		return next && next(null, tags[0]);
-	}).catch(err=>{
-		return next && next(err);
-	});
+	db.tags.find({ webstrateId, v: { $lte: version } }, { projection: { _id: 0 } })
+		.sort({ v : -1 }).limit(1).toArray().then(tags=>{
+			return next && next(null, tags[0]);
+		}).catch(err=>{
+			return next && next(err);
+		});
 }
 
 /**

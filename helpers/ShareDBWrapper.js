@@ -184,8 +184,10 @@ share.use(['query', 'submit', 'receive'], async function(req, next) {
 	const webstrateId = req.id || (req.data && req.data.d) || (req.op && req.op.d);
 	if (!webstrateId) return next('Invalid message: no document id.');
 
-	// We have already resolved the user from the token in the sessionMiddleware, but we have to do it here as well,
-	// because the webstrateId here may differ from the original req.params.webstrateId, and so may the permissions.
+	// We have already resolved the user from the token in the sessionMiddleware, but we
+	// have to do it here as well,
+	// because the webstrateId here may differ from the original req.params.webstrateId,
+	// and so may the permissions.
 	if (req.agent.req.params.webstrateId !== webstrateId) {
 		const token = req.agent.req.query.token;
 		user = permissionManager.getUserFromAccessToken(webstrateId, token);

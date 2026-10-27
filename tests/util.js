@@ -212,7 +212,8 @@ util.logInToTest = async function (page, username = 'testuser') {
 
 	// Check if we successfully redirected back to the server
 	if (!url.startsWith(config.server_address)) {
-		throw new Error(`Test authentication failed. Expected redirect to ${config.server_address}, got ${url}`);
+		throw new Error(
+			`Test authentication failed. Expected redirect to ${config.server_address}, got ${url}`);
 	}
 
 	return true;

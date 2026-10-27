@@ -42,7 +42,8 @@ import { setTimeout as sleep } from 'node:timers/promises';
 import { fileURLToPath } from 'node:url';
 
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
-const BASE_CONFIG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)), 'server.base-config.json');
+const BASE_CONFIG_PATH = path.join(path.dirname(fileURLToPath(import.meta.url)),
+	'server.base-config.json');
 const START_TIMEOUT_MS = 20000;
 
 const servers = [];
@@ -91,7 +92,8 @@ const waitForServer = async (server) => {
 	const deadline = Date.now() + START_TIMEOUT_MS;
 	while (Date.now() < deadline) {
 		if (server.child.exitCode !== null) {
-			throw new Error(`server "${server.label}" exited during startup (code ${server.child.exitCode}); ` +
+			throw new Error(
+				`server "${server.label}" exited during startup (code ${server.child.exitCode}); ` +
 				`see ${server.logFile}`);
 		}
 		try {
@@ -101,7 +103,9 @@ const waitForServer = async (server) => {
 			await sleep(100);
 		}
 	}
-	throw new Error(`server "${server.label}" did not come up within ${START_TIMEOUT_MS} ms; see ${server.logFile}`);
+	throw new Error(
+		`server "${server.label}" did not come up within ${START_TIMEOUT_MS} ms; see ${server.logFile}`
+	);
 };
 
 /**

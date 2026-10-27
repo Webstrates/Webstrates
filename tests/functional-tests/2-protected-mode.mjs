@@ -55,7 +55,8 @@ describe('Protected Mode', function () {
 	// We don't do this just to test the attribute, the page must be reloaded after making the body
 	// protected.
 	it('data-protected attribute should be visible after reload', async () => {
-		await Promise.all([pageA.reload({ waitUntil: 'networkidle2' }), pageB.reload({ waitUntil: 'networkidle2' })]);
+		await Promise.all([pageA.reload({ waitUntil: 'networkidle2' }),
+			pageB.reload({ waitUntil: 'networkidle2' })]);
 
 		const attributeSetA = await util.waitForFunction(pageA, () =>
 			document.documentElement.getAttribute('data-protected') === '');
@@ -457,7 +458,8 @@ describe('Protected Mode', function () {
 		});
 
 		// The approved comment's op echo reaches clients live, but its server-side write
-		// lags. The reload's networkidle2 can fire before the websocket populate has applied the persisted
+		// lags. The reload's networkidle2 can fire before the websocket populate has applied the
+		// persisted
 		// document - so the comment is missing from the reloaded DOM when we count it.
 		// Poll until it has actually persisted before asserting.
 		const [persistedA, persistedB] = await Promise.all([

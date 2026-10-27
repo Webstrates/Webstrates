@@ -56,14 +56,16 @@ const ensureBuild = async () => {
 	if (!fs.existsSync(bundle)) {
 		console.log('No client bundle found (static/webstrates.js) — building it now (npm run build).');
 		await new Promise((resolve, reject) => {
-			const webpack = spawn(process.execPath, [path.join(REPO_ROOT, 'node_modules', 'webpack', 'bin', 'webpack.js'),
-				'--mode', 'production'], {
-				cwd: REPO_ROOT,
-				env: { ...process.env, NODE_ENV: 'production' },
-				stdio: 'inherit'
-			});
+			const webpack = spawn(process.execPath,
+				[path.join(REPO_ROOT, 'node_modules', 'webpack', 'bin', 'webpack.js'),
+					'--mode', 'production'], {
+					cwd: REPO_ROOT,
+					env: { ...process.env, NODE_ENV: 'production' },
+					stdio: 'inherit'
+				});
 			webpack.on('error', reject);
-			webpack.on('exit', (code) => code === 0 ? resolve() : reject(new Error(`webpack exited with ${code}`)));
+			webpack.on('exit',
+				(code) => code === 0 ? resolve() : reject(new Error(`webpack exited with ${code}`)));
 		});
 	}
 };
@@ -99,6 +101,7 @@ const TEST_DB_PREFIX = 'webstrate-test';
 const dropTestDatabase = async (dbUrl) => {
 	const dbName = new URL(dbUrl).pathname.replace(/^\//, '');
 	if (!dbName.startsWith(TEST_DB_PREFIX)) {
+		// eslint-disable-next-line max-len
 		console.log(`Not dropping database "${dbName}" (no ${TEST_DB_PREFIX} prefix — not a harness test database).`);
 		return;
 	}
@@ -212,7 +215,8 @@ const run = async () => {
 
 	console.log('Starting base test server (tests/lib/server.base-config.json)…');
 	const base = await harness.startServer({ label: 'base', port: 7007, config: {} });
-	console.log(`Base server up: ${base.address} — test database: ${base.config.db} (dropped after the run)`);
+	console.log(
+		`Base server up: ${base.address} — test database: ${base.config.db} (dropped after the run)`);
 
 	const stateFile = path.join(os.tmpdir(), `webstrates-harness-state-${process.pid}.json`);
 	fs.writeFileSync(stateFile, JSON.stringify({
@@ -281,7 +285,8 @@ run().catch(async (err) => {
 	await reapOrphanedChromiums();
 	// Startup failed, but a base server may have started and written test data first —
 	// the database configured for it (base config + harness test prefix guard) goes too.
-	const baseConfigPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'server.base-config.json');
+	const baseConfigPath = path.join(path.dirname(fileURLToPath(import.meta.url)),
+		'server.base-config.json');
 	await dropTestDatabase(JSON.parse(fs.readFileSync(baseConfigPath, 'utf8')).db);
 	fail(`Failed to start the test environment: ${err.message}\n${err.stack || ''}`);
 });

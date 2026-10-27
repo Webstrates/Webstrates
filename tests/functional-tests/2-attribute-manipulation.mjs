@@ -38,7 +38,8 @@ describe('Attribute Manipulation', function() {
 						// We evaluate a function in the page context to get message and stack
 						const errorDetails = await firstArg.evaluate(obj => {
 							// Check if it's an instance of Error or has error-like properties
-							if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
+							if (obj instanceof Error ||
+								(typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
 								return {
 									message: obj.message,
 									stack: obj.stack,
@@ -85,7 +86,8 @@ describe('Attribute Manipulation', function() {
 						// We evaluate a function in the page context to get message and stack
 						const errorDetails = await firstArg.evaluate(obj => {
 							// Check if it's an instance of Error or has error-like properties
-							if (obj instanceof Error || (typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
+							if (obj instanceof Error ||
+								(typeof obj === 'object' && obj !== null && 'message' in obj && 'stack' in obj)) {
 								return {
 									message: obj.message,
 									stack: obj.stack,
@@ -143,12 +145,14 @@ describe('Attribute Manipulation', function() {
 		{
 			title: 'long attribute with quotes in value',
 			key: 'quotesInAttributeLong',
-			value: util.randomString(3) + '"' + util.randomString(4) + "----------------------------------------------------------------------------------------"
+			value: util.randomString(3) + '"' + util.randomString(4) +
+				"----------------------------------------------------------------------------------------"
 		},		
 		{
 			title: 'long attribute with ampersand in value',
 			key: 'AMPERSAND_LONG_ATTRIBUTE',
-			value: util.randomString(3) + '&' + util.randomString(4) + "----------------------------------------------------------------------------------------"
+			value: util.randomString(3) + '&' + util.randomString(4) +
+				"----------------------------------------------------------------------------------------"
 		},		
 		{
 			title: 'attribute with periods',

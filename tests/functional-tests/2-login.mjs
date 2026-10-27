@@ -43,13 +43,16 @@ describe('Authentication and Login', function() {
 		github: 'https://github.com/login?',
 		test: config.server_address + 'auth/test'
 	}
-	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`, async function () {
-		if (!util.credentialsProvided) return this.skip();
+	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`,
+		async function () {
+			if (!util.credentialsProvided) return this.skip();
 
-		await pageA.goto(config.server_address + 'auth/' + config.authType, { waitUntil: 'networkidle2' });
-		const url = pageA.url();
-		assert.isTrue(url.startsWith(authTargetPrefix[config.authType]), 'Was the auth correctly set up in config.json?');
-	});
+			await pageA.goto(config.server_address + 'auth/' + config.authType,
+				{ waitUntil: 'networkidle2' });
+			const url = pageA.url();
+			assert.isTrue(url.startsWith(authTargetPrefix[config.authType]),
+				'Was the auth correctly set up in config.json?');
+		});
 
 	it('should log in via auth', async function () {
 		if (!util.credentialsProvided) return this.skip();
@@ -123,25 +126,26 @@ describe('Authentication and Login', function() {
 		assert.equal(userObject.provider, config.authType);
 	});
 
-	it('after logout user should be redirected to the frontpage and be logged out', async function () {
-		if (!util.credentialsProvided) return this.skip();
+	it('after logout user should be redirected to the frontpage and be logged out',
+		async function () {
+			if (!util.credentialsProvided) return this.skip();
 
-		// Avoid puppeteer's goto hang on redirects to cached documents.
-		await pageA.setCacheEnabled(false);
-		await pageA.goto(config.server_address + 'auth/logout', { waitUntil: 'networkidle2' });
+			// Avoid puppeteer's goto hang on redirects to cached documents.
+			await pageA.setCacheEnabled(false);
+			await pageA.goto(config.server_address + 'auth/logout', { waitUntil: 'networkidle2' });
 
-		const url = await pageA.url();
-		assert.equal(url, util.cleanServerAddress + 'frontpage/');
+			const url = await pageA.url();
+			assert.equal(url, util.cleanServerAddress + 'frontpage/');
 
-		// 'loaded' implies the websocket 'hello' message has been processed, which is what
-		// merges userId/username/provider into the user object
-		assert.isTrue(await util.waitForFunction(pageA,
-			() => window.webstrate && window.webstrate.loaded, 15));
-		userObject = await pageA.evaluate(() => window.webstrate.user);
+			// 'loaded' implies the websocket 'hello' message has been processed, which is what
+			// merges userId/username/provider into the user object
+			assert.isTrue(await util.waitForFunction(pageA,
+				() => window.webstrate && window.webstrate.loaded, 15));
+			userObject = await pageA.evaluate(() => window.webstrate.user);
 
-		assert.propertyVal(userObject, 'userId', 'anonymous:');
-		assert.propertyVal(userObject, 'username', 'anonymous');
-		assert.propertyVal(userObject, 'provider', '');
-		assert.property(userObject, 'permissions');
-	});
+			assert.propertyVal(userObject, 'userId', 'anonymous:');
+			assert.propertyVal(userObject, 'username', 'anonymous');
+			assert.propertyVal(userObject, 'provider', '');
+			assert.property(userObject, 'permissions');
+		});
 });

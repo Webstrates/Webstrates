@@ -13,7 +13,8 @@ if (process.env.WEBSTRATES_HARNESS_STATE) {
 	try {
 		harnessBase = JSON.parse(fs.readFileSync(process.env.WEBSTRATES_HARNESS_STATE, 'utf8')).base;
 	} catch (err) {
-		console.error('Could not read harness state file', process.env.WEBSTRATES_HARNESS_STATE, err.message);
+		console.error('Could not read harness state file',
+			process.env.WEBSTRATES_HARNESS_STATE, err.message);
 		process.exit(1);
 	}
 }

@@ -302,7 +302,8 @@ module.exports.getPermissionsFromSnapshot = async function(snapshot, useDefaultP
 	}
 
 	// If we found no permissions, return default permissions, unless specified otherwise.
-	if (useDefaultPermissions && (!Array.isArray(permissionsList) || Object.keys(permissionsList).length === 0)) {
+	if (useDefaultPermissions &&
+		(!Array.isArray(permissionsList) || Object.keys(permissionsList).length === 0)) {
 		return useDefaultPermissions ? defaultPermissionsList : undefined;
 	}
 
@@ -359,7 +360,8 @@ module.exports.getDefaultPermissions = function(username, provider) {
  *                               don't have a one here, it should just be a userId.
  * @public
  */
-module.exports.setUserPermissions = async function(username, provider, permissions, webstrateId, source) {
+module.exports.setUserPermissions = async function(username, provider, permissions,
+	webstrateId, source) {
 	let snapshot = await documentManager.getDocument({ webstrateId });
 
 	if (!snapshot || !snapshot.data || !snapshot.data[0] || snapshot.data[0] !== 'html' ||

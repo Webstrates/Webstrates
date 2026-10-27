@@ -20,7 +20,8 @@ const createConfig = () => {
 	// starting a server); only the default repo-root config is auto-created from the sample.
 	if (envConfigPath) {
 		if (!fs.existsSync(resolveConfigPath())) {
-			console.error(`Config file "${resolveConfigPath()}" (from WEBSTRATES_CONFIG) not found, terminating`);
+			console.error(
+				`Config file "${resolveConfigPath()}" (from WEBSTRATES_CONFIG) not found, terminating`);
 			process.exit(1);
 		}
 		return;

@@ -33,8 +33,10 @@ const cleanServerConfig = {
 };
 
 // Read header and footer content used to wrap the client
-const wrapperHeaderContent = fs.readFileSync(path.resolve(__dirname, './client/wrapper-header.js'), 'utf-8');
-const wrapperFooterContent = fs.readFileSync(path.resolve(__dirname, './client/wrapper-footer.js'), 'utf-8');
+const wrapperHeaderContent = fs.readFileSync(
+	path.resolve(__dirname, './client/wrapper-header.js'), 'utf-8');
+const wrapperFooterContent = fs.readFileSync(
+	path.resolve(__dirname, './client/wrapper-footer.js'), 'utf-8');
 
 
 // Embed the brotli decoder's wasm bytes in the bundle as base64: the client
@@ -128,7 +130,7 @@ const config = {
 		new webpack.ProvidePlugin({ config: path.resolve(__dirname, 'client/config') }),
 		new webpack.DefinePlugin({ serverConfig: JSON.stringify(cleanServerConfig) }),
 		// Header and footer
-		new webpack.BannerPlugin({banner: wrapperHeaderContent,raw:true,entryOnly:true}),                
+		new webpack.BannerPlugin({banner: wrapperHeaderContent,raw:true,entryOnly:true}),
 		new webpack.BannerPlugin({banner: wrapperFooterContent,raw:true,entryOnly:true,footer:true}),
 		// Pre-compress the client bundle with brotli
 		{

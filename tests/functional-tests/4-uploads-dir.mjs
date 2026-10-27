@@ -148,11 +148,14 @@ describe('Uploads directory configuration', function () {
 
 		const dirResponse = await fetch(`${server.address}${webstrateId}/nested.zip/?dir`);
 		assert.equal(dirResponse.status, 200, 'Listing the ZIP asset should succeed');
-		assert.include(await dirResponse.json(), 'inner.txt', 'The ZIP listing should contain the file');
+		assert.include(await dirResponse.json(), 'inner.txt',
+			'The ZIP listing should contain the file');
 
 		const innerResponse = await fetch(`${server.address}${webstrateId}/nested.zip/inner.txt`);
-		assert.equal(innerResponse.status, 200, 'Serving a file from within the ZIP asset should succeed');
-		assert.equal(await innerResponse.text(), innerContent, 'The file from within the ZIP should match');
+		assert.equal(innerResponse.status, 200,
+			'Serving a file from within the ZIP asset should succeed');
+		assert.equal(await innerResponse.text(), innerContent,
+			'The file from within the ZIP should match');
 
 		await fetch(`${server.address}${webstrateId}?delete`).catch(() => {});
 	});

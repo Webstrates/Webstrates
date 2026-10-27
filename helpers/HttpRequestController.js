@@ -260,7 +260,8 @@ function requestPrototypeUrl(url) {
 				chunks.push(chunk);
 				rawSize += chunk.length;
 				if (rawSize > MAX_PROTOTYPE_URL_RAW_SIZE) {
-					abortPrototypeUrlFetch(new Error('prototypeUrl response exceeds the maximum raw size of ' +
+					abortPrototypeUrlFetch(new Error(
+						'prototypeUrl response exceeds the maximum raw size of ' +
 						`${MAX_PROTOTYPE_URL_RAW_SIZE / 1024 / 1024} MB.`));
 				}
 			});
@@ -484,7 +485,8 @@ module.exports.requestHandler = async function(req, res) {
 		} else {
 			// Otherwise we need to check in the request handler if there is a tag
 			try {
-				const version = await documentManager.getVersionFromTag(req.params.webstrateId, req.params.assetOrVersionOrTag);
+				const version = await documentManager.getVersionFromTag(req.params.webstrateId,
+					req.params.assetOrVersionOrTag);
 				// Version 0 is a valid version for a tag to sit on, so presence must be
 				// tested against undefined, not with truthiness.
 				if (version !== undefined && version !== null && !Number.isNaN(version)) {
@@ -527,13 +529,15 @@ module.exports.requestHandler = async function(req, res) {
 
 		// If the webstrate doesn't exist, write permissions are required to create it.
 		if (!snapshot.type && !permissionManager.canWrite(req.user.permissions)) {
-			return res.status(403).send('Insufficient permissions. Write is required to create a new webstrate.');
+			return res.status(403).send(
+				'Insufficient permissions. Write is required to create a new webstrate.');
 		}
 
 		// If the webstrate does exist, read permissions are required to access it (or any of its
 		// assets).
 		if (!permissionManager.canRead(req.user.permissions)) {
-			return res.status(403).send('Insufficient permissions. Read is required to access this webstrate.');
+			return res.status(403).send(
+				'Insufficient permissions. Read is required to access this webstrate.');
 		}
 
 		// Set CORS header on a response, assuming the requesting host is allowed it.
@@ -552,7 +556,8 @@ module.exports.requestHandler = async function(req, res) {
 					return res.status(404).send(`Asset "${req.params.assetName}" not found.`);
 				}
 
-				// An asset record can lose sync — the ?dl download path already heals such records). Serving a
+				// An asset record can lose sync — the ?dl download path already heals
+				// such records). Serving a
 				// dead record through any of the paths below would 500 through sendFile's
 				// error path or misreport the failure; report it as what it is — a missing
 				// asset
@@ -870,7 +875,8 @@ async function serveCompressedWebstrate(req, res, snapshot) {
 		});
 		archive.finalize();
 		const potentialTag = req.params.tag ? ('-' + req.params.tag) : '';
-		const filename = req.query.filename || `${req.params.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
+		const filename = req.query.filename ||
+			`${req.params.webstrateId}-${snapshot.v}${potentialTag}.${format}`;
 		res.attachment(filename);
 		archive.pipe(res);
 	} catch (err){
@@ -971,6 +977,7 @@ async function restoreWebstrate(req, res, snapshot) {
 	// presence must be tested against undefined, not with truthiness.)
 	if (req.params.version !== undefined || req.params.tag !== undefined) {
 		return res.status(409).send('Can not restore a document at a previous tag or version.' +
+			// eslint-disable-next-line max-len
 			` Did you mean <code><a href="/${req.params.webstrateId}/?restore=${req.params.versionOrTag}">` +
 			`/${req.params.webstrateId}/?restore=${req.params.versionOrTag}</a></code>?`);
 	}
@@ -988,11 +995,13 @@ async function restoreWebstrate(req, res, snapshot) {
 	// clientId. We'll just use the userId instead.
 	var source = req.user.userId;
 	try {
-		let newVersion = await documentManager.restoreDocument({ webstrateId: req.params.webstrateId, version, tag },
+		let newVersion = await documentManager.restoreDocument(
+			{ webstrateId: req.params.webstrateId, version, tag },
 			source);
 
 		// Also restore assets, so the restored version shows the old assets, not the new ones.
-		await assetManager.restoreAssets({ webstrateId: req.params.webstrateId, version, tag, newVersion });
+		await assetManager.restoreAssets(
+			{ webstrateId: req.params.webstrateId, version, tag, newVersion });
 
 		let newQuery = Object.assign({}, req.query);
 		delete newQuery.restore;
@@ -1027,7 +1036,8 @@ async function deleteWebstrate(req, res) {
 		// cookie is short-lived — it only needs to survive the few hundred
 		// milliseconds until the clients' deferred redirect decision (see
 		// client/webstrates/deleteEvent.js).
-		res.cookie(`webstrates-deleted-${req.params.webstrateId}`, '1', { maxAge: 10000, httpOnly: false });
+		res.cookie(`webstrates-deleted-${req.params.webstrateId}`, '1',
+			{ maxAge: 10000, httpOnly: false });
 		res.redirect('/');
 	} catch (err){
 		console.error(err);
@@ -1248,7 +1258,8 @@ module.exports.newWebstratePostRequestHandler = async function(req, res) {
 			});
 		}
 
-		if (req.file.mimetype !== 'application/zip' && req.file.mimetype !== 'application/x-zip-compressed'
+		if (req.file.mimetype !== 'application/zip'
+			&& req.file.mimetype !== 'application/x-zip-compressed'
 			&& !req.file.originalname.match(/\.zip$/i)) {
 			return res.status(409).json({
 				error: 'Can only prototype from application/zip files. Received content-type: '
@@ -1490,7 +1501,8 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 							fs.unlink(assetManager.UPLOAD_DEST + asset.filename, () => {});
 						});
 						if (htmlDocumentFound) {
-							return reject(new Error('index.html found, but unable to create webstrate from it. Aborting.'));
+							return reject(
+								new Error('index.html found, but unable to create webstrate from it. Aborting.'));
 						} else {
 							return reject(new Error('No index.html found.'));
 						}

@@ -170,41 +170,42 @@ describe('Signal streams with more than two clients (#61)', function () {
 		await browser.close();
 	});
 
-	it('every client should hold exactly one live stream connection to each of the other clients', async () => {
+	it('every client should hold exactly one live stream connection to each of the other clients',
+		async () => {
 		// The fourth page's registration completes the mesh: its listeners answer the
 		// three earlier streamers' direct wantToStream, and its own streamer broadcast
 		// is accepted by the three earlier listeners. All 12 directions form here.
-		await Promise.all(pages.map((page) => waitForMesh(page, meshComplete, 20000, 3)));
+			await Promise.all(pages.map((page) => waitForMesh(page, meshComplete, 20000, 3)));
 
-		const meshes = await Promise.all(pages.map(getMesh));
-		const clientIds = meshes.map((mesh) => mesh.clientId);
-		assert.equal(new Set(clientIds).size, 4, 'every page must have its own clientId');
+			const meshes = await Promise.all(pages.map(getMesh));
+			const clientIds = meshes.map((mesh) => mesh.clientId);
+			assert.equal(new Set(clientIds).size, 4, 'every page must have its own clientId');
 
-		meshes.forEach((mesh, i) => {
-			const others = clientIds.filter((id) => id !== mesh.clientId).sort();
-			assert.deepEqual([...mesh.streamerFor].sort(), others,
-				`page ${i}'s stream should have been accepted by each other client exactly once`);
-			assert.deepEqual([...mesh.listenerFor].sort(), others,
-				`page ${i} should have accepted each other client's stream exactly once`);
+			meshes.forEach((mesh, i) => {
+				const others = clientIds.filter((id) => id !== mesh.clientId).sort();
+				assert.deepEqual([...mesh.streamerFor].sort(), others,
+					`page ${i}'s stream should have been accepted by each other client exactly once`);
+				assert.deepEqual([...mesh.listenerFor].sort(), others,
+					`page ${i} should have accepted each other client's stream exactly once`);
 
-			// Exactly one connection per direction (no duplicate handshakes): 3
-			// streamer-side + 3 listener-side, all connected.
-			assert.lengthOf(mesh.conns, 6,
-				`page ${i} should hold exactly two connections per other client (one per direction)`);
-			assert.isTrue(mesh.conns.every((conn) => conn.connected),
-				`page ${i}: every connection should be up`);
+				// Exactly one connection per direction (no duplicate handshakes): 3
+				// streamer-side + 3 listener-side, all connected.
+				assert.lengthOf(mesh.conns, 6,
+					`page ${i} should hold exactly two connections per other client (one per direction)`);
+				assert.isTrue(mesh.conns.every((conn) => conn.connected),
+					`page ${i}: every connection should be up`);
 
-			// Media actually flowed: one remote stream per peer, each with the
-			// source's video track (the canvas stream), each a distinct stream.
-			assert.deepEqual([...mesh.remoteStreams.map((remote) => remote.peer)].sort(), others,
-				`page ${i} should have received a stream from each other client`);
-			mesh.remoteStreams.forEach((remote) =>
-				assert.deepEqual(remote.tracks, ['video'],
-					`page ${i}: stream from ${remote.peer} should carry the canvas video track`));
-			assert.equal(new Set(mesh.remoteStreams.map((remote) => remote.streamId)).size, 3,
-				`page ${i}: every peer's stream should be its own MediaStream`);
+				// Media actually flowed: one remote stream per peer, each with the
+				// source's video track (the canvas stream), each a distinct stream.
+				assert.deepEqual([...mesh.remoteStreams.map((remote) => remote.peer)].sort(), others,
+					`page ${i} should have received a stream from each other client`);
+				mesh.remoteStreams.forEach((remote) =>
+					assert.deepEqual(remote.tracks, ['video'],
+						`page ${i}: stream from ${remote.peer} should carry the canvas video track`));
+				assert.equal(new Set(mesh.remoteStreams.map((remote) => remote.streamId)).size, 3,
+					`page ${i}: every peer's stream should be its own MediaStream`);
+			});
 		});
-	});
 
 	it('a client leaving should not disturb the streams between the remaining clients', async () => {
 		const meshes = await Promise.all(pages.map(getMesh));

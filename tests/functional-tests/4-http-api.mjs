@@ -84,12 +84,14 @@ describe('HTTP API', function() {
 		let testURL = "https://webstrate.projects.cavi.au.dk/testcases/test.html";
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL, { waitUntil: 'domcontentloaded' });
+		await pageB.goto(config.server_address + "new?prototypeUrl="+testURL,
+			{ waitUntil: 'domcontentloaded' });
 
 		const redirectedUrl = pageB.url();
 		await pageB.waitForFunction(() => window.test, {
 			timeout: 10000, // Maximum time to wait in milliseconds (adjust as needed)
-			polling: 100 // How often to check the condition in milliseconds (default is requestAnimationFrame or 100ms)
+			polling: 100 // How often to check the condition in milliseconds
+			// (default is requestAnimationFrame or 100ms)
 		});
 
 		// Cleanup. Delete only after the page has populated: the /new redirect target
@@ -105,11 +107,13 @@ describe('HTTP API', function() {
 		let testURL = "https://webstrate.projects.cavi.au.dk/testcases/test.zip";
 
 		pageB = await browser.newPage();
-		await pageB.goto(config.server_address + "new?prototypeUrl=" + testURL, { waitUntil: 'domcontentloaded' });
+		await pageB.goto(config.server_address + "new?prototypeUrl=" + testURL,
+			{ waitUntil: 'domcontentloaded' });
 
 		await pageB.waitForFunction(() => window.test, {
 			timeout: 10000, // Maximum time to wait in milliseconds (adjust as needed)
-			polling: 100 // How often to check the condition in milliseconds (default is requestAnimationFrame or 100ms)
+			polling: 100 // How often to check the condition in milliseconds
+			// (default is requestAnimationFrame or 100ms)
 		});
 
 		let testAsset = await pageB.evaluate(() => {
@@ -132,7 +136,8 @@ describe('HTTP API', function() {
 		});
 
 		const jsonObject = JSON.parse(pageContent);
-		assert.propertyVal(jsonObject, 'success', true, 'Could not find the success property in test zip json');
+		assert.propertyVal(jsonObject, 'success', true,
+			'Could not find the success property in test zip json');
 	});
 
 	it('ZIP files serve their content (subdir)', async () => {
@@ -151,7 +156,8 @@ describe('HTTP API', function() {
 		await util.deleteWebstrate(pageA, redirectedUrl);
 
 		const jsonObject = JSON.parse(pageContent);
-		assert.propertyVal(jsonObject, 'subdirectory', true, 'Could not find the subdirectory property in test zip json in a subdir');
+		assert.propertyVal(jsonObject, 'subdirectory', true,
+			'Could not find the subdirectory property in test zip json in a subdir');
 	});
 
 	it('?dir on a non-ZIP asset should return an error instead of crashing the server', async () => {
@@ -176,10 +182,12 @@ describe('HTTP API', function() {
 			return response.status === 200;
 		}, 15);
 
-		const notAZipAsset = await uploadAssetByFetch(pageA, 'notazip.txt', 'text/plain', NOT_A_ZIP_FILE);
+		const notAZipAsset = await uploadAssetByFetch(
+			pageA, 'notazip.txt', 'text/plain', NOT_A_ZIP_FILE);
 		assert.equal(notAZipAsset.fileName, 'notazip.txt', 'Uploading the non-ZIP asset failed');
 
-		const zipAsset = await uploadAssetByFetch(pageA, 'realzip.zip', 'application/zip', REAL_ZIP_FILE);
+		const zipAsset = await uploadAssetByFetch(
+			pageA, 'realzip.zip', 'application/zip', REAL_ZIP_FILE);
 		assert.equal(zipAsset.fileName, 'realzip.zip', 'Uploading the ZIP asset failed');
 
 		await pageA.goto(dirUrl + '/realzip.zip/?dir', { waitUntil: 'domcontentloaded' });
@@ -193,11 +201,13 @@ describe('HTTP API', function() {
 		content = await pageA.evaluate(() => document.body.textContent);
 		const subStructure = JSON.parse(content);
 		assert.isArray(subStructure, 'Listing a ZIP subdirectory should return a JSON array');
-		assert.include(subStructure, 'sub/file.txt', 'Subdirectory listing does not include sub/file.txt');
+		assert.include(subStructure, 'sub/file.txt',
+			'Subdirectory listing does not include sub/file.txt');
 
 		// Used to kill the whole server process: the yauzl.open callback in
 		// getZipStructure ignores its error and dereferences zipFile anyway.
-		const response = await pageA.goto(dirUrl + '/notazip.txt/?dir', { waitUntil: 'domcontentloaded' });
+		const response = await pageA.goto(dirUrl + '/notazip.txt/?dir',
+			{ waitUntil: 'domcontentloaded' });
 
 		assert.isNotNull(response, 'Server did not respond to ?dir on a non-ZIP asset');
 		assert.equal(response.status(), 409, '?dir on a non-ZIP asset should be rejected with 409');
