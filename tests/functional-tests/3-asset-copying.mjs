@@ -9,27 +9,54 @@ import fs from 'fs';
 import path from 'path';
 import yauzl from 'yauzl';
 
-const uploadAssetHelper = async (page, testAsset, searchable = false) => {
+const uploadAssetHelper = async (page, testAsset, searchable = false, { expectFailure = false } = {}) => {
 	// The helper also runs on freshly copied webstrates whose client may not have
 	// populated yet when networkidle2 fired — the upload API only exists once the
-	// page has loaded.
+	// page has loaded. And the server rejects uploads to webstrates whose document
+	// has not made it to the database yet: a fresh webstrate's document is created by
+	// the client over the websocket, which a page gated on networkidle2 need not have
+	// waited for. dataSaved resolves only once the server has acknowledged every op the
+	// client has submitted — the document creation included — so the document is durably
+	// in place when it resolves. The wait is bounded: a server that never acknowledges
+	// the creation should fail the test with a reason, not hang it.
 	assert.isTrue(await util.waitForFunction(page,
 		() => window.webstrate && window.webstrate.loaded, 15),
 	'Timed out waiting for the webstrate to load before uploading');
+	await Promise.race([
+		page.evaluate(() => window.webstrate.dataSaved()),
+		util.sleep(15).then(() => {
+			throw new Error('Timed out waiting for the webstrate document to be acknowledged');
+		})
+	]);
 
 	const fileChooserPromise = page.waitForFileChooser();
 
+	// The uploadAsset callback is error-first: it also fires when the server rejects the
+	// upload, passing the server's error. Record the error instead of a bare flag, so a
+	// rejected upload fails the test with its actual reason rather than surfacing later
+	// as a missing asset.
 	await page.evaluate((searchable) => {
 		window.testAssetUploaded = false;
-		window.webstrate.uploadAsset(() => {
-			window.testAssetUploaded = true;
+		window.webstrate.uploadAsset((err) => {
+			window.testAssetUploaded = err ? String(err) : true;
 		}, { searchable });
 	}, searchable);
 
 	const fileChooser = await fileChooserPromise;
 	await fileChooser.accept([testAsset]);
 
-	await page.waitForFunction(() => window.testAssetUploaded === true, { timeout: 5000 });
+	// Poll on a fixed interval rather than the default (requestAnimationFrame), which never
+	// fires in background tabs — i.e. whenever a page shares its browser with other pages.
+	await page.waitForFunction(() => {
+		return window.testAssetUploaded !== false;
+	}, { timeout: 5000, polling: 100 });
+
+	const outcome = await page.evaluate(() => window.testAssetUploaded);
+	if (!expectFailure) {
+		assert.isTrue(outcome, `Uploading the asset failed: ${outcome}`);
+	}
+
+	return outcome;
 };
 
 const deleteAssetHelper = async (page, fileName) => {

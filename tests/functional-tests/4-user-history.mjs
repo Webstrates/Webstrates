@@ -122,7 +122,8 @@ describe('User history', function () {
 		if (config.authType !== 'test') return this.skip();
 
 		// The entry from the previous test can still be catching up in the history
-		// listing - poll for it before taking the baseline. 
+		// listing - poll for it before taking the baseline.
+		let historyBefore;
 		await util.waitFor(async () => {
 			historyBefore = await page.evaluate(() =>
 				window.webstrate.user.history({ limit: 500 }).catch(() => null));

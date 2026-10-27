@@ -12,13 +12,34 @@ import { ZipArchive } from 'archiver';
 
 const IMAGE_DATA = `data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAACAAAAAgCAYAAABzenr0AAAFzGlUWHRYTUw6Y29tLmFkb2JlLnhtcAAAAAAAPD94cGFja2V0IGJlZ2luPSLvu78iIGlkPSJXNU0wTXBDZWhpSHpyZVN6TlRjemtjOWQiPz4KPHg6eG1wbWV0YSB4bWxuczp4PSJhZG9iZTpuczptZXRhLyIgeDp4bXB0az0iWE1QIENvcmUgNS41LjAiPgogPHJkZjpSREYgeG1sbnM6cmRmPSJodHRwOi8vd3d3LnczLm9yZy8xOTk5LzAyLzIyLXJkZi1zeW50YXgtbnMjIj4KICA8cmRmOkRlc2NyaXB0aW9uIHJkZjphYm91dD0iIgogICAgeG1sbnM6ZXhpZj0iaHR0cDovL25zLmFkb2JlLmNvbS9leGlmLzEuMC8iCiAgICB4bWxuczpwaG90b3Nob3A9Imh0dHA6Ly9ucy5hZG9iZS5jb20vcGhvdG9zaG9wLzEuMC8iCiAgICB4bWxuczp0aWZmPSJodHRwOi8vbnMuYWRvYmUuY29tL3RpZmYvMS4wLyIKICAgIHhtbG5zOnhtcD0iaHR0cDovL25zLmFkb2JlLmNvbS94YXAvMS4wLyIKICAgIHhtbG5zOnhtcE1NPSJodHRwOi8vbnMuYWRvYmUuY29tL3hhcC8xLjAvbW0vIgogICAgeG1sbnM6c3RFdnQ9Imh0dHA6Ly9ucy5hZG9iZS5jb20veGFwLzEuMC9zVHlwZS9SZXNvdXJjZUV2ZW50IyIKICAgZXhpZjpDb2xvclNwYWNlPSIxIgogICBleGlmOlBpeGVsWERpbWVuc2lvbj0iMzIiCiAgIGV4aWY6UGl4ZWxZRGltZW5zaW9uPSIzMiIKICAgcGhvdG9zaG9wOkNvbG9yTW9kZT0iMyIKICAgcGhvdG9zaG9wOklDQ1Byb2ZpbGU9InNSR0IgSUVDNjE5NjYtMi4xIgogICB0aWZmOkltYWdlTGVuZ3RoPSIzMiIKICAgdGlmZjpJbWFnZVdpZHRoPSIzMiIKICAgdGlmZjpSZXNvbHV0aW9uVW5pdD0iMiIKICAgdGlmZjpYUmVzb2x1dGlvbj0iNzIvMSIKICAgdGlmZjpZUmVzb2x1dGlvbj0iNzIvMSIKICAgeG1wOk1ldGFkYXRhRGF0ZT0iMjAyNS0w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`;
 
-const uploadAssetHelper = async (page, testAsset, searchable = false) => {
+const uploadAssetHelper = async (page, testAsset, searchable = false, { expectFailure = false } = {}) => {
+	// The upload API only exists on a loaded page, and the server rejects uploads to
+	// webstrates whose document has not made it to the database yet: a fresh webstrate's
+	// document is created by the client over the websocket, which a page gated on
+	// networkidle2 need not have waited for. dataSaved resolves only once the server has
+	// acknowledged every op the client has submitted — the document creation included — so
+	// the document is durably in place when it resolves. The wait is bounded: a server that
+	// never acknowledges the creation should fail the test with a reason, not hang it.
+	assert.isTrue(await util.waitForFunction(page,
+		() => window.webstrate && window.webstrate.loaded, 15),
+	'Timed out waiting for the webstrate to load before uploading');
+	await Promise.race([
+		page.evaluate(() => window.webstrate.dataSaved()),
+		util.sleep(15).then(() => {
+			throw new Error('Timed out waiting for the webstrate document to be acknowledged');
+		})
+	]);
+
 	const fileChooserPromise = page.waitForFileChooser();
 
+	// The uploadAsset callback is error-first: it also fires when the server rejects the
+	// upload, passing the server's error. Record the error instead of a bare flag, so a
+	// rejected upload fails the test with its actual reason rather than surfacing later
+	// as a missing asset.
 	await page.evaluate((searchable) => {
 		window.testAssetUploaded = false;
-		window.webstrate.uploadAsset(() => {
-			window.testAssetUploaded = true;
+		window.webstrate.uploadAsset((err) => {
+			window.testAssetUploaded = err ? String(err) : true;
 		}, { searchable });
 	}, searchable);
 
@@ -28,8 +49,15 @@ const uploadAssetHelper = async (page, testAsset, searchable = false) => {
 	// Poll on a fixed interval rather than the default (requestAnimationFrame), which never
 	// fires in background tabs — i.e. whenever a page shares its browser with other pages.
 	await page.waitForFunction(() => {
-		return window.testAssetUploaded === true;
+		return window.testAssetUploaded !== false;
 	}, { timeout: 5000, polling: 100 });
+
+	const outcome = await page.evaluate(() => window.testAssetUploaded);
+	if (!expectFailure) {
+		assert.isTrue(outcome, `Uploading the asset failed: ${outcome}`);
+	}
+
+	return outcome;
 }
 
 const deleteAssetHelper = async (page, fileName) => {
@@ -167,7 +195,10 @@ describe('Assets', function () {
 	});
 	
 	it('Assets without an extension and only numbers as the name should not be uploadable', async () => {
-		await uploadAssetHelper(pageA, testNumericFile);
+		const outcome = await uploadAssetHelper(pageA, testNumericFile, false, { expectFailure: true });
+
+		assert.equal(outcome, 'File name cannot be only numbers.',
+			'Uploading a file with only numbers as its name should be rejected with a descriptive error');
 
 		const assets = await pageA.evaluate(async () => {
 			return await window.webstrate.assets;
