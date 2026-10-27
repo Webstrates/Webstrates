@@ -42,7 +42,7 @@ describe('HTTP API', function() {
 		browser = await puppeteer.launch();
 		pageA = await browser.newPage();
 		pageB = await browser.newPage();
-	})
+	});
 
 	after(async () => {
 		await browser.close();
@@ -120,7 +120,7 @@ describe('HTTP API', function() {
 
 		assert.include(testAsset, {
 			fileName: 'test-asset.ico', fileSize: 15086, mimeType: 'image/vnd.microsoft.icon'
-		})
+		});
 	});
 
 	it('ZIP files serve their content (base)', async () => {

@@ -1492,7 +1492,7 @@ async function createWebstrateFromZipFile(filePath, webstrateId, req) {
 					// on mongodb. Either way, we give mongodb 500ms to figure it out.
 					for (let attempts = 3; attempts > 0; attempts--){
 						if (createdWebstrate) continue;
-						await new Promise((accept,reject)=>{setTimeout(accept,500)})
+						await new Promise((accept,reject)=>{setTimeout(accept,500);});
 					}
 
 					if (!createdWebstrate) {

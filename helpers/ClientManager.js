@@ -659,7 +659,7 @@ module.exports.fetchCookie = async function(userId, webstrateId, key){
 	if (webstrateId){
 		cookieQuery.webstrateId = webstrateId;
 	} else {
-		cookieQuery.webstrateId = { '$exists': false }
+		cookieQuery.webstrateId = { '$exists': false };
 	}
 
 	let result = await db.cookies.findOne(cookieQuery);
@@ -682,7 +682,7 @@ module.exports.fetchCookie = async function(userId, webstrateId, key){
 		// Cookie map
 		return result;
 	}
-}
+};
 
 /**
  * Send message to clients in a webstrate.

@@ -162,7 +162,7 @@ exports.prepareAPIAccess = async (user)=>{
 			$lte: new Date()
 		}
 	});
-}
+};
 
 // --- Middleware handler for websockets ---
 exports.onmessage = async (ws, req, data, next) => {

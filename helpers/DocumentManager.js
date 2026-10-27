@@ -321,7 +321,7 @@ module.exports.restoreDocument = async function({ webstrateId, version, tag }, s
 	// restore command bumps the document version by at least one to avoid asset name conflicts.
 	await util.promisify(module.exports.sendNoOp)(webstrateId, 'documentRestore', source);
 	
-	let currentVersion = await module.exports.getDocument({ webstrateId, version: 'head' })
+	let currentVersion = await module.exports.getDocument({ webstrateId, version: 'head' });
 	var ops = jsondiff(currentVersion.data, oldVersion.data);
 	if (ops.length === 0) {
 		return await module.exports.tagDocument(webstrateId, currentVersion.v,
@@ -351,10 +351,10 @@ module.exports.deleteDocument = async function(webstrateId) {
 	let res;
 	do {
 		attempts++;
-		if (attempts > 1) await new Promise((accept,reject)=>{setTimeout(()=>{accept()},100)});
+		if (attempts > 1) await new Promise((accept,reject)=>{setTimeout(()=>{accept();},100);});
 		if (attempts > 5) throw new Error('No webstrate to delete');
-		res = await db.webstrates.deleteOne({ _id: webstrateId })
-	} while (res.deletedCount === 0)
+		res = await db.webstrates.deleteOne({ _id: webstrateId });
+	} while (res.deletedCount === 0);
 
 	clientManager.sendToClients(webstrateId, {
 		wa: 'delete',

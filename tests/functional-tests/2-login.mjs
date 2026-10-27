@@ -40,7 +40,7 @@ describe('Authentication and Login', function() {
 	let authTargetPrefix = {
 		github: 'https://github.com/login?',
 		test: config.server_address + 'auth/test'
-	}
+	};
 	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`,
 		async function () {
 			if (!util.credentialsProvided) return this.skip();

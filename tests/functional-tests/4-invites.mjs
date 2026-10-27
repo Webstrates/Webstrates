@@ -147,7 +147,7 @@ describe('Invites', function () {
 		if (config.authType !== 'test') return this.skip();
 
 		// Expire the invitation
-		await new Promise((resolve) => { setTimeout(resolve, 2000) });
+		await new Promise((resolve) => { setTimeout(resolve, 2000); });
 
 		const invitations = await pageA.evaluate(() => window.webstrate.user.invites.get());
 		assert.notExists(invitations.find(i => i.key === currentInvitation.key),

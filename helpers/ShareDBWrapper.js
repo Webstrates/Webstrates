@@ -27,7 +27,7 @@ const insertSessionLog = async (log) => {
 			await db.sessionLog.insertOne(log);
 			return;
 		} catch (err){
-			await new Promise((accept,reject)=>{setTimeout(accept,50)});
+			await new Promise((accept,reject)=>{setTimeout(accept,50);});
 		}
 	}
 	throw new Error('Unable to insert session log');

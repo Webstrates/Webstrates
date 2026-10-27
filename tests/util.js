@@ -230,7 +230,7 @@ util.logInToAuth = async function (page) {
 		default:
 			throw new Error('Unsupported auth type');
 	}
-}
+};
 
 util.sleep = async function (seconds) {
 	return new Promise(resolve => setTimeout(resolve, seconds * 1000));

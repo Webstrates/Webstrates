@@ -67,7 +67,7 @@ describe('Attribute Manipulation', function() {
 					}
 				}
 			}
-		})
+		});
 		pageB.on('console', async (msg)=>{
 			const msgType = msg.type();
 			const msgText = msg.text();
@@ -115,7 +115,7 @@ describe('Attribute Manipulation', function() {
 					}
 				}
 			}
-		})
+		});
 	});
 
 	after(async () => {
@@ -205,7 +205,7 @@ describe('Attribute Manipulation', function() {
 			insertType: 'long random string',
 			insertValue: util.randomString(50)
 		},		
-	]
+	];
 
 	prependTests.forEach(({insertType, insertValue})=>{
 		tests.forEach(({ title, key, value }) => {

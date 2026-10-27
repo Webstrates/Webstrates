@@ -476,8 +476,8 @@ describe('Permissions', function() {
 				permissions: 'rw'
 			}, 
 		];
-		await pageC.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e});});
-		await pageA.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e});});
+		await pageC.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e;});});
+		await pageA.evaluate(()=>{webstrate.on('permissionsChanged', (e)=>{window.lastChange = e;});});
 		await pageC.evaluate((s) => {
 			document.documentElement.setAttribute('data-auth',
 				JSON.stringify(s)
@@ -487,8 +487,8 @@ describe('Permissions', function() {
 		await util.waitForFunction(pageA, () => window.lastChange, 15);
 		await util.waitForFunction(pageC, () => window.lastChange, 15);
 
-		let aPerm = await pageA.evaluate(() => {return window.lastChange});
-		let cPerm = await pageC.evaluate(() => {return window.lastChange});
+		let aPerm = await pageA.evaluate(() => {return window.lastChange;});
+		let cPerm = await pageC.evaluate(() => {return window.lastChange;});
 		assert.deepEqual(cPerm, fakePermissions, 'Event is missing or wrong on local client');
 		assert.deepEqual(aPerm, fakePermissions, 'Event is missing or wrong on remote client');
 	});		
@@ -562,10 +562,10 @@ describe('Permissions', function() {
 				document.documentElement.getAttribute('data-auth') === expected, 15, newDataAuth);  
 			const resultB = await pageB.evaluate(()=>{
 				return document.documentElement.getAttribute('data-auth');
-			})
+			});
 			const resultA = await pageA.evaluate(()=>{
 				return document.documentElement.getAttribute('data-auth');
-			})
+			});
 		
 			assert.deepEqual(resultA, newDataAuth, 'data-auth attribute did apply on A');  
 			assert.deepEqual(resultB, newDataAuth, 'data-auth attribute did not propagate to client B');  

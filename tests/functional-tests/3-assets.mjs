@@ -58,7 +58,7 @@ const uploadAssetHelper =
 		}
 
 		return outcome;
-	}
+	};
 
 const deleteAssetHelper = async (page, fileName) => {
 	await page.evaluate(async (fileName) => {
@@ -73,7 +73,7 @@ const deleteAssetHelper = async (page, fileName) => {
 	}, { timeout: 5000, polling: 100 });
 
 	await page.reload({ waitUntil: 'networkidle2' });
-}
+};
 
 describe('Assets', function () {
 	this.timeout(30000);

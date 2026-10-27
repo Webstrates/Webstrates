@@ -74,7 +74,7 @@ const cleanUp = async () => {
 		}
 		process.exit(0);
 	});
-}
+};
 
 // We wait a little, so we know we're connected to MongoDB.
 setTimeout(cleanUp, 2000);
