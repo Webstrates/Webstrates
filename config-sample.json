@@ -10,6 +10,9 @@
   "maxZipUncompressedSize": 256,
   "maxPrototypeUrlRawSize": 100,
   "maxPrototypeUrlDecodedSize": 256,
+  "prototypeUrlWhitelist": [
+    "^https://(raw\\.githubusercontent|github)\\.com/Webstrates/"
+  ],
   "messageRateLimit": {
     "messagesPerInterval": 100,
     "intervalLength": 60000

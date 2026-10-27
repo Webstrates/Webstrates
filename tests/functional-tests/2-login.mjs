@@ -41,7 +41,6 @@ describe('Authentication and Login', function() {
 
 	let authTargetPrefix = {
 		github: 'https://github.com/login?',
-		au: 'https://login.projects.cavi.au.dk',
 		test: config.server_address + 'auth/test'
 	}
 	it(`/auth/${config.authType} redirects to ${authTargetPrefix[config.authType]}...`, async function () {

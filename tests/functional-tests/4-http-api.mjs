@@ -217,139 +217,97 @@ describe('HTTP API', function() {
 	});
 
 });
-describe('HTTP API: /new?prototypeUrl= refuses internal addresses', function() {
+
+describe('HTTP API: /new?prototypeUrl= allows only whitelisted URLs', function() {
 	this.timeout(30000);
 
-	// Marker served by the "internal" service below. If the server fetches an internal address
-	// on behalf of an untrusted /new?prototypeUrl= request, this string ends up stored inside a
-	// newly created webstrate — a server-side request forgery (SSRF) vulnerability.
-	const internalSecret = 'internal-secret-' + util.randomString();
+	// A loopback-only service standing in for any host the whitelist does not
+	// cover. If the server fetches it on behalf of a /new?prototypeUrl=
+	// request, its marker ends up stored inside a newly created webstrate —
+	// so every request below must be refused before anything is fetched.
+	const localSecret = 'local-secret-' + util.randomString();
 
-	// Webstrates created by the requests below (this only happens on a vulnerable server), so
-	// that after() can clean up after ourselves.
+	// Webstrates the tests below create (only the whitelisted fetch ever
+	// should), so after() can clean up after ourselves.
 	const createdWebstrateIds = [];
 
-	let internalServer, internalPort;
+	let localServer, localPort;
 
 	before(async () => {
-		// A service that is only reachable on the loopback interfaces, i.e. only from the server
-		// itself. It stands in for any internal service (a database admin console, cloud
-		// metadata service, intranet host, ...) that an external attacker should not be able to
-		// make the server fetch through prototypeUrl. Listening on '::' is dual stack on Linux,
-		// so both the IPv4 and the IPv6 loopback forms below are live targets.
-		internalServer = http.createServer((req, res) => {
+		localServer = http.createServer((req, res) => {
 			res.writeHead(200, { 'Content-Type': 'text/html' });
-			res.end(`<html><body>${internalSecret}</body></html>`);
+			res.end(`<html><body>${localSecret}</body></html>`);
 		});
-		// Listen dual stack where IPv6 is available, and fall back to plain IPv4 otherwise
-		// (e.g. CI hosts without IPv6) — on such hosts the IPv6 loopback URL below simply
-		// points at an unreachable address that the server must refuse all the same.
 		await new Promise((resolve, reject) => {
-			internalServer.once('error', reject);
-			internalServer.listen(0, '::', () => {
-				internalServer.removeListener('error', reject);
+			localServer.once('error', reject);
+			localServer.listen(0, '127.0.0.1', () => {
+				localServer.removeListener('error', reject);
 				resolve();
 			});
-		}).catch(async () => {
-			await new Promise((resolve) => internalServer.listen(0, '127.0.0.1', resolve));
 		});
-		internalPort = internalServer.address().port;
+		localPort = localServer.address().port;
 	});
 
 	after(async () => {
-		await new Promise((resolve) => internalServer.close(resolve));
-
-		// Clean up any webstrates the server created from the internal service's responses.
+		await new Promise((resolve) => localServer.close(resolve));
+		// Clean up any webstrates the tests created.
 		for (const webstrateId of createdWebstrateIds) {
 			await fetch(config.server_address + webstrateId + '?delete').catch(() => {});
 		}
 	});
 
-	// Internal URLs in every notation that maps to the loopback service (on a vulnerable
-	// server, each of these fetches the internal service and stores its body as a webstrate),
-	// plus private and link-local addresses that must be refused all the same. The URL
-	// factories are evaluated inside the tests, after before() has picked a port.
-	const internalPrototypeUrls = [
-		['loopback, ipv4', () => `http://127.0.0.1:${internalPort}/`],
-		['loopback, this-network address (0.0.0.0)', () => `http://0.0.0.0:${internalPort}/`],
-		['loopback, ipv4 as integer (2130706433)', () => `http://2130706433:${internalPort}/`],
-		['loopback, ipv4 shorthand (127.1)', () => `http://127.1:${internalPort}/`],
-		['loopback, ipv6', () => `http://[::1]:${internalPort}/`],
-		['loopback, ipv4-mapped ipv6', () => `http://[::ffff:127.0.0.1]:${internalPort}/`],
-		['loopback, ipv4-mapped ipv6 in hex', () => `http://[::ffff:7f00:1]:${internalPort}/`],
-		['loopback, ipv4-compatible ipv6', () => `http://[::127.0.0.1]:${internalPort}/`],
-		['loopback, nat64-embedded ipv4 (64:ff9b::/96)',
-			() => `http://[64:ff9b::127.0.0.1]:${internalPort}/`],
-		['loopback, 6to4-embedded ipv4 (2002::/16)',
-			() => `http://[2002:7f00:1::]:${internalPort}/`],
-		// Hostnames that resolve to loopback addresses: "localhost" through the server's own
-		// name resolution, and a public DNS name (nip.io) that resolves to 127.0.0.1. The
-		// server must neither trust its internal name resolution for prototypeUrl fetches nor
-		// accept a hostname that resolves to an internal address.
-		['hostname resolving to loopback (localhost)', () => `http://localhost:${internalPort}/`],
-		['publicly resolvable hostname pointing at loopback (nip.io)',
-			() => `http://127.0.0.1.nip.io:${internalPort}/`],
-		// Private (RFC1918) and link-local (e.g. cloud metadata) addresses.
-		['private address (10/8)', () => `http://10.0.0.1:${internalPort}/`],
-		['private address (192.168/16)', () => `http://192.168.0.1:${internalPort}/`],
-		['link-local address (169.254/16, e.g. cloud metadata)',
-			() => `http://169.254.169.254:${internalPort}/`]
-	];
-
-	for (const [label, internalUrlFactory] of internalPrototypeUrls) {
-		it(`refuses prototypeUrl pointing at internal address: ${label}`, async () => {
-			const internalUrl = internalUrlFactory();
-			const response = await fetch(config.server_address + 'new/?prototypeUrl=' +
-				encodeURIComponent(internalUrl), { redirect: 'manual' });
-
-			// Remember any webstrate the server created here, so after() can delete it again.
-			// (On a vulnerable server this records exactly the evidence of the leak.)
-			const location = response.headers.get('location');
-			if (location) {
-				createdWebstrateIds.push(new URL(location, config.server_address).pathname
-					.replace(/^\//, '').replace(/\/+$/, ''));
-			}
-
-			// A vulnerable server fetches the internal service, creates a webstrate from the
-			// response body and redirects to it (302). The server must refuse instead.
-			assert.isAtLeast(response.status, 400, `the server should have refused to fetch ` +
-				`${internalUrl} (internal address), but replied ${response.status} ` +
-				`${location ? 'and created webstrate ' + location : '(no redirect)'}`);
-
-			// Whatever error response the server returns must not contain anything the server
-			// fetched from the internal service.
-			const body = await response.text();
-			assert.notInclude(body, internalSecret,
-				'the error response leaked the internal service body');
-		});
-	}
-
-	it('never stores the internal service body as a webstrate', async () => {
+	it('refuses a prototypeUrl outside the whitelist', async () => {
+		// The whitelist the base test server runs (the Webstrates GitHub repos
+		// by default, plus the hosts its configuration allows) does not cover
+		// loopback, so the fetch must be refused rather than performed.
+		const localUrl = `http://localhost:${localPort}/`;
 		const response = await fetch(config.server_address + 'new/?prototypeUrl=' +
-			encodeURIComponent(`http://127.0.0.1:${internalPort}/`), { redirect: 'manual' });
+			encodeURIComponent(localUrl), { redirect: 'manual' });
 
 		const location = response.headers.get('location');
 		if (location) {
 			createdWebstrateIds.push(new URL(location, config.server_address).pathname
 				.replace(/^\//, '').replace(/\/+$/, ''));
-
-			// A Location header means the server created a webstrate from the internal
-			// service's response. Fetch the webstrate's raw content to check whether the
-			// internal body leaked into it.
-			const webstrateUrl = new URL(location, config.server_address);
-			webstrateUrl.search = 'raw';
-			const rawResponse = await fetch(webstrateUrl);
-			const raw = await rawResponse.text();
-			assert.notInclude(raw, internalSecret, 'the server stored the internal service ' +
-				`response as webstrate ${location}`);
 		}
 
-		// Without a redirect no webstrate was created — but the request must still have been
-		// refused rather than silently succeeded.
-		assert.isAtLeast(response.status, 400, 'the server created no webstrate but did not ' +
-			`refuse either (status ${response.status})`);
+		assert.isAtLeast(response.status, 400, 'the server should have refused to fetch ' +
+			localUrl + ' (outside the whitelist), but replied ' + response.status + ' ' +
+			(location ? 'and created webstrate ' + location : '(no redirect)'));
+
+		const body = await response.text();
+		assert.include(body, 'whitelist',
+			'the refusal should say the URL is not whitelisted');
+		assert.notInclude(body, localSecret,
+			'the error response leaked the local service body');
 	});
 
+	it('fetches a Webstrates repository on GitHub', async () => {
+		// The base test server's whitelist carries the GitHub pattern, and
+		// github.com serves its pages as text/html, so a blob URL from the
+		// Webstrates organization imports as a webstrate out of the box.
+		// (raw.githubusercontent.com is whitelisted all the same, but serves
+		// .html files as text/plain, so those the content-type gate refuses.)
+		const githubUrl = 'https://github.com/Webstrates/tutorials/blob/' +
+			'master/chat-system/chat-system.html';
+		const id = 'test-' + util.randomString();
+		const response = await fetch(config.server_address + 'new/?id=' + id + '&prototypeUrl=' +
+			encodeURIComponent(githubUrl), { redirect: 'manual' });
+
+		const location = response.headers.get('location');
+		if (location) {
+			createdWebstrateIds.push(new URL(location, config.server_address).pathname
+				.replace(/^\//, '').replace(/\/+$/, ''));
+		}
+
+		assert.equal(response.status, 302, 'the whitelisted GitHub URL should create a webstrate');
+		assert.include(location || '', id,
+			'the redirect should point at the created webstrate');
+
+		const rawResponse = await fetch(config.server_address + id + '/?raw');
+		const raw = await rawResponse.text();
+		assert.include(raw, 'chat-system.html',
+			'the created webstrate should contain the fetched GitHub page');
+	});
 });
 
 // The CORS feature: a document whose root <html> element carries a data-cors attribute — a

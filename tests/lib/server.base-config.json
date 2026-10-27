@@ -3,6 +3,10 @@
 	"listeningPort": 7107,
 	"db": "mongodb://127.0.0.1:27017/webstrate-test",
 	"niceWebstrateIds": false,
+	"prototypeUrlWhitelist": [
+		"^https://(raw\\.githubusercontent|github)\\.com/Webstrates/",
+		"^https://webstrate\\.projects\\.cavi\\.au\\.dk/"
+	],
 	"maxAge": "1d",
 	"maxAssetSize": 100,
 	"basicAuth": false,

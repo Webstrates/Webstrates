@@ -1,9 +1,9 @@
 // These tests run
-// against their own server instance with prototypeUrlAllowlist=['localhost']
-// and 1 MB caps, so every bomb is small: the mock origin below stands in for
-// any host an attacker controls (or has compromised) that the server will
-// fetch, and every case asserts both the refusal and that no webstrate was
-// created from the bomb.
+// against their own server instance with prototypeUrlWhitelist
+// ['^http://localhost:\d+/'] and 1 MB caps, so every bomb is small: the mock
+// origin below stands in for any host an attacker controls (or has
+// compromised) that the server will fetch, and every case asserts both the
+// refusal and that no webstrate was created from the bomb.
 /* global describe before after it */
 import { assert } from 'chai';
 import crypto from 'node:crypto';
@@ -70,7 +70,7 @@ describe('HTTP API: /new?prototypeUrl= caps fetched bodies (gzip bomb)', functio
 		ownServer = await harness.startServer({
 			label: 'prototype-url-body-caps',
 			config: {
-				prototypeUrlAllowlist: ['localhost'],
+				prototypeUrlWhitelist: ['^http://localhost:\\d+/'],
 				maxPrototypeUrlRawSize: 1,
 				maxPrototypeUrlDecodedSize: 1
 			}
