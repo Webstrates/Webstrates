@@ -1,4 +1,3 @@
-/* global describe before after it */
 
 import puppeteer from 'puppeteer';
 import { assert } from 'chai';

@@ -1,5 +1,3 @@
-// Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
-/* global describe after it */
 import WebSocket from 'ws';
 import { assert } from 'chai';
 import config from '../config.js';

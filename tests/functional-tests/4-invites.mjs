@@ -1,5 +1,3 @@
-// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
-/* global describe before after it */
 import puppeteer from 'puppeteer';
 import { assert, expect } from 'chai';
 import config from '../config.js';

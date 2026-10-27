@@ -16,7 +16,6 @@
 // dictates neither the configuration (the spec's file is used verbatim) nor the
 // port — exactly so that the WEBSTRATES_* overrides decide where the server
 // binds and what it reads, which is the mechanism under test.
-/* global describe before after it */
 import { assert } from 'chai';
 import fs from 'fs';
 import net from 'net';

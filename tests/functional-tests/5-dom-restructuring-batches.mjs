@@ -4,7 +4,6 @@
 // the op creator drop or mis-path operations, silently desyncing the DOM from
 // the JsonML document model — with the desync discovered only later, when the
 // next edit crashed the local OT apply and the user's text was lost.
-/* global describe before after it */
 import puppeteer from 'puppeteer';
 import { assert } from 'chai';
 import config from '../config.js';

@@ -7,7 +7,6 @@
 // registered: the creator then submitted `li: null`, putting a literal null
 // into the document that crashed toHTML (null.nodeType) on every subsequent
 // load, bricking the document.
-/* global describe before after it */
 import puppeteer from 'puppeteer';
 import { assert } from 'chai';
 import config from '../config.js';

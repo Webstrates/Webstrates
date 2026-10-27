@@ -10,8 +10,6 @@
 // The two "only own tokens" tests fail on unfixed code, where ?tokens
 // returns every token of the webstrate to any user with read permissions.
 
-// Instruction to ESLint that 'describe', 'before', 'after' and 'it' actually has been defined.
-/* global describe before after it */
 
 import fs from 'fs';
 import puppeteer from 'puppeteer';

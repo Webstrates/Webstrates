@@ -4,7 +4,6 @@
 // origin below stands in for any host an attacker controls (or has
 // compromised) that the server will fetch, and every case asserts both the
 // refusal and that no webstrate was created from the bomb.
-/* global describe before after it */
 import { assert } from 'chai';
 import crypto from 'node:crypto';
 import fs from 'node:fs';

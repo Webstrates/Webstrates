@@ -3,7 +3,6 @@
 // stored (see helpers/ConfigHelper.js). These tests exercise the resolution logic in
 // isolation; where uploads actually land on a running server is covered by
 // tests/functional-tests/4-uploads-dir.mjs.
-/* global describe after it */
 import { assert } from 'chai';
 import fs from 'fs';
 import os from 'os';

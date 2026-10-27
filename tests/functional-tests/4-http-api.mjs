@@ -1,5 +1,3 @@
-// Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
-/* global describe after it */
 
 import http from 'node:http';
 import puppeteer from 'puppeteer';

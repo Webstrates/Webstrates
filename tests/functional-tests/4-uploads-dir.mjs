@@ -3,7 +3,6 @@
 // variable overrides it. These tests run against their own server instances (through
 // the harness) because the base server's uploads directory is the repo's `uploads/`
 // directory, which the other suites exercise implicitly.
-/* global describe before after it */
 import { assert } from 'chai';
 import fs from 'fs';
 import os from 'os';

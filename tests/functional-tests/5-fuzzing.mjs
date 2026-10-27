@@ -1,5 +1,3 @@
-// Instruction to ESLint that 'describe', 'after' and 'it' actually has been defined.
-/* global describe after it */
 
 import fs from 'node:fs';
 import path from 'node:path';

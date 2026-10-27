@@ -1,5 +1,3 @@
-// Instruction to ESLint that 'describe' and 'it' actually has been defined.
-/* global describe it */
 'use strict';
 import {assert} from 'chai';
 import coreEvents from '../../client/webstrates/coreEvents.js';

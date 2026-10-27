@@ -6,7 +6,6 @@
 // isolation — typed coercion, precedence over config.json, and invalid values;
 // a running server configured through its environment is covered by
 // tests/functional-tests/4-env-vars.mjs.
-/* global describe after it */
 import { assert } from 'chai';
 import fs from 'fs';
 import os from 'os';

@@ -3,7 +3,6 @@
 // whitelist lets a fetch through: not on other paths, not on other hosts,
 // not for other schemes, not through notations that only look whitelisted,
 // and not across a redirect that leaves the matching URLs.
-/* global describe before after it */
 import { assert } from 'chai';
 import fs from 'node:fs';
 import http from 'node:http';
