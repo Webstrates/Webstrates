@@ -112,6 +112,7 @@ const wsInstance = expressWs(app, server);
 const middleware = [
 	require('./middleware/dosProtectionMiddleware.js'),
 	require('./middleware/versionMiddleware.js'),
+	require('./middleware/peerConfigMiddleware.js'),
 	require('./middleware/keepAliveMiddleware.js'),
 	require('./middleware/userHistory.js'),
 	require('./middleware/userInvites.js'),

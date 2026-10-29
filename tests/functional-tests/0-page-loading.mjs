@@ -138,10 +138,13 @@ describe('Client version reload', function() {
 		const clientVersion = await util.clientVersion();
 
 		// Any websocket connection (no query params, no version handshake of our own) is
-		// first told which client version the server ships; frames are then processed as
-		// before, here: ShareDB's handshake reply. Comparing the announced version against
-		// the one embedded in its bundle (serverConfig.clientVersion) is up to the client —
-		// the server never refuses a connection.
+		// first told which client version the server ships, then its peer connection
+		// configuration (middleware/peerConfigMiddleware.js); frames are then processed
+		// as before, here: ShareDB's handshake reply. Comparing the announced version
+		// against the one embedded in its bundle (serverConfig.clientVersion) is up to
+		// the client — the server never refuses a connection. The anonymous raw
+		// connection below must be announced the server's peerConnectionConfig, the
+		// field every visitor gets (middleware/peerConfigMiddleware.js picks it).
 		const messages = await new Promise((resolve) => {
 			const socket = new WebSocket(wsUrl);
 			const seen = [];
@@ -159,6 +162,9 @@ describe('Client version reload', function() {
 		assert.isNotNull(messages, 'no ShareDB handshake reply within 5 seconds');
 		assert.deepEqual(messages[0], { wa: 'version', v: clientVersion },
 			'the first frame on a connection announces the current client version');
+		assert.deepEqual(messages[1],
+			{ wa: 'peerconfig', peerConnectionConfig: config.server.peerConnectionConfig },
+			'the second frame announces the connection its peer connection configuration');
 		assert.ok(messages.some(m => m.a === 'hs'), 'frames are processed as before');
 	});
 

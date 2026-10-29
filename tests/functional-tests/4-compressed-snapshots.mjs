@@ -123,9 +123,11 @@ const createWebstrate = (address, webstrateId, data) =>
 // elapses. Returns { frames, reply }: reply is the correlated Buffer
 // (binary hit), the parsed JSON object (miss / error reply), or null
 // (nothing correlated arrived; silence tests inspect the frames instead).
-// Every socket receives two on-connect announcements before any reply — the
-// webstrates {wa:'version'} hello and the ShareDB {a:'init'} handshake (see
-// payloadFrames) — both uncorrelated, both simply staying in `frames`.
+// Every socket receives three on-connect announcements before any reply — the
+// webstrates {wa:'version'} hello, the {wa:'peerconfig'} STUN/TURN announcement
+// (middleware/peerConfigMiddleware.js; every socket gets one, the sample's
+// default) and the ShareDB {a:'init'} handshake (see payloadFrames) — all
+// uncorrelated, all simply staying in `frames`.
 const wsRequest = (server, routeId, message, waitMs = 700) => new Promise((resolve) => {
 	const frames = [];
 	const ws = new WebSocket(server.address.replace(/^http/, 'ws') + routeId);
@@ -163,17 +165,20 @@ const wsRequest = (server, routeId, message, waitMs = 700) => new Promise((resol
 const fetchSnapshot = (server, targetId, token, routeId = targetId) =>
 	wsRequest(server, routeId, { wa: 'fetchSnapshot', d: targetId, token });
 
-// Every webstrate socket receives TWO frames on connect, before any request:
-// the {wa:'version'} announcement (middleware/versionMiddleware.js) and the
-// ShareDB server handshake {a:'init', protocol, protocolMinor, id} that
-// share.listen emits for the ShareDB connection the socket could host (the
-// raw protocol tests never use one). This filters both announcements out of
-// the frames a wsRequest collected, leaving exactly the frames the
-// fetchSnapshot request itself produced.
+// Every webstrate socket receives THREE frames on connect, before any
+// request: the {wa:'version'} announcement (middleware/versionMiddleware.js),
+// the {wa:'peerconfig'} STUN/TURN announcement every socket gets with the
+// sample's default (middleware/peerConfigMiddleware.js), and the ShareDB
+// server handshake {a:'init', protocol, protocolMinor, id} that share.listen
+// emits for the ShareDB connection the socket could host (the raw protocol
+// tests never use one). This filters all three announcements out of the
+// frames a wsRequest collected, leaving exactly the frames the fetchSnapshot
+// request itself produced.
 const payloadFrames = (frames) => frames.filter((buf) => {
 	try {
 		const parsed = JSON.parse(buf.toString('utf8'));
-		return !(parsed && (parsed.wa === 'version' || parsed.a === 'init'));
+		return !(parsed
+			&& (parsed.wa === 'version' || parsed.wa === 'peerconfig' || parsed.a === 'init'));
 	} catch {
 		return true; // binary frames are never announcements
 	}
@@ -392,10 +397,10 @@ describe('Compressed snapshot cache (compressedSnapshots)', function () {
 				data: ['body', ' and edited', 'created by the compressed-snapshots tests']
 			});
 			// Exactly one payload frame — the binary reply itself (duplicated
-			// sends would show more). The two on-connect announcements are
+			// sends would show more). The three on-connect announcements are
 			// filtered out by payloadFrames.
 			assert.equal(payloadFrames(frames).length, 1,
-				'besides the two on-connect announcements, only the reply should be on the socket');
+				'besides the three on-connect announcements, only the reply should be on the socket');
 		});
 
 		it('should answer a miss with {wa:"reply", token} (no reply/error field), rebuild the ' +
@@ -447,7 +452,7 @@ describe('Compressed snapshot cache (compressedSnapshots)', function () {
 				// Not even an error frame: the falsy-token break runs before
 				// readEntry (the on-connect announcements are filtered out).
 				assert.equal(payloadFrames(frames).length, 0,
-					'nothing but the two on-connect announcements should be on the socket');
+					'nothing but the three on-connect announcements should be on the socket');
 			}
 			// The break also skipped scheduleRebuild: not one stored line for
 			// the warm fixture was appended. (F3/F4 prove this exact socket

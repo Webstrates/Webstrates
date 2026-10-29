@@ -46,5 +46,15 @@
   "compressedSnapshotCacheDir": "snapshot-cache",
   "compressedSnapshotBrotliQuality": 11,
   "compressedSnapshotDebounceMs": 5000,
-  "compressedSnapshotMaxStalenessMs": 60000
+  "compressedSnapshotMaxStalenessMs": 60000,
+  "loggedInPeerConnectionConfig": {
+    "iceServers": [
+      { "urls": "stun:stun.l.google.com:19302" }
+    ]
+  },
+  "peerConnectionConfig": {
+    "iceServers": [
+      { "urls": "stun:stun.l.google.com:19302" }
+    ]
+  }
 }

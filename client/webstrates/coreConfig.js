@@ -20,6 +20,16 @@ Object.defineProperty(coreConfigModule, 'isTransientAttribute', {
 	}
 });
 
+// The WebRTC peer connection configuration (STUN/TURN iceServers) for the
+// signal streams. The bundle carries no default: the value is undefined from
+// page load until the server's announcement arrives on the websocket
+// (middleware/peerConfigMiddleware.js) — signalStream never reads it before
+// that, peer connections are only negotiated over the websocket, and the
+// announcement precedes everything the page asks for over the socket, so it
+// is in place before any document script or the userland 'loaded' event can
+// read it — and webstrate scripts can replace it through the setter; their
+// value sticks, as an announcement only fills the property while it is still
+// unset.
 Object.defineProperty(coreConfigModule, 'peerConnectionConfig', {
 	get: () => config.peerConnectionConfig,
 	set: obj => {

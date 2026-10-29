@@ -57,12 +57,5 @@ module.exports = {
 	// the PathTree and the JsonML model disagreeing about the element's attributes.
 	isTransientAttribute: (DOMNode, attributeName) => attributeName === 'transient'
 		|| attributeName === '__proto__'
-		|| attributeName.startsWith('transient-'),
-	// Peer Connection configuration used for the WebRTC-based signal streaming.
-	peerConnectionConfig: {
-		'iceServers': [
-			{ urls: 'stun:stun.services.mozilla.com' },
-			{ urls: 'stun:stun.l.google.com:19302' }
-		]
-	}
+		|| attributeName.startsWith('transient-')
 };

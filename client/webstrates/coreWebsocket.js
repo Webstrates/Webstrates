@@ -144,6 +144,22 @@ coreWebsocketModule.setup = (_url, _protocols) => {
 			return;
 		}
 
+		// The server announces this connection its WebRTC peer connection
+		// configuration (STUN/TURN iceServers) on every connection, from the
+		// peerConnectionConfig / loggedInPeerConnectionConfig fields
+		if (event.data.startsWith('{"wa":"peerconfig"')) {
+			const peerConnectionConfig = JSON.parse(event.data).peerConnectionConfig;
+			// First-shot: fill the property only while it is still unset, so a
+			// configuration a webstrate script set itself
+			// (webstrate.config.peerConnectionConfig) survives the
+			// re-announcements that arrive on every reconnect.
+			if (coreConfig.peerConnectionConfig === undefined && peerConnectionConfig
+				&& typeof peerConnectionConfig === 'object') {
+				coreConfig.peerConnectionConfig = peerConnectionConfig;
+			}
+			return;
+		}
+
 		// If the message has a reply attached, it means it's an answer to a specific request, and not
 		// something that should just be sent to everybody. Therefore, we find the requester in the
 		// callback map, call the callback function, and then terminate.

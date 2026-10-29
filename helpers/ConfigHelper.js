@@ -73,7 +73,13 @@ const mergeJSON = (target, filler) => {
 
 	if (!target) return filler;
 
-	if (typeof filler === 'object') {
+	// `typeof null === 'object'`, so a null filler (an optional field defaulted
+	// to null in config-sample.json, e.g. loggedInPeerConnectionConfig) must not
+	// reach the entries merge below: Object.entries(null) throws, and an
+	// object in the target with a null sample default is exactly that case —
+	// it would take the server down at startup, in getConfig(). A null filler
+	// leaves the target as it is: there is nothing to fill from.
+	if (filler && typeof filler === 'object') {
 		Object.entries(filler).forEach(([key, value]) => {
 			target[key] = mergeJSON(target[key], filler[key]);
 		});
