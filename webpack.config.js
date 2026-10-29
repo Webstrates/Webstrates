@@ -25,7 +25,6 @@ const cleanServerConfig = {
 	niceWebstrateIds: serverConfig.niceWebstrateIds,
 	maxAssetSize: serverConfig.maxAssetSize,
 	rateLimit: serverConfig.rateLimit,
-	basicAuth: serverConfig.basicAuth,
 	providers: serverConfig.providers && Object.keys(serverConfig.providers),
 	compressedSnapshots: serverConfig.compressedSnapshots === true,
 	gitCommit,
