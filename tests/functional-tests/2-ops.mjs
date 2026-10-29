@@ -72,25 +72,32 @@ describe('Ops', function() {
 		await util.waitForFunction(page, () =>
 			window.webstrate && window.webstrate.loaded, 2);
 
-		await page.evaluate(() => {
-			document.body.insertAdjacentHTML('beforeend', 'Hello, ');
-			document.body.insertAdjacentHTML('beforeend', 'World!');
-		});
-
-		await util.sleep(.5);
-
-		await page.evaluate(() => {
-			document.body.insertAdjacentHTML('beforeend', ' How are you?');
-		});
-
-		await util.sleep(1);
-
-		ops = await page.evaluate(() => new Promise((accept, reject) => {
+		// Reading ops after a fixed sleep races the ops' commit to the database
+		const fetchOps = () => page.evaluate(() => new Promise((accept, reject) => {
 			window.webstrate.getOps(undefined, undefined, (err, ops) => {
 				if (err) return reject(err);
 				accept(ops);
 			});
 		}));
+
+		await page.evaluate(() => {
+			document.body.insertAdjacentHTML('beforeend', 'Hello, ');
+			document.body.insertAdjacentHTML('beforeend', 'World!');
+		});
+
+		await util.waitFor(async () => {
+			ops = await fetchOps();
+			return ops.length === 2;
+		});
+
+		await page.evaluate(() => {
+			document.body.insertAdjacentHTML('beforeend', ' How are you?');
+		});
+
+		await util.waitFor(async () => {
+			ops = await fetchOps();
+			return ops.length === 3;
+		});
 
 		assert.lengthOf(ops, 3);
 
