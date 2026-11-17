@@ -2,12 +2,15 @@ services:
   mongodb:
     container_name: mongodb
     image: mongo
+    volumes:
+      - ./data:/data/db
 
   webstrates:
     container_name: webstrates
     build: .
     volumes:
       - ./uploads:/app/uploads
+      - ./snapshot-cache:/app/snapshot-cache
       - ./config.json:/app/config.json
       - ./keys:/app/keys
     environment:

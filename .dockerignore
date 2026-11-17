@@ -1,4 +1,6 @@
 uploads
+snapshot-cache
+data
 node_modules
 config.json
 cookie.key
